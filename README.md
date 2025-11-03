@@ -25,7 +25,7 @@ Mở terminal của bạn và chạy lệnh sau:
 git clone https://github.com/DiTan1606/ZIZOO.git
 ```
 ```bash
-cd [Tên-thư-mục-dự-án]
+cd ZIZOO
 ```
 
 ### 2. Cài đặt thư viện
@@ -50,6 +50,8 @@ Dự án cần "chìa khóa" (API keys) để biết phải kết nối đến p
 
 TUYỆT ĐỐI KHÔNG push file .env lên GitHub. (Mình đã setup .gitignore để tự động chặn file này, nhưng vẫn phải cẩn thận).
 
+---
+
 ## 🧪 Bước 2: Chạy và Kiểm tra Dự án (Làm mỗi khi code)
 
 Sau khi cài đặt xong, đây là cách bạn chạy dự án để code.
@@ -64,6 +66,8 @@ npm start
 - Nếu bạn thấy trang web hiện ra -> Bạn đã chạy React thành công!
 
 - Nếu bạn thầy "Data: Hello Zizoo" -> Bạn đã kết nối Firebase thành công!
+
+---
 
 ## 🌎 Bước 3: Triển khai (Deploy) Website
 
@@ -93,3 +97,61 @@ firebase deploy --only hosting
 ```
 
 Sau khi chạy xong, terminal sẽ trả về một Hosting URL. Đó chính là link website của nhóm mình (ví dụ: https://zizoo-23525310.web.app).
+
+---
+## 🗺️ Giải thích Cấu trúc Dự án
+Chạy xong thì đọc cái này để hiểu cấu trúc dự án.
+
+Đây là giải thích về "bản đồ" dự án của chúng ta, để mọi người đều biết file nào làm gì và code mới nên đặt ở đâu.
+
+### 📁 Thư mục Gốc (ZIZOO)
+Đây là các file cấu hình chính.
+
+- .firebase/: Thư mục "nháp" của Firebase, chứa thông tin cache. Bạn không cần đụng vào đây.
+
+- build/: Thư mục "sản phẩm". Khi chạy npm run build, toàn bộ code trong src/ sẽ được dịch và nén vào đây. Chính thư mục này sẽ được deploy.
+
+- node_modules/: "Kho" thư viện của bên thứ ba (React, Firebase...). Lệnh npm install tự động tạo ra nó. Không bao giờ push thư mục này.
+
+- public/: Chứa file index.html gốc (khung sườn HTML của app) và các file tĩnh như favicon.ico.
+
+- src/: "Nguyên liệu" - Nơi chúng ta sẽ code 99% thời gian (components, pages, services...).
+
+### 📄 Tập tin Gốc
+- .env: (Bí mật) File chứa API key CỦA BẠN. Không push lên Git.
+
+- .env.example: (Công khai) File mẫu API key cho CẢ NHÓM. Phải push lên Git.
+
+- .firebaserc: File "chỉ đường", nói cho Firebase CLI biết deploy lên project nào. Phải push lên Git.
+
+- .gitignore: Bản danh sách "cấm" của Git (ví dụ: cấm node_modules/, cấm .env).
+
+- firebase.json: File cấu hình Firebase Hosting. Quan trọng nhất là:
+
+- package-lock.json: "Bản khóa" phiên bản. Ghi lại chính xác phiên bản của mọi thư viện đã cài để cả team dùng giống hệt nhau. Phải push lên Git.
+
+- package.json: "Căn cước" của dự án. Liệt kê các thư viện cần (dependencies) và các "scripts" (như npm start).
+
+- README.md: Chính là file này! Dùng để hướng dẫn team.
+
+### 📂 Bên trong src/ (Nơi chúng ta code)
+
+- index.js: Điểm bắt đầu của app. Nó "gắn" component <App /> vào file public/index.html.
+
+- App.js: Component "cha" của toàn bộ ứng dụng. Đây là nơi chúng ta thường setup các đường dẫn (Routes) chính (ví dụ: /login thì hiện LoginPage).
+
+- firebase.js: Sợi dây điện chính. Nơi duy nhất dùng API key để khởi tạo Firebase và "xuất" (export) ra db, auth cho các file khác dùng.
+
+- /assets: "Nhà kho" chứa hình ảnh, icons, fonts...
+
+- /components: "Hộp LEGO". Chứa các component UI (giao diện) nhỏ, tái sử dụng ở nhiều nơi (ví dụ: Button.js, Navbar.js).
+
+- /pages: "Các mô hình LEGO hoàn chỉnh". Đây là các trang hoàn chỉnh, thường được ráp lại từ nhiều components (ví dụ: HomePage.js, LoginPage.js).
+
+- /context: "Bảng thông báo toàn cầu". Nơi chứa React Context. AuthContext.js nằm ở đây, giúp mọi component biết "user đã đăng nhập hay chưa?".
+
+- /services: "Bộ phận phục vụ". Nơi chứa logic "nói chuyện" với Firebase. Thay vì gọi CSDL trực tiếp trong pages, chúng ta viết các hàm riêng ở đây (ví dụ: firestoreService.js chứa hàm getUserProfile()).
+
+- /hooks: (Nâng cao) Nơi chứa các "custom hooks" (use...) để tái sử dụng logic.
+
+- /utils: "Hộp đồ nghề". Chứa các hàm tiện ích nhỏ,
