@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <link rel="icon" href="%PUBLIC_URL%/favicon.ico" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#1e40af" />
+  <meta
+          name="description"
+          content="ZIZOO - Ứng dụng lập kế hoạch du lịch thông minh với AI và dữ liệu thời tiết thực tế"
+  />
+  <link rel="apple-touch-icon" href="%PUBLIC_URL%/logo192.png" />
+  <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
+
+  <!-- Google Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <!-- Tailwind CSS (CDN - chỉ dùng dev) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+          },
+        },
+      },
+    }
+  </script>
+
+  <title>ZIZOO - Lên Kế Hoạch Du Lịch Thông Minh</title>
+</head>
+<body class="bg-gradient-to-br from-blue-50 to-indigo-100 min-h-screen">
+<noscript>
+  <div class="flex items-center justify-center h-screen">
+    <div class="text-center">
+      <h1 class="text-2xl font-bold text-red-600">Yêu cầu JavaScript</h1>
+      <p>Vui lòng bật JavaScript để sử dụng ZIZOO.</p>
+    </div>
+  </div>
+</noscript>
+<div id="root"></div>
+</body>
+</html>
