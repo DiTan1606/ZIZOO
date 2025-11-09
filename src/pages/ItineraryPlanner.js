@@ -19,6 +19,9 @@ const provinces = [
 
 const tripTypes = ['Nghỉ dưỡng', 'Mạo hiểm', 'Văn hóa', 'Ẩm thực', 'Gia đình', 'Một mình'];
 
+// Tọa độ mặc định cho MapViewer khi chưa có kết quả (Việt Nam)
+const initialMapPoints = [{ name: 'Việt Nam', lat: 16.047079, lng: 108.206230 }]; 
+
 export default function ItineraryPlanner() {
     const { currentUser } = useAuth();
     const [prefs, setPrefs] = useState({
@@ -45,31 +48,38 @@ export default function ItineraryPlanner() {
     }, [prefs.startDate]);
 
     const handleGenerate = async () => {
-        if (loading) return;
-        setLoading(true);
-        try {
-            // Đợi map sẵn sàng
-            let attempts = 0;
-            while (!mapRef.current?.map && attempts < 30) {
-                await new Promise(r => setTimeout(r, 300));
-                attempts++;
-            }
-
-            const map = mapRef.current?.map || null;
-            const itinerary = await createRealTimeItinerary(
-                { ...prefs, startDate: derived.isoDate },
-                currentUser?.uid || 'guest',
-                map
-            );
-            setResult(itinerary);
-            toast.success('Lịch trình đã tạo thành công!');
-        } catch (err) {
-            console.error('Lỗi tạo lịch trình:', err);
-            toast.error(err.message || 'Không thể tạo lịch trình. Vui lòng thử lại!');
-        } finally {
-            setLoading(false);
+    if (loading) return;
+    setLoading(true);
+    try {
+        let attempts = 0;
+        while (!mapRef.current?.map && attempts < 60) { 
+            await new Promise(r => setTimeout(r, 100));
+            attempts++;
         }
-    };
+
+        const map = mapRef.current?.map || null;
+        if (!map && attempts >= 60) {
+            throw new Error('Không thể tải bản đồ Google Maps. Vui lòng kiểm tra kết nối mạng hoặc API Key.');
+        }
+
+        const itinerary = await createRealTimeItinerary(
+            { ...prefs, startDate: derived.isoDate },
+            currentUser?.uid || 'guest',
+            map
+        );
+        setResult(itinerary);
+        toast.success('Lịch trình đã tạo thành công!');
+    } catch (err) {
+        console.error('Lỗi tạo lịch trình:', err);
+        let errorMessage = err.message || 'Không thể tạo lịch trình. Vui lòng thử lại!';
+        if (err.message.includes('Không tìm thấy điểm đến')) {
+            errorMessage = 'Không tìm thấy điểm đến phù hợp. Hãy thử chọn tỉnh khác hoặc giảm yêu cầu về đánh giá địa điểm.';
+        }
+        toast.error(errorMessage);
+    } finally {
+        setLoading(false);
+    }
+};
 
     const mapPoints = result
         ? result.dailyPlan
@@ -92,7 +102,7 @@ export default function ItineraryPlanner() {
             <div className="bg-white rounded-xl shadow-lg p-6 mb-8">
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
 
-                    {/* NGÀY ĐI */}
+                    {/* NGÀY ĐI (Giữ nguyên) */}
                     <div>
                         <label htmlFor="startDate" className="block text-sm font-semibold text-gray-700 mb-2">
                             Ngày khởi hành
@@ -108,7 +118,7 @@ export default function ItineraryPlanner() {
                         <p className="text-xs text-gray-500 mt-1">{derived.formattedDate}</p>
                     </div>
 
-                    {/* NGÂN SÁCH */}
+                    {/* NGÂN SÁCH (Giữ nguyên) */}
                     <div>
                         <label htmlFor="budget" className="block text-sm font-semibold text-gray-700 mb-2">
                             Ngân sách (VND)
@@ -127,7 +137,7 @@ export default function ItineraryPlanner() {
                         </p>
                     </div>
 
-                    {/* SỐ NGÀY */}
+                    {/* SỐ NGÀY (Giữ nguyên) */}
                     <div>
                         <label htmlFor="days" className="block text-sm font-semibold text-gray-700 mb-2">
                             Số ngày
@@ -143,7 +153,7 @@ export default function ItineraryPlanner() {
                         />
                     </div>
 
-                    {/* LOẠI HÌNH DU LỊCH */}
+                    {/* LOẠI HÌNH DU LỊCH (Giữ nguyên) */}
                     <div className="md:col-span-2 lg:col-span-3">
                         <fieldset>
                             <legend className="block text-sm font-semibold text-gray-700 mb-2">
@@ -170,7 +180,7 @@ export default function ItineraryPlanner() {
                         </fieldset>
                     </div>
 
-                    {/* MỨC ĐỘ MẠO HIỂM */}
+                    {/* MỨC ĐỘ MẠO HIỂM (Giữ nguyên) */}
                     <div>
                         <label htmlFor="adventureLevel" className="block text-sm font-semibold text-gray-700 mb-2">
                             Mạo hiểm (1-5)
@@ -191,7 +201,7 @@ export default function ItineraryPlanner() {
                         </div>
                     </div>
 
-                    {/* ECO FRIENDLY */}
+                    {/* ECO FRIENDLY (Giữ nguyên) */}
                     <div className="flex items-center gap-3">
                         <input
                             id="ecoFriendly"
@@ -205,7 +215,7 @@ export default function ItineraryPlanner() {
                         </label>
                     </div>
 
-                    {/* SỐ NGƯỜI */}
+                    {/* SỐ NGƯỜI (Giữ nguyên) */}
                     <div>
                         <label htmlFor="travelers" className="block text-sm font-semibold text-gray-700 mb-2">
                             Số người
@@ -221,7 +231,7 @@ export default function ItineraryPlanner() {
                         />
                     </div>
 
-                    {/* TỈNH THÀNH */}
+                    {/* TỈNH THÀNH (Giữ nguyên) */}
                     <div className="lg:col-span-3">
                         <label htmlFor="provinces" className="block text-sm font-semibold text-gray-700 mb-2">
                             Chọn tỉnh/thành phố
@@ -245,7 +255,7 @@ export default function ItineraryPlanner() {
                         </p>
                     </div>
 
-                    {/* NÚT TẠO */}
+                    {/* NÚT TẠO (Giữ nguyên) */}
                     <div className="lg:col-span-3">
                         <button
                             onClick={handleGenerate}
@@ -261,6 +271,18 @@ export default function ItineraryPlanner() {
                         )}
                     </div>
                 </div>
+            </div>
+            
+            {/* BẢN ĐỒ (ĐÃ SỬA: LUÔN RENDER ĐỂ TẢI API, ẨN BẰNG CSS NẾU CHƯA CÓ KẾT QUẢ) */}
+            <div className="h-96 rounded-xl overflow-hidden shadow-2xl border-4 border-indigo-200 mb-8"
+                 // Dùng CSS để ẩn MapViewer nếu chưa có result. Điều này đảm bảo map tải ngay khi component mount
+                 style={{ display: result ? 'block' : 'none' }}> 
+                <MapViewer 
+                    ref={mapRef} 
+                    // Truyền điểm thực tế nếu có, ngược lại dùng điểm mặc định để MapViewer không bị lỗi
+                    points={result ? mapPoints : initialMapPoints} 
+                    showRoute={true} 
+                />
             </div>
 
             {/* KẾT QUẢ */}
@@ -280,10 +302,7 @@ export default function ItineraryPlanner() {
                         </div>
                     )}
 
-                    {/* BẢN ĐỒ 3D */}
-                    <div className="h-96 rounded-xl overflow-hidden shadow-2xl border-4 border-indigo-200">
-                        <MapViewer ref={mapRef} points={mapPoints} showRoute={true} />
-                    </div>
+                    {/* LƯU Ý: KHỐI MAPVIEWER TRÙNG LẶP ĐÃ BỊ XÓA (đã được chuyển lên trên) */}
 
                     {/* LỊCH TRÌNH CHI TIẾT */}
                     <div className="bg-white p-8 rounded-2xl shadow-xl">
