@@ -154,7 +154,7 @@ const getRealTicketPrice = (placeType, province) => {
         'tourist_attraction': { min: 30000, max: 150000 },
         'museum': { min: 20000, max: 80000 },
         'park': { min: 10000, max: 50000 },
-        'zoo': { min: 50000, max: 120000 },
+        'zoo': { min: 50000, max: 120000 },
         'amusement_park': { min: 100000, max: 300000 },
         'beach': { min: 0, max: 20000 },
         'temple': { min: 0, max: 50000 },
