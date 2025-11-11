@@ -732,9 +732,15 @@ export default function ItineraryPlanner() {
                                                                 <span className="text-sm text-yellow-600">
                                                                     ⭐ {destination.rating} ({destination.userRatingsTotal} đánh giá)
                                                                 </span>
+                                                            {destination.pricePerPerson > 0 ? (
                                                                 <span className="text-sm font-medium text-green-600">
                                                                     💰 ~{new Intl.NumberFormat('vi-VN').format(destination.pricePerPerson)}₫/người
                                                                 </span>
+                                                            ) : (
+                                                                <span className="text-sm font-medium text-blue-600">
+                                                                    🎉 Miễn phí
+                                                                </span>
+                                                            )}
                                                             </div>
                                                         </div>
                                                     </div>
@@ -763,6 +769,46 @@ export default function ItineraryPlanner() {
                                                 </div>
                                             </div>
                                         )}
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                    {result.hotels && result.hotels.length > 0 && (
+                        <div className="bg-white p-6 rounded-2xl shadow-lg border-2 border-purple-100">
+                            <h3 className="text-2xl font-bold text-purple-700 mb-4 flex items-center gap-2">
+                                🏨 Gợi ý Chỗ Ở
+                            </h3>
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                {result.hotels.map((hotel, index) => (
+                                    <div key={index} className="border-2 border-gray-200 rounded-xl p-4 hover:shadow-md transition">
+                                        {hotel.photo && (
+                                            <img 
+                                                src={hotel.photo} 
+                                                alt={hotel.name}
+                                                className="w-full h-32 object-cover rounded-lg mb-3"
+                                            />
+                                        )}
+                                        <h4 className="font-bold text-lg text-gray-800">{hotel.name}</h4>
+                                        <p className="text-sm text-gray-600 mb-2">{hotel.address}</p>
+                                        
+                                        <div className="flex items-center justify-between mb-2">
+                                            <span className="text-yellow-600 font-semibold">
+                                                ⭐ {hotel.rating} ({hotel.userRatingsTotal || 0} đánh giá)
+                                            </span>
+                                            <span className={`px-2 py-1 rounded-full text-xs font-bold ${
+                                                hotel.category === 'luxury' ? 'bg-purple-100 text-purple-700' :
+                                                hotel.category === 'mid-range' ? 'bg-blue-100 text-blue-700' :
+                                                'bg-green-100 text-green-700'
+                                            }`}>
+                                                {hotel.category === 'luxury' ? '⭐ Cao cấp' :
+                                                hotel.category === 'mid-range' ? '💫 Tiêu chuẩn' : '💰 Tiết kiệm'}
+                                            </span>
+                                        </div>
+                                        
+                                        <p className="text-lg font-bold text-green-600">
+                                            {new Intl.NumberFormat('vi-VN').format(hotel.pricePerNight)}₫/đêm
+                                        </p>
                                     </div>
                                 ))}
                             </div>
