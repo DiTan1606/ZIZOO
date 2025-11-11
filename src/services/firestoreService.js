@@ -15,7 +15,9 @@ export const getCachedPlace = async (placeId) => {
     return snap.exists() ? snap.data() : null;
 };
 
-export const getCachedPlacesByProvince = async (province, types = []) => {
+// src/services/firestoreService.js (chỉ phần cache)
+export const getCachedPlacesByProvince = async (province, types = [], forceRefresh = false) => {
+    const now = Date.now();
     let q = query(
         collection(db, 'cached_places'),
         where('province', '==', province)
@@ -24,9 +26,15 @@ export const getCachedPlacesByProvince = async (province, types = []) => {
         q = query(q, where('types', 'array-contains-any', types));
     }
     const snap = await getDocs(q);
-    return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+    const isStale = data.length > 0 && data.some(d => now - d.updatedAt.toMillis() > 7 * 24 * 60 * 60 * 1000);
+    if (forceRefresh || isStale || data.length === 0) {
+        return [];
+    }
+    return data;
 };
-// === STORMS (BÃO) ===
+//=== STORMS (BÃO) ===
 export const getStormRisks = async (province, month) => {
     if (!province || !month) {
         console.warn('getStormRisks: Thiếu province hoặc month → trả về []');
@@ -125,3 +133,17 @@ export const getCachedDestinations = async (province, types = []) => {
     const snap = await getDocs(q);
     return snap.docs.map(d => ({ id: d.id, ...d.data() }));
 };
+
+// src/services/firestoreService.js - Thêm hàm retry
+const withRetry = async (operation, maxRetries = 3) => {
+    for (let i = 0; i < maxRetries; i++) {
+        try {
+            return await operation();
+        } catch (error) {
+            if (i === maxRetries - 1) throw error;
+            console.warn(`Retry ${i + 1} failed, waiting...`, error);
+            await new Promise(resolve => setTimeout(resolve, 1000 * (i + 1)));
+        }
+    }
+};
+

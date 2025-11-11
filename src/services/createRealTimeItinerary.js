@@ -1,357 +1,426 @@
 // src/services/createRealTimeItinerary.js
-import { getStormRisks, getFloodRisks, getFestivals } from './firestoreService';
+import { getStormRisks, getFloodRisks, getFestivals, saveItinerary } from './firestoreService';
 import { predictRiskScore } from '../ml/riskModel';
-import { searchNearbyPlaces, initPlacesService } from './placesService';
-import { getWeather, get7DayWeatherForecast } from './weatherService'; // Thêm import hàm mới
+import { initPlacesService, searchNearbyPlaces, getPhotoUrl } from './placesService';
+import { getWeather } from './weatherService';
 import provinceCoords from '../assets/provinceCoord.json';
-import { saveItinerary } from './firestoreService';
 import { toast } from 'react-toastify';
 
-const typeToPlaces = {
-    'Nghỉ dưỡng': ['point_of_interest', 'beach', 'spa', 'resort'], // Thay tourist_attraction bằng point_of_interest cho VietMap
-    'Mạo hiểm': ['park', 'hiking_area', 'amusement_park', 'campground'],
-    'Văn hóa': ['museum', 'historical_landmark', 'temple', 'art_gallery'],
-    'Ẩm thực': ['restaurant', 'food', 'meal_takeaway', 'cafe'],
-    'Gia đình': ['amusement_park', 'zoo', 'aquarium', 'bowling_alley'],
-    'Một mình': ['cafe', 'library', 'book_store', 'movie_theater'],
+// ==================== CÁC HÀM HỖ TRỢ ====================
+
+// HÀM TÍNH GIÁ
+const estimatePricePerPerson = (priceLevel) => {
+    const priceMap = {
+        0: 50000,   // Miễn phí/rất rẻ
+        1: 100000,  // Rẻ
+        2: 200000,  // Trung bình
+        3: 350000,  // Đắt
+        4: 500000   // Rất đắt
+    };
+    return priceMap[priceLevel] || 150000;
 };
 
-const distance = (p1, p2) => {
+// HÀM TÍNH KHOẢNG CÁCH
+const calculateDistance = (p1, p2) => {
     const R = 6371;
     const dLat = (p2.lat - p1.lat) * Math.PI / 180;
-    const dLon = (p2.lng - p2.lng) * Math.PI / 180;
-    const a =
-        Math.sin(dLat / 2) ** 2 +
-        Math.cos(p1.lat * Math.PI / 180) * Math.cos(p2.lat * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
+    const dLon = (p2.lng - p1.lng) * Math.PI / 180;
+    const a = Math.sin(dLat/2) ** 2 +
+        Math.cos(p1.lat * Math.PI / 180) *
+        Math.cos(p2.lat * Math.PI / 180) *
+        Math.sin(dLon/2) ** 2;
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 };
 
+// TỐI ƯU LỘ TRÌNH
 const optimizeRoute = (points) => {
     if (points.length <= 1) return points;
+
     const route = [points[0]];
     const unvisited = points.slice(1);
+
     while (unvisited.length > 0) {
         const last = route[route.length - 1];
-        let nearest = unvisited[0];
-        let minDist = distance(last, nearest);
+        let nearestIndex = 0;
+        let minDist = calculateDistance(last, unvisited[0]);
+
         for (let i = 1; i < unvisited.length; i++) {
-            const d = distance(last, unvisited[i]);
-            if (d < minDist) {
-                minDist = d;
-                nearest = unvisited[i];
+            const dist = calculateDistance(last, unvisited[i]);
+            if (dist < minDist) {
+                minDist = dist;
+                nearestIndex = i;
             }
         }
-        route.push(nearest);
-        unvisited.splice(unvisited.indexOf(nearest), 1);
+
+        route.push(unvisited[nearestIndex]);
+        unvisited.splice(nearestIndex, 1);
     }
+
     return route;
 };
 
+// CHIA THEO NGÀY
 const splitIntoDays = (route, days) => {
     const perDay = Math.max(1, Math.ceil(route.length / days));
-    return Array.from({ length: days }, (_, i) => route.slice(i * perDay, (i + 1) * perDay));
-};
+    const result = [];
 
-const fetchRealDestinations = async (province, types, ecoFriendly, adventureLevel, mapInstance, budget, safeProvinces) => {
-    const coord = provinceCoords[province];
-    if (!coord) {
-        console.warn(`Không có tọa độ cho ${province}, bỏ qua.`);
-        return [];
+    for (let i = 0; i < days; i++) {
+        const startIdx = i * perDay;
+        const endIdx = Math.min(startIdx + perDay, route.length);
+        if (startIdx < route.length) {
+            result.push(route.slice(startIdx, endIdx));
+        }
     }
 
+    return result;
+};
+
+// MAP LOẠI HÌNH DU LỊCH SANG PLACE TYPES
+const typeToPlaces = {
+    'Nghỉ dưỡng biển': ['tourist_attraction', 'beach', 'spa', 'resort'],
+    'Khám phá văn hóa': ['museum', 'temple', 'historical_landmark', 'church'],
+    'Du lịch ẩm thực': ['restaurant', 'cafe', 'food'],
+    'Phiêu lưu mạo hiểm': ['hiking_area', 'amusement_park', 'campground'],
+    'Thiền và yoga': ['spa', 'yoga', 'park'],
+    'Du lịch gia đình': ['zoo', 'aquarium', 'amusement_park', 'park'],
+    'Chụp ảnh sống ảo': ['tourist_attraction', 'park', 'museum'],
+    'Trải nghiệm bản địa': ['local_government_office', 'market', 'tourist_attraction']
+};
+
+// Hàm normalize province name
+const normalizeVietnamLocation = (inputName) => {
+    const aliases = {
+        'lam dong': 'Lâm Đồng',
+        'ho chi minh': 'Hồ Chí Minh',
+        'hanoi': 'Hà Nội',
+        'danang': 'Đà Nẵng',
+        'hue': 'Thừa Thiên Huế',
+        'nha trang': 'Khánh Hòa',
+        'da lat': 'Lâm Đồng',
+        'phu quoc': 'Kiên Giang',
+        'hoi an': 'Quảng Nam',
+        'sapa': 'Lào Cai',
+        'ho chi minh city': 'Hồ Chí Minh',
+        'hồ chí minh': 'Hồ Chí Minh',
+        'sài gòn': 'Hồ Chí Minh',
+        'tphcm': 'Hồ Chí Minh'
+    };
+
+    if (!inputName) return null;
+    const lowerInput = inputName.toLowerCase().trim();
+    return aliases[lowerInput] || inputName;
+};
+
+// ==================== HÀM CHÍNH ====================
+
+export const createRealTimeItinerary = async (prefs, userId, mapInstance) => {
+    const { province, types, adventureLevel, budget, days, travelers, startDate, ecoFriendly } = prefs;
+    const month = new Date(startDate).getMonth() + 1;
+
+    console.log('Bắt đầu tạo itinerary với prefs:', prefs);
+
+    let alerts = [];
+    const risky = [];
+
+    // === KIỂM TRA RỦI RO ===
+    try {
+        const storms = await getStormRisks(province, month);
+        const floods = await getFloodRisks(province, month);
+        const riskScore = predictRiskScore(month, province, storms, floods);
+
+        if (riskScore > 0.7) {
+            risky.push(province);
+            alerts.push(`${province}: Rủi ro cao (bão/lũ) - Điểm rủi ro: ${(riskScore * 100).toFixed(1)}%`);
+        }
+    } catch (err) {
+        console.warn(`Lỗi kiểm tra rủi ro ${province}:`, err);
+    }
+
+    if (risky.length > 0) {
+        throw new Error(`Khu vực ${province} có rủi ro thiên tai cao. Vui lòng chọn địa điểm khác.`);
+    }
+
+    // === KHỞI TẠO PLACES SERVICE ===
     await initPlacesService(mapInstance);
 
-    const placeTypes = types.flatMap((t) => typeToPlaces[t] || ['point_of_interest']);
+    // === TÌM ĐIỂM ĐẾN ===
+    let allDestinations = [];
+    const normalizedProvince = normalizeVietnamLocation(province);
+    const coord = provinceCoords[normalizedProvince];
+
+    if (!coord) {
+        throw new Error(`Không tìm thấy tọa độ cho ${province}`);
+    }
+
+    const placeTypes = types.flatMap(t => typeToPlaces[t] || ['tourist_attraction']);
     if (ecoFriendly) placeTypes.push('park');
     if (adventureLevel > 3) placeTypes.push('hiking_area');
 
-    let destinations = [];
-    const maxAttempts = 2;
+    // Lấy điểm đến cho mỗi loại
+    for (const type of [...new Set(placeTypes)].slice(0, 4)) {
+        try {
+            const results = await searchNearbyPlaces({
+                location: coord,
+                radius: 50000,
+                type: type,
+                keyword: province
+            });
 
-    for (let attempt = 0; attempt < maxAttempts && destinations.length < 2; attempt++) {
-        for (const type of placeTypes.slice(0, 3)) {
-            try {
-                const results = await searchNearbyPlaces({
-                    location: coord,
-                    radius: 100000, // Tăng radius để tìm được địa điểm ở tỉnh nhỏ
-                    type,
-                    keyword: province,
-                    // Bỏ minRating vì VietMap không có rating
+            console.log(`Tìm thấy ${results.length} kết quả cho ${type} ở ${province}`);
+
+            const spots = results
+                .filter(p => p.rating >= 3.8)
+                .sort((a, b) => (b.user_ratings_total || 0) - (a.user_ratings_total || 0))
+                .slice(0, 3)
+                .map(p => {
+                    // Đảm bảo tọa độ là số
+                    const geometry = p.geometry?.location;
+                    let lat, lng;
+
+                    if (geometry && typeof geometry.lat === 'function') {
+                        // Nếu là LatLng object
+                        lat = geometry.lat();
+                        lng = geometry.lng();
+                    } else {
+                        // Nếu là object thường
+                        lat = Number(geometry?.lat || coord.lat);
+                        lng = Number(geometry?.lng || coord.lng);
+                    }
+
+                    return {
+                        name: p.name,
+                        address: p.vicinity || 'Địa chỉ không xác định',
+                        rating: p.rating || 4.0,
+                        userRatingsTotal: p.user_ratings_total || 10,
+                        photo: p.photos?.[0] ? getPhotoUrl(p.photos[0].photo_reference) : null,
+                        pricePerPerson: estimatePricePerPerson(p.price_level),
+                        type: type,
+                        province: normalizedProvince, // Sử dụng normalizedProvince đã được định nghĩa
+                        lat: lat,
+                        lng: lng,
+                        placeId: p.place_id
+                    };
                 });
 
-                const top = results.slice(0, 2).map((p) => ({
-                    name: p.name,
-                    address: p.vicinity,
-                    lat: p.lat,
-                    lng: p.lng,
-                    rating: p.rating || 3.5,
-                    priceLevel: p.price_level || 2,
-                    estimatedCost: budget / safeProvinces.length,
-                    type, // Lưu type để dùng cho gợi ý
-                }));
-
-                destinations = [...destinations, ...top];
-                console.log(`Tìm thấy ${top.length} địa điểm loại ${type} ở ${province}`);
-            } catch (err) {
-                console.warn(`Lỗi tìm kiếm ${type} ở ${province}:`, err);
-            }
+            allDestinations = [...allDestinations, ...spots];
+        } catch (err) {
+            console.warn(`Lỗi tìm ${type} ở ${province}:`, err);
         }
     }
 
-    if (destinations.length === 0) {
-        console.warn(`Không tìm thấy địa điểm nào ở ${province} sau ${maxAttempts} lần thử.`);
+    // Nếu không tìm thấy đủ điểm, thêm điểm mặc định
+    if (allDestinations.length === 0) {
+        allDestinations.push({
+            name: `Điểm tham quan tại ${normalizedProvince}`,
+            address: 'Khu vực trung tâm',
+            rating: 4.0,
+            userRatingsTotal: 50,
+            photo: null,
+            pricePerPerson: 100000,
+            type: 'tourist_attraction',
+            province: normalizedProvince,
+            lat: coord.lat,
+            lng: coord.lng,
+            placeId: 'default'
+        });
     }
 
-    return destinations;
-};
+    // Tối ưu lộ trình
+    const optimizedRoute = optimizeRoute(allDestinations);
+    const dailyPlan = splitIntoDays(optimizedRoute, days);
 
-const fetchRealHotels = async (center, budget, travelers, mapInstance) => {
-    const priceLevel = budget > 10000000 ? 4 : budget > 5000000 ? 3 : 2;
-    try {
-        await initPlacesService(mapInstance);
-        const hotels = await searchNearbyPlaces({
-            location: center,
-            radius: 15000,
-            type: 'lodging',
-            maxPriceLevel: priceLevel,
-            // Bỏ minRating
+    // === GỢI Ý ĂN UỐNG ===
+    const meals = [];
+    for (const day of dailyPlan) {
+        if (day.length === 0) continue;
+
+        const center = day[Math.floor(day.length / 2)];
+        let lunch = null, dinner = null;
+
+        try {
+            const lunchResults = await searchNearbyPlaces({
+                location: { lat: center.lat, lng: center.lng },
+                radius: 5000,
+                type: 'restaurant',
+                keyword: 'cơm, phở, bún'
+            });
+            lunch = lunchResults[0];
+        } catch (err) {
+            console.warn('Lỗi tìm nhà hàng trưa:', err);
+        }
+
+        try {
+            const dinnerResults = await searchNearbyPlaces({
+                location: { lat: center.lat, lng: center.lng },
+                radius: 5000,
+                type: 'restaurant',
+                keyword: 'nhà hàng, đặc sản'
+            });
+            dinner = dinnerResults[0];
+        } catch (err) {
+            console.warn('Lỗi tìm nhà hàng tối:', err);
+        }
+
+        meals.push({
+            lunch: lunch ? {
+                name: lunch.name,
+                address: lunch.vicinity,
+                rating: lunch.rating,
+                userRatingsTotal: lunch.user_ratings_total,
+                photo: lunch.photos?.[0] ? getPhotoUrl(lunch.photos[0].photo_reference) : null,
+                price: estimatePricePerPerson(lunch.price_level) * travelers
+            } : {
+                name: 'Quán ăn địa phương',
+                address: 'Gần điểm tham quan',
+                rating: 4.2,
+                userRatingsTotal: 50,
+                price: 80000 * travelers
+            },
+            dinner: dinner ? {
+                name: dinner.name,
+                address: dinner.vicinity,
+                rating: dinner.rating,
+                userRatingsTotal: dinner.user_ratings_total,
+                photo: dinner.photos?.[0] ? getPhotoUrl(dinner.photos[0].photo_reference) : null,
+                price: estimatePricePerPerson(dinner.price_level) * travelers
+            } : {
+                name: 'Nhà hàng đặc sản',
+                address: 'Khu trung tâm',
+                rating: 4.5,
+                userRatingsTotal: 120,
+                price: 150000 * travelers
+            }
         });
-        return hotels.slice(0, 3).map((h) => ({
-            name: h.name,
-            address: h.vicinity,
-            rating: h.rating || 3.5,
-            priceLevel: h.price_level || 2,
-            estimatedCost: travelers * 600000 * (h.price_level || 2),
-            photo: h.photos?.[0]?.getUrl?.() || null,
+    }
+
+    // === GỢI Ý KHÁCH SẠN ===
+    const hotels = [];
+    try {
+        const hotelResults = await searchNearbyPlaces({
+            location: optimizedRoute[0],
+            radius: 10000,
+            type: 'lodging'
+        });
+
+        hotels.push(...hotelResults.slice(0, 3).map(h => {
+            // Đảm bảo tọa độ là số
+            const geometry = h.geometry?.location;
+            let lat, lng;
+
+            if (geometry && typeof geometry.lat === 'function') {
+                lat = geometry.lat();
+                lng = geometry.lng();
+            } else {
+                lat = Number(geometry?.lat || coord.lat);
+                lng = Number(geometry?.lng || coord.lng);
+            }
+
+            return {
+                name: h.name,
+                address: h.vicinity,
+                rating: h.rating,
+                userRatingsTotal: h.user_ratings_total,
+                photo: h.photos?.[0] ? getPhotoUrl(h.photos[0].photo_reference) : null,
+                pricePerNight: estimatePricePerPerson(h.price_level) * 2 * travelers,
+                priceLevel: h.price_level,
+                lat: lat,
+                lng: lng
+            };
         }));
     } catch (err) {
-        console.warn('Lỗi khách sạn:', err);
-        return [];
-    }
-};
-
-const fetchRealMeals = async (dayPoints, travelers, mapInstance) => {
-    const meals = [];
-    for (const point of dayPoints) {
-        try {
-            await initPlacesService(mapInstance);
-            const lunch = await searchNearbyPlaces({
-                location: point,
-                radius: 3000,
-                type: 'restaurant',
-                // Bỏ minRating
-            });
-            meals.push({
-                lunch: lunch[0]?.name || 'Quán ăn địa phương',
-                dinner: lunch[1]?.name || 'Nhà hàng đặc sản',
-                estimatedCost: travelers * 250000,
-            });
-        } catch {
-            meals.push({
-                lunch: 'Quán ăn địa phương',
-                dinner: 'Nhà hàng đặc sản',
-                estimatedCost: travelers * 250000,
-            });
-        }
-    }
-    return meals;
-};
-
-// Hàm gợi ý mới
-const generateSuggestions = (destinations, prefs, weather, festival, forecast7Days) => {
-    const suggestions = [];
-    const { types, startDate, budget, province } = prefs;
-    const tripStart = new Date(startDate);
-
-    // Gợi ý dựa trên thời tiết 7 ngày
-    forecast7Days.forEach((day, index) => {
-        const dayDate = new Date(tripStart);
-        dayDate.setDate(tripStart.getDate() + index);
-        if (dayDate.getTime() <= new Date().getTime() + 7 * 24 * 60 * 60 * 1000) {
-            let weatherTip = '';
-            if (day.rainChance > 50) {
-                weatherTip = 'Trời mưa, nên chọn địa điểm trong nhà.';
-                suggestions.push({
-                    name: 'Bảo tàng hoặc quán cà phê',
-                    reason: `${weatherTip} Ngày ${day.date} (${day.description}, ${day.temp}°C) ở ${province}, phù hợp cho mọi loại hình.`,
-                    address: 'Gần trung tâm',
-                    estimatedCost: budget * 0.05,
-                    day: index + 1,
-                });
-            } else if (day.temp > 30 && types.includes('Nghỉ dưỡng')) {
-                weatherTip = 'Nóng bức, thích hợp thư giãn gần nước.';
-                suggestions.push({
-                    name: 'Bãi biển hoặc resort',
-                    reason: `${weatherTip} Ngày ${day.date} (${day.temp}°C, ${day.description}) ở ${province}, lý tưởng cho nghỉ dưỡng.`,
-                    address: 'Khu vực ven biển',
-                    estimatedCost: budget * 0.15,
-                    day: index + 1,
-                });
-            } else if (day.temp >= 20 && day.temp <= 30) {
-                weatherTip = 'Thời tiết dễ chịu, phù hợp khám phá ngoài trời.';
-                if (types.includes('Văn hóa') || types.includes('Mạo hiểm')) {
-                    suggestions.push({
-                        name: 'Công viên hoặc di tích',
-                        reason: `${weatherTip} Ngày ${day.date} (${day.temp}°C, ${day.description}) ở ${province}, tốt cho văn hóa hoặc mạo hiểm.`,
-                        address: 'Khu vực trung tâm hoặc ngoại ô',
-                        estimatedCost: budget * 0.1,
-                        day: index + 1,
-                    });
-                }
-            }
-        }
-    });
-
-    // Gợi ý dựa trên loại hình
-    types.forEach((type) => {
-        const relatedTypes = {
-            'Nghỉ dưỡng': ['Bãi biển thư giãn', 'Spa cao cấp'],
-            'Mạo hiểm': ['Leo núi', 'Chèo thuyền kayak'],
-            'Văn hóa': ['Làng nghề truyền thống', 'Chợ địa phương'],
-            'Ẩm thực': ['Nhà hàng đặc sản', 'Quán ăn đường phố'],
-            'Gia đình': ['Công viên vui chơi', 'Thủy cung'],
-            'Một mình': ['Quán cà phê yên tĩnh', 'Thư viện'],
-        }[type] || ['Địa điểm tham quan'];
-
-        destinations.forEach((dest) => {
-            if (dest.type === typeToPlaces[type]?.[0]) {
-                suggestions.push({
-                    name: dest.name,
-                    reason: `Phù hợp với ${type.toLowerCase()}: ${relatedTypes[0]}`,
-                    address: dest.vicinity,
-                    estimatedCost: dest.estimatedCost,
-                    day: 1,
-                });
-            }
-        });
-    });
-
-    // Gợi ý dựa trên lễ hội
-    if (festival) {
-        suggestions.push({
-            name: `Lễ hội tại ${province}`,
-            reason: `Tham gia lễ hội địa phương để trải nghiệm văn hóa độc đáo`,
+        console.warn('Lỗi tìm khách sạn:', err);
+        hotels.push({
+            name: 'Khách sạn 3 sao',
             address: 'Trung tâm thành phố',
-            estimatedCost: budget * 0.15,
-            day: 1,
+            rating: 4.2,
+            userRatingsTotal: 80,
+            pricePerNight: 600000,
+            lat: coord.lat,
+            lng: coord.lng
         });
     }
 
-    // Gợi ý dựa trên ngân sách
-    if (budget < 5000000) {
-        suggestions.push({
-            name: 'Địa điểm miễn phí',
-            reason: `Tiết kiệm chi phí với các điểm tham quan miễn phí ở ${province}`,
-            address: 'Công viên hoặc di tích công cộng',
-            estimatedCost: 0,
-            day: 1,
-        });
+    // === THỜI TIẾT & LỄ HỘI ===
+    let weatherInfo = 'Không có dữ liệu';
+    try {
+        const weather = await getWeather(normalizedProvince);
+        weatherInfo = weather ? `${weather.temp}°C, ${weather.description}` : 'Không có dữ liệu';
+    } catch (err) {
+        console.warn('Lỗi lấy thời tiết:', err);
     }
 
-    return suggestions.slice(0, 5); // Giới hạn 5 gợi ý
-};
-
-export const createRealTimeItinerary = async (prefs, userId, mapInstance) => {
-    const { provinces, days = 3, startDate, budget, types, adventureLevel, ecoFriendly, travelers = 1 } = prefs;
-    const month = new Date(startDate).getMonth() + 1;
-    const alerts = [];
-
-    const safeProvinces = [];
-    for (const p of provinces) {
-        try {
-            const storms = await getStormRisks(p, month);
-            const floods = await getFloodRisks(p, month);
-            const riskScore = predictRiskScore(month, p, storms, floods);
-            if (riskScore <= 0.7) {
-                safeProvinces.push(p);
-            } else {
-                alerts.push(`${p}: Rủi ro cao (score: ${riskScore.toFixed(2)})`);
-            }
-        } catch (err) {
-            console.warn(`Không thể lấy rủi ro cho ${p}:`, err.message);
-            alerts.push(`${p}: Không thể xác minh rủi ro`);
-            safeProvinces.push(p);
-        }
+    let festivalInfo = null;
+    try {
+        const festivalData = await getFestivals(month);
+        const festival = festivalData.find(f => f.Province === normalizedProvince);
+        festivalInfo = festival ? `Có ${festival.FestivalCount} lễ hội` : null;
+    } catch (err) {
+        console.warn('Lỗi lấy lễ hội:', err);
     }
 
-    if (safeProvinces.length === 0) {
-        console.warn('Không có tỉnh an toàn, sử dụng tất cả tỉnh đã chọn.');
-        safeProvinces.push(...provinces);
-    }
+    // === TÍNH TOÁN CHI PHÍ ===
+    const hotelCost = hotels[0]?.pricePerNight * days || 500000 * days;
+    const foodCost = meals.reduce((sum, meal) => sum + meal.lunch.price + meal.dinner.price, 0);
+    const entranceCost = allDestinations.length * 50000;
+    const transportCost = 200000 * days;
 
-    let allDestinations = [];
-    for (const province of safeProvinces) {
-        const dests = await fetchRealDestinations(province, types, ecoFriendly, adventureLevel, mapInstance, budget, safeProvinces);
-        allDestinations.push(...dests);
-    }
+    const totalCost = hotelCost + foodCost + entranceCost + transportCost;
+    const remainingBudget = budget - totalCost;
 
-    if (allDestinations.length === 0) {
-        throw new Error('Không tìm thấy điểm đến phù hợp. Vui lòng thử lại với các tùy chọn khác.');
-    }
-
-    allDestinations = allDestinations.map((d) => ({
-        ...d,
-        lat: Number(d.lat) || d.lat,
-        lng: Number(d.lng) || d.lng,
-    }));
-
-    const optimized = optimizeRoute(allDestinations);
-    const dailyPlan = splitIntoDays(optimized, days);
-
-    const center = optimized[0] || { province: safeProvinces[0], lat: provinceCoords[safeProvinces[0]]?.lat, lng: provinceCoords[safeProvinces[0]]?.lng };
-    const hotels = await fetchRealHotels(center, budget, travelers, mapInstance);
-    const meals = await fetchRealMeals(dailyPlan.map((d) => d[0] || center), travelers, mapInstance);
-
-    const weather = await getWeather(center.province);
-    const forecast7Days = await get7DayWeatherForecast(center.province || safeProvinces[0]); // Thêm dự báo 7 ngày
-    const festival = (await getFestivals(month)).find((f) => safeProvinces.includes(f.Province))?.FestivalCount || null;
-
-    const suggestions = generateSuggestions(allDestinations, prefs, weather, festival, forecast7Days); // Truyền forecast7Days
-
-    const cost = {
-        hotel: hotels.reduce((s, h) => s + h.estimatedCost, 0),
-        food: meals.reduce((s, m) => s + m.estimatedCost, 0),
-        entrance: allDestinations.length * 150000,
-        transport: 500000,
-        total: 0,
-    };
-    cost.total = Math.min(cost.hotel + cost.food + cost.entrance + cost.transport, budget);
-    cost.remaining = budget - cost.total;
-
+    // === ĐỊNH DẠNG KẾT QUẢ ===
     const formattedDays = dailyPlan.map((day, i) => {
         const date = new Date(startDate);
         date.setDate(date.getDate() + i);
+
+        let note = '';
+        if (i === 0) note = 'Check-in khách sạn và bắt đầu hành trình';
+        else if (i === days - 1) note = 'Check-out và kết thúc chuyến đi';
+
         return {
             day: i + 1,
             date: date.toLocaleDateString('vi-VN'),
             destinations: day,
-            meal: meals[i],
-            note: i === 0 ? 'Check-in' : i === days - 1 ? 'Check-out' : '',
+            meal: meals[i] || meals[0] || { lunch: {}, dinner: {} },
+            note: note
         };
     });
 
     const itinerary = {
         userId,
-        prefs,
+        prefs: {
+            ...prefs,
+            province: normalizedProvince,
+            landmarks: prefs.landmarks || [normalizedProvince]
+        },
         dailyPlan: formattedDays,
         hotels,
-        weather: weather ? `${weather.temp}°C, ${weather.description}` : 'Không có dữ liệu',
-        forecast7Days, // Thêm để UI hiển thị
-        festival: festival ? `Có ${festival} lễ hội` : null,
-        alerts: alerts.length > 0 ? alerts.join(' | ') : 'Đánh giá sao không khả dụng với VietMap',
-        suggestions, // Thêm gợi ý
-        cost,
-        source: 'VietMap + Cache (no ratings)', // Cập nhật source
+        weather: weatherInfo,
+        festival: festivalInfo,
+        alerts: alerts.length > 0 ? alerts.join(' | ') : null,
+        cost: {
+            hotel: hotelCost,
+            food: foodCost,
+            entrance: entranceCost,
+            transport: transportCost,
+            total: totalCost,
+            remaining: remainingBudget
+        },
+        source: 'Google Places API + Risk Analysis',
         createdAt: new Date(),
+        status: 'completed'
     };
 
+    // === LƯU ITINERARY ===
     try {
         const docRef = await saveItinerary(userId, itinerary);
         itinerary.id = docRef.id;
-        toast.success('Lịch trình đã được lưu!');
+        console.log('Itinerary saved with ID:', docRef.id);
+        toast.success('Lịch trình đã được tạo và lưu thành công!');
     } catch (err) {
-        toast.warn('Tạo thành công nhưng chưa lưu');
+        console.error('Lỗi lưu itinerary:', err);
+        toast.warn('Tạo thành công nhưng chưa lưu được vào database');
     }
 
+    console.log('Itinerary created successfully:', itinerary);
     return itinerary;
 };

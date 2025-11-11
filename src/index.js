@@ -3,14 +3,16 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import './index.css';
 import App from './App';
-
-// XÓA 2 DÒNG NÀY:
-// import reportWebVitals from './reportWebVitals';
-// reportWebVitals();
+import { AuthProvider } from './context/AuthContext';
+import { ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(
     <React.StrictMode>
-        <App />
+        <AuthProvider>
+            <App />
+            <ToastContainer position="top-center" />
+        </AuthProvider>
     </React.StrictMode>
 );
