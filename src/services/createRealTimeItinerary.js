@@ -85,6 +85,7 @@ const typeToPlaces = {
     'Du lịch gia đình': ['zoo', 'aquarium', 'amusement_park', 'park', 'tourist_attraction'],
     'Chụp ảnh sống ảo': ['tourist_attraction', 'park', 'museum', 'natural'],
     'Trải nghiệm bản địa': ['historical', 'market', 'tourist_attraction', 'local_food']
+
 };
 
 // Hàm normalize province name
@@ -224,6 +225,7 @@ export const createRealTimeItinerary = async (prefs, userId, mapInstance) => {
             placeId: 'default'
         });
     }
+
 
     // Tối ưu lộ trình
     const optimizedRoute = optimizeRoute(allDestinations);
