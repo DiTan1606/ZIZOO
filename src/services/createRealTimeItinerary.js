@@ -114,16 +114,6 @@ const splitIntoDays = (route, days) => {
 
 // MAP LOẠI HÌNH DU LỊCH SANG PLACE TYPES
 const typeToPlaces = {
-<<<<<<< HEAD
-    'Nghỉ dưỡng': ['tourist_attraction', 'beach', 'spa', 'resort'],
-    'Khám phá văn hóa': ['museum', 'temple', 'historical_landmark', 'church'],
-    'Du lịch ẩm thực': ['restaurant', 'cafe', 'food', 'snack'],
-    'Phiêu lưu mạo hiểm': ['hiking_area', 'amusement_park', 'campground'],
-    'Thiền và yoga': ['spa', 'yoga', 'park'],
-    'Du lịch gia đình': ['zoo', 'aquarium', 'amusement_park', 'park', 'tourist_attraction'],
-    'Chụp ảnh sống ảo': ['tourist_attraction', 'park', 'museum', 'natural'],
-    'Trải nghiệm bản địa': ['historical', 'market', 'tourist_attraction', 'local_food']
-=======
     'Nghỉ dưỡng biển': ['tourist_attraction', 'beach', 'spa', 'resort'],
     'Khám phá văn hóa': ['museum', 'temple', 'historical_landmark', 'church'],
     'Du lịch ẩm thực': ['restaurant', 'cafe', 'food'],
@@ -132,7 +122,6 @@ const typeToPlaces = {
     'Du lịch gia đình': ['zoo', 'aquarium', 'amusement_park', 'park'],
     'Chụp ảnh sống ảo': ['tourist_attraction', 'park', 'museum'],
     'Trải nghiệm bản địa': ['local_government_office', 'market', 'tourist_attraction']
->>>>>>> Phuctran
 };
 
 // Hàm normalize province name
@@ -317,29 +306,6 @@ export const createRealTimeItinerary = async (prefs, userId, mapInstance) => {
         }
     }
 
-<<<<<<< HEAD
-        try {
-            const lunchResults = await searchNearbyPlaces({
-                location: { lat: center.lat, lng: center.lng },
-                radius: 5000,
-                type: 'restaurant',
-            });
-            lunch = lunchResults[0];
-        } catch (err) {
-            console.warn('Lỗi tìm nhà hàng trưa:', err);
-        }
-
-        try {
-            const dinnerResults = await searchNearbyPlaces({
-                location: { lat: center.lat, lng: center.lng },
-                radius: 5000,
-                type: 'restaurant',
-            });
-            dinner = dinnerResults[0];
-        } catch (err) {
-            console.warn('Lỗi tìm nhà hàng tối:', err);
-        }
-=======
     // Nếu không tìm thấy đủ điểm, thêm điểm mặc định
     if (allDestinations.length === 0) {
         allDestinations.push({
@@ -361,7 +327,6 @@ export const createRealTimeItinerary = async (prefs, userId, mapInstance) => {
     // Tối ưu lộ trình
     const optimizedRoute = optimizeRoute(allDestinations);
     const dailyPlan = splitIntoDays(optimizedRoute, days);
->>>>>>> Phuctran
 
     // === GỢI Ý ĂN UỐNG ===
     const meals = [];
