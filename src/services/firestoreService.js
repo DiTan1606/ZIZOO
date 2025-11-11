@@ -147,3 +147,31 @@ const withRetry = async (operation, maxRetries = 3) => {
     }
 };
 
+// THÊM HÀM LƯU VÀ LẤY GIÁ VÉ
+export const saveTicketPrice = async (placeId, placeType, province, price) => {
+    await setDoc(doc(db, 'ticket_prices', placeId), {
+        placeType,
+        province,
+        price,
+        updatedAt: serverTimestamp()
+    }, { merge: true });
+};
+
+export const getCachedTicketPrice = async (placeId) => {
+    const snap = await getDoc(doc(db, 'ticket_prices', placeId));
+    return snap.exists() ? snap.data() : null;
+};
+
+// THÊM HÀM LƯU VÀ LẤY GIÁ KHÁCH SẠN
+export const saveHotelPrice = async (placeId, pricePerNight, category) => {
+    await setDoc(doc(db, 'hotel_prices', placeId), {
+        pricePerNight,
+        category,
+        updatedAt: serverTimestamp()
+    }, { merge: true });
+};
+
+export const getCachedHotelPrice = async (placeId) => {
+    const snap = await getDoc(doc(db, 'hotel_prices', placeId));
+    return snap.exists() ? snap.data() : null;
+};
