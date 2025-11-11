@@ -77,14 +77,14 @@ const splitIntoDays = (route, days) => {
 
 // MAP LOẠI HÌNH DU LỊCH SANG PLACE TYPES
 const typeToPlaces = {
-    'Nghỉ dưỡng biển': ['tourist_attraction', 'beach', 'spa', 'resort'],
+    'Nghỉ dưỡng': ['tourist_attraction', 'beach', 'spa', 'resort'],
     'Khám phá văn hóa': ['museum', 'temple', 'historical_landmark', 'church'],
-    'Du lịch ẩm thực': ['restaurant', 'cafe', 'food'],
+    'Du lịch ẩm thực': ['restaurant', 'cafe', 'food', 'snack'],
     'Phiêu lưu mạo hiểm': ['hiking_area', 'amusement_park', 'campground'],
     'Thiền và yoga': ['spa', 'yoga', 'park'],
-    'Du lịch gia đình': ['zoo', 'aquarium', 'amusement_park', 'park'],
-    'Chụp ảnh sống ảo': ['tourist_attraction', 'park', 'museum'],
-    'Trải nghiệm bản địa': ['local_government_office', 'market', 'tourist_attraction']
+    'Du lịch gia đình': ['zoo', 'aquarium', 'amusement_park', 'park', 'tourist_attraction'],
+    'Chụp ảnh sống ảo': ['tourist_attraction', 'park', 'museum', 'natural'],
+    'Trải nghiệm bản địa': ['historical', 'market', 'tourist_attraction', 'local_food']
 };
 
 // Hàm normalize province name
@@ -242,7 +242,6 @@ export const createRealTimeItinerary = async (prefs, userId, mapInstance) => {
                 location: { lat: center.lat, lng: center.lng },
                 radius: 5000,
                 type: 'restaurant',
-                keyword: 'cơm, phở, bún'
             });
             lunch = lunchResults[0];
         } catch (err) {
@@ -254,7 +253,6 @@ export const createRealTimeItinerary = async (prefs, userId, mapInstance) => {
                 location: { lat: center.lat, lng: center.lng },
                 radius: 5000,
                 type: 'restaurant',
-                keyword: 'nhà hàng, đặc sản'
             });
             dinner = dinnerResults[0];
         } catch (err) {
