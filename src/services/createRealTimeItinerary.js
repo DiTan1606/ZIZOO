@@ -121,7 +121,6 @@ const typeToPlaces = {
     'Thiền và yoga': ['spa', 'yoga', 'park'],
     'Du lịch gia đình': ['zoo', 'aquarium', 'amusement_park', 'park'],
     'Chụp ảnh sống ảo': ['tourist_attraction', 'park', 'museum'],
-    'Trải nghiệm bản địa': ['local_government_office', 'market', 'tourist_attraction']
     'Trải nghiệm bản địa': ['market', 'tourist_attraction']
 };
 
