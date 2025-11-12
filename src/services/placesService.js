@@ -9,7 +9,7 @@ export const initPlacesService = (map) => {
     return true;
 };
 
-// Sử dụng Places API mới
+// === CŨ: Dùng PlacesService (sẽ bị cảnh báo deprecation) ===
 export const searchNearbyPlaces = async (options) => {
     return new Promise((resolve, reject) => {
         if (!window.google?.maps?.places || !mapInstance) {
@@ -19,7 +19,6 @@ export const searchNearbyPlaces = async (options) => {
 
         try {
             const service = new window.google.maps.places.PlacesService(mapInstance);
-
             service.nearbySearch(options, (results, status) => {
                 if (status === window.google.maps.places.PlacesServiceStatus.OK) {
                     resolve(results || []);
@@ -44,7 +43,6 @@ export const getPlaceDetails = (placeId) => {
 
         try {
             const service = new window.google.maps.places.PlacesService(mapInstance);
-
             service.getDetails({ placeId }, (place, status) => {
                 if (status === window.google.maps.places.PlacesServiceStatus.OK) {
                     resolve(place);
@@ -58,13 +56,35 @@ export const getPlaceDetails = (placeId) => {
     });
 };
 
-// Hàm lấy URL ảnh từ Google Places
+// === MỚI: Dùng google.maps.places.Place (khuyến nghị chính thức) ===
+export const getPlaceDetailsNew = async (placeId) => {
+    if (!window.google?.maps?.places) {
+        throw new Error('Google Maps Places API not loaded');
+    }
+
+    const place = new window.google.maps.places.Place({ id: placeId });
+    await place.fetchFields({
+        fields: ['displayName', 'formattedAddress', 'location', 'rating', 'userRatingsTotal', 'photos', 'types', 'priceLevel']
+    });
+
+    return {
+        place_id: placeId,
+        name: place.displayName,
+        vicinity: place.formattedAddress,
+        rating: place.rating,
+        user_ratings_total: place.userRatingsTotal,
+        photos: place.photos,
+        types: place.types,
+        price_level: place.priceLevel,
+        geometry: { location: place.location }
+    };
+};
+
 export const getPhotoUrl = (photoRef, maxWidth = 400) => {
     if (!photoRef) return null;
     return `https://maps.googleapis.com/maps/api/place/photo?maxwidth=${maxWidth}&photoreference=${photoRef}&key=${process.env.REACT_APP_GOOGLE_MAPS_API_KEY}`;
 };
 
-// Text Search thay thế
 export const searchPlacesByText = async (query, location, radius = 50000) => {
     return new Promise((resolve, reject) => {
         if (!window.google?.maps?.places || !mapInstance) {
@@ -74,11 +94,10 @@ export const searchPlacesByText = async (query, location, radius = 50000) => {
 
         try {
             const service = new window.google.maps.places.PlacesService(mapInstance);
-
             service.textSearch({
-                query: query,
-                location: location,
-                radius: radius
+                query,
+                location: new window.google.maps.LatLng(location.lat, location.lng),
+                radius
             }, (results, status) => {
                 if (status === window.google.maps.places.PlacesServiceStatus.OK) {
                     resolve(results || []);

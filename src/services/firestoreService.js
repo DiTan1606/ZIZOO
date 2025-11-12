@@ -6,14 +6,6 @@ import {
     orderBy, limit, serverTimestamp
 } from 'firebase/firestore';
 
-export const saveCachedPlace = async (placeId, data) => {
-    await setDoc(doc(db, 'cached_places', placeId), { ...data, updatedAt: serverTimestamp() }, { merge: true });
-};
-
-export const getCachedPlace = async (placeId) => {
-    const snap = await getDoc(doc(db, 'cached_places', placeId));
-    return snap.exists() ? snap.data() : null;
-};
 
 // src/services/firestoreService.js (chỉ phần cache)
 export const getCachedPlacesByProvince = async (province, types = [], forceRefresh = false) => {
@@ -175,3 +167,16 @@ export const getCachedHotelPrice = async (placeId) => {
     const snap = await getDoc(doc(db, 'hotel_prices', placeId));
     return snap.exists() ? snap.data() : null;
 };
+
+export const saveCachedPlace = async (placeId, data) => {
+    await setDoc(doc(db, 'cached_places', placeId), {
+        ...data,
+        updatedAt: serverTimestamp()
+    }, { merge: true });
+};
+
+export const getCachedPlace = async (placeId) => {
+    const snap = await getDoc(doc(db, 'cached_places', placeId));
+    return snap.exists() ? snap.data() : null;
+};
+

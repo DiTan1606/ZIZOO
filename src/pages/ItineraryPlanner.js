@@ -4,7 +4,7 @@ import { format } from 'date-fns';
 import { useAuth } from '../context/AuthContext';
 import { toast } from 'react-toastify';
 import MapViewer from '../components/MapViewer';
-import { createRealTimeItinerary } from '../services/createRealTimeItinerary';
+import { createRealTimeItinerary, createSmartItineraryWithSelection, getDestinationSuggestionsForUser } from '../services/createRealTimeItinerary';
 import { checkAndUpdateCache } from '../services/cacheDestinations';
 import { predictAndSaveRisk } from '../services/riskPredictor';
 import {
@@ -34,7 +34,7 @@ const popularVietnamDestinations = [
 export default function ItineraryPlanner() {
     const { currentUser } = useAuth();
     const [prefs, setPrefs] = useState({
-        locations: [], // {name, province, center, address}
+        locations: [], // {name, province, center, address, days, priority}
         budget: 5000000,
         days: 3,
         startDate: format(new Date(), 'yyyy-MM-dd'),
@@ -86,13 +86,24 @@ export default function ItineraryPlanner() {
                 const { name, province, center } = locationData;
 
                 // Kiểm tra trùng lặp
-                if (prefs.locations.some(loc => loc.province === province)) {
-                    toast.warning(`📍 ${province} đã được thêm vào lịch trình!`);
+                if (prefs.locations.some(loc => loc.province === province && loc.name === name)) {
+                    toast.warning(`📍 "${name}" đã được thêm vào lịch trình!`);
                     return;
                 }
 
-                // Thêm vào danh sách
-                const newLocation = { name, province, center };
+                // Tính số ngày mặc định (phân bổ đều)
+                const totalLocations = prefs.locations.length + 1;
+                const defaultDays = Math.max(1, Math.floor(prefs.days / totalLocations));
+
+                // Thêm vào danh sách với số ngày và priority
+                const newLocation = {
+                    name,
+                    province,
+                    center,
+                    days: defaultDays,
+                    priority: prefs.locations.length + 1
+                };
+
                 setPrefs(prev => ({
                     ...prev,
                     locations: [...prev.locations, newLocation]
@@ -150,6 +161,49 @@ export default function ItineraryPlanner() {
         toast.info(`🗑️ Đã xóa "${location.name}" khỏi lịch trình`);
     };
 
+    // Cập nhật số ngày cho từng địa điểm
+    const handleUpdateLocationDays = (index, newDays) => {
+        if (newDays < 1) {
+            toast.warning('📍 Số ngày phải lớn hơn hoặc bằng 1');
+            return;
+        }
+
+        const totalDays = prefs.locations.reduce((sum, loc, i) => {
+            return i === index ? sum + newDays : sum + loc.days;
+        }, 0);
+
+        if (totalDays > prefs.days) {
+            toast.warning(`📍 Tổng số ngày (${totalDays}) không được vượt quá ${prefs.days} ngày`);
+            return;
+        }
+
+        setPrefs(prev => ({
+            ...prev,
+            locations: prev.locations.map((loc, i) =>
+                i === index ? { ...loc, days: newDays } : loc
+            )
+        }));
+    };
+
+    // Cập nhật thứ tự ưu tiên
+    const handleUpdatePriority = (index, newPriority) => {
+        const locations = [...prefs.locations];
+        const currentLocation = locations[index];
+
+        // Swap priorities
+        const swappedIndex = locations.findIndex(loc => loc.priority === newPriority);
+        if (swappedIndex !== -1) {
+            locations[swappedIndex].priority = currentLocation.priority;
+        }
+
+        currentLocation.priority = newPriority;
+
+        setPrefs(prev => ({
+            ...prev,
+            locations: locations.sort((a, b) => a.priority - b.priority)
+        }));
+    };
+
     // Chọn địa điểm từ gợi ý phổ biến
     const handleSelectPopularDestination = (destination) => {
         setLocationInput(destination);
@@ -173,21 +227,66 @@ export default function ItineraryPlanner() {
             return;
         }
 
+        // Kiểm tra tổng số ngày
+        const totalLocationDays = prefs.locations.reduce((sum, loc) => sum + loc.days, 0);
+        if (totalLocationDays !== prefs.days) {
+            toast.error(`📍 Tổng số ngày cho các địa điểm (${totalLocationDays}) phải bằng ${prefs.days} ngày!`);
+            return;
+        }
+
         setLoading(true);
         try {
-            // Tạo itinerary cho địa điểm đầu tiên
-            const mainLocation = prefs.locations[0];
-
             const itinerary = await createRealTimeItinerary(
                 {
                     ...prefs,
-                    province: mainLocation.province,
-                    center: mainLocation.center,
                     startDate: prefs.startDate,
                     landmarks: prefs.locations.map(loc => loc.name)
                 },
                 currentUser.uid,
                 mapRef.current?.map
+            );
+            setResult(itinerary);
+            toast.success('🎉 Lịch trình đã được tạo thành công!');
+        } catch (err) {
+            console.error('Lỗi tạo itinerary:', err);
+            if (err.message.includes('rủi ro')) {
+                toast.error(`⚠️ ${err.message}`);
+            } else {
+                toast.error('❌ Lỗi tạo lịch trình! Vui lòng thử lại.');
+            }
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleGenerateWithSelection = async () => {
+        if (loading || !mapReady || prefs.locations.length === 0 || !currentUser) {
+            if (!currentUser) {
+                toast.error('🔐 Vui lòng đăng nhập để tạo lịch trình!');
+            } else if (prefs.locations.length === 0) {
+                toast.error('📍 Vui lòng thêm ít nhất 1 địa điểm!');
+            }
+            return;
+        }
+
+        // Kiểm tra tổng số ngày
+        const totalLocationDays = prefs.locations.reduce((sum, loc) => sum + loc.days, 0);
+        if (totalLocationDays !== prefs.days) {
+            toast.error(`📍 Tổng số ngày cho các địa điểm (${totalLocationDays}) phải bằng ${prefs.days} ngày!`);
+            return;
+        }
+
+        setLoading(true);
+        try {
+            const itinerary = await createSmartItineraryWithSelection(
+                {
+                    ...prefs,
+                    startDate: prefs.startDate,
+                    landmarks: prefs.locations.map(loc => loc.name)
+                },
+                currentUser.uid,
+                mapRef.current?.map,
+                selectedDestinations
             );
             setResult(itinerary);
             toast.success('🎉 Lịch trình đã được tạo thành công!');
@@ -235,6 +334,58 @@ export default function ItineraryPlanner() {
     };
 
     const overallRiskLevel = getOverallRiskLevel();
+
+    const [suggestedDestinations, setSuggestedDestinations] = useState([]);
+    const [selectedDestinations, setSelectedDestinations] = useState([]);
+    const [showDestinationSelection, setShowDestinationSelection] = useState(false);
+
+// Hàm lấy đề xuất địa điểm
+    const getDestinationSuggestions = async (province, center, tripTypes) => {
+        try {
+            const suggestions = await getDestinationSuggestionsForUser(province, center, tripTypes);
+
+            // Phân loại theo loại hình
+            const categorized = {
+                attractions: suggestions.attractions || [],
+                restaurants: suggestions.restaurants || [],
+                activities: suggestions.activities || [],
+                culture: suggestions.culture || [],
+                nature: suggestions.nature || [],
+                shopping: suggestions.shopping || []
+            };
+
+            return categorized;
+        } catch (error) {
+            console.error('Lỗi lấy đề xuất:', error);
+            return {};
+        }
+    };
+
+// Hàm hiển thị đề xuất
+    const showDestinationSuggestions = async () => {
+        if (prefs.locations.length === 0) {
+            toast.warning('📍 Vui lòng thêm địa điểm trước!');
+            return;
+        }
+
+        setLoading(true);
+        try {
+            const mainLocation = prefs.locations[0];
+            const suggestions = await getDestinationSuggestions(
+                mainLocation.province,
+                mainLocation.center,
+                prefs.types
+            );
+
+            setSuggestedDestinations(suggestions);
+            setShowDestinationSelection(true);
+            toast.info('🎯 Chọn địa điểm bạn muốn tham quan!');
+        } catch (error) {
+            toast.error('❌ Lỗi tải đề xuất địa điểm');
+        } finally {
+            setLoading(false);
+        }
+    };
 
     return (
         <div className="max-w-7xl mx-auto p-4">
@@ -367,27 +518,85 @@ export default function ItineraryPlanner() {
                                 <p className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
                                     <span>📌</span>
                                     Địa Điểm Đã Chọn ({prefs.locations.length})
+                                    <span className="text-xs font-normal text-gray-500 ml-2">
+                                        Tổng: {prefs.locations.reduce((sum, loc) => sum + loc.days, 0)}/{prefs.days} ngày
+                                    </span>
                                 </p>
-                                <div className="flex flex-wrap gap-3">
+
+                                <div className="space-y-4">
                                     {prefs.locations.map((location, index) => (
                                         <div
                                             key={index}
-                                            className="bg-gradient-to-r from-blue-500 to-purple-600 text-white px-4 py-3 rounded-xl flex items-center gap-3 shadow-lg animate-fade-in"
+                                            className="bg-gradient-to-r from-blue-500 to-purple-600 text-white p-4 rounded-xl flex items-center justify-between shadow-lg animate-fade-in"
                                         >
-                                            <span className="text-lg">📍</span>
-                                            <div className="flex-1">
-                                                <p className="font-bold">{location.name}</p>
-                                                <p className="text-blue-100 text-xs">{location.province}</p>
+                                            <div className="flex items-center gap-3 flex-1">
+                                                <span className="text-lg">📍</span>
+                                                <div className="flex-1">
+                                                    <p className="font-bold">{location.name}</p>
+                                                    <p className="text-blue-100 text-xs">{location.province}</p>
+                                                </div>
                                             </div>
-                                            <button
-                                                onClick={() => handleRemoveLocation(index)}
-                                                className="text-white hover:text-red-200 font-bold text-lg transition-colors w-6 h-6 flex items-center justify-center rounded-full hover:bg-white/20"
-                                                title="Xóa địa điểm"
-                                            >
-                                                ×
-                                            </button>
+
+                                            <div className="flex items-center gap-4">
+                                                {/* Priority Selector */}
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-blue-100 text-sm">Ưu tiên:</span>
+                                                    <select
+                                                        value={location.priority}
+                                                        onChange={(e) => handleUpdatePriority(index, parseInt(e.target.value))}
+                                                        className="bg-white/20 text-white border border-white/30 rounded px-2 py-1 text-sm"
+                                                    >
+                                                        {prefs.locations.map((_, i) => (
+                                                            <option key={i+1} value={i+1}>{i+1}</option>
+                                                        ))}
+                                                    </select>
+                                                </div>
+
+                                                {/* Days Selector */}
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-blue-100 text-sm">Số ngày:</span>
+                                                    <input
+                                                        type="number"
+                                                        min="1"
+                                                        max={prefs.days}
+                                                        value={location.days}
+                                                        onChange={(e) => handleUpdateLocationDays(index, parseInt(e.target.value))}
+                                                        className="w-16 bg-white/20 text-white border border-white/30 rounded px-2 py-1 text-sm text-center"
+                                                    />
+                                                </div>
+
+                                                {/* Remove Button */}
+                                                <button
+                                                    onClick={() => handleRemoveLocation(index)}
+                                                    className="text-white hover:text-red-200 font-bold text-lg transition-colors w-6 h-6 flex items-center justify-center rounded-full hover:bg-white/20"
+                                                    title="Xóa địa điểm"
+                                                >
+                                                    ×
+                                                </button>
+                                            </div>
                                         </div>
                                     ))}
+                                </div>
+
+                                {/* Days Summary */}
+                                <div className="mt-4 p-3 bg-blue-100 rounded-lg">
+                                    <div className="flex justify-between items-center text-sm">
+                                        <span className="text-blue-700 font-semibold">
+                                            📅 Phân bổ ngày:
+                                        </span>
+                                        <span className={`font-bold ${
+                                            prefs.locations.reduce((sum, loc) => sum + loc.days, 0) === prefs.days
+                                                ? 'text-green-600'
+                                                : 'text-red-600'
+                                        }`}>
+                                            {prefs.locations.reduce((sum, loc) => sum + loc.days, 0)}/{prefs.days} ngày
+                                        </span>
+                                    </div>
+                                    {prefs.locations.reduce((sum, loc) => sum + loc.days, 0) !== prefs.days && (
+                                        <p className="text-red-600 text-xs mt-1">
+                                            ⚠️ Tổng số ngày cho các địa điểm phải bằng {prefs.days} ngày
+                                        </p>
+                                    )}
                                 </div>
                             </div>
                         )}
@@ -586,7 +795,7 @@ export default function ItineraryPlanner() {
                     <div className="lg:col-span-3">
                         <button
                             onClick={handleGenerate}
-                            disabled={loading || !mapReady || prefs.locations.length === 0 || !currentUser}
+                            disabled={loading || !mapReady || prefs.locations.length === 0 || !currentUser || prefs.locations.reduce((sum, loc) => sum + loc.days, 0) !== prefs.days}
                             className="w-full bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 text-white py-6 rounded-2xl font-bold text-xl shadow-2xl hover:scale-105 transition transform disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 relative overflow-hidden"
                         >
                             {/* Hiệu ứng nền */}
@@ -608,6 +817,15 @@ export default function ItineraryPlanner() {
                             </div>
                         </button>
 
+                        {/* Nút Chọn Địa Điểm */}
+                        <button
+                            onClick={showDestinationSuggestions}
+                            disabled={loading || !mapReady || prefs.locations.length === 0 || !currentUser || prefs.locations.reduce((sum, loc) => sum + loc.days, 0) !== prefs.days}
+                            className="w-full mt-4 bg-gradient-to-r from-purple-600 via-pink-600 to-red-600 text-white py-4 rounded-2xl font-bold text-lg shadow-xl hover:scale-105 transition transform disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+                        >
+                            🎯 Chọn Địa Điểm Yêu Thích Để Tạo Lịch
+                        </button>
+
                         {/* Thông báo lỗi */}
                         <div className="mt-3 text-center space-y-1">
                             {!currentUser && (
@@ -622,9 +840,15 @@ export default function ItineraryPlanner() {
                                 </p>
                             )}
 
-                            {prefs.locations.length > 0 && currentUser && (
+                            {prefs.locations.length > 0 && prefs.locations.reduce((sum, loc) => sum + loc.days, 0) !== prefs.days && (
+                                <p className="text-red-600 font-semibold">
+                                    ⚠️ Tổng số ngày cho các địa điểm phải bằng {prefs.days} ngày!
+                                </p>
+                            )}
+
+                            {prefs.locations.length > 0 && currentUser && prefs.locations.reduce((sum, loc) => sum + loc.days, 0) === prefs.days && (
                                 <p className="text-green-600 font-semibold">
-                                    ✅ Sẵn sàng tạo lịch trình cho {prefs.locations.length} địa điểm!
+                                    ✅ Sẵn sàng tạo lịch trình cho {prefs.locations.length} địa điểm trong {prefs.days} ngày!
                                 </p>
                             )}
                         </div>
@@ -656,6 +880,69 @@ export default function ItineraryPlanner() {
                     />
                 </div>
             </div>
+            {/* Trong ItineraryPlanner.js */}
+            {showDestinationSelection && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-2xl max-w-4xl max-h-[90vh] overflow-y-auto">
+                        <div className="p-6 border-b">
+                            <h3 className="text-2xl font-bold">🎯 Chọn Địa Điểm Bạn Muốn Tham Quan</h3>
+                            <p className="text-gray-600">Chọn các địa điểm bạn quan tâm để tạo lịch trình phù hợp</p>
+                        </div>
+
+                        <div className="p-6">
+                            {Object.entries(suggestedDestinations).map(([category, destinations]) => (
+                                <div key={category} className="mb-8">
+                                    <h4 className="text-lg font-semibold mb-4 capitalize">{category}</h4>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        {destinations.slice(0, 6).map(dest => (
+                                            <div key={dest.placeId} className="border rounded-lg p-4">
+                                                <div className="flex items-start gap-3">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={selectedDestinations.some(s => s.placeId === dest.placeId)}
+                                                        onChange={(e) => {
+                                                            if (e.target.checked) {
+                                                                setSelectedDestinations(prev => [...prev, dest]);
+                                                            } else {
+                                                                setSelectedDestinations(prev => prev.filter(s => s.placeId !== dest.placeId));
+                                                            }
+                                                        }}
+                                                        className="mt-1"
+                                                    />
+                                                    <div className="flex-1">
+                                                        <h5 className="font-semibold">{dest.name}</h5>
+                                                        <p className="text-sm text-gray-600">{dest.address}</p>
+                                                        <div className="flex items-center gap-4 mt-2">
+                                                            <span className="text-yellow-600">⭐ {dest.rating}</span>
+                                                            <span className="text-green-600">💰 {new Intl.NumberFormat('vi-VN').format(dest.pricePerPerson)}₫</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+
+                        <div className="p-6 border-t flex justify-between">
+                            <button
+                                onClick={() => setShowDestinationSelection(false)}
+                                className="px-6 py-2 border border-gray-300 rounded-lg"
+                            >
+                                Hủy
+                            </button>
+                            <button
+                                onClick={handleGenerateWithSelection}
+                                disabled={selectedDestinations.length === 0}
+                                className="px-6 py-2 bg-blue-600 text-white rounded-lg disabled:opacity-50"
+                            >
+                                Tạo Lịch Trình ({selectedDestinations.length} địa điểm)
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* HIỂN THỊ KẾT QUẢ LỊCH TRÌNH */}
             {result && (
@@ -702,11 +989,18 @@ export default function ItineraryPlanner() {
                                             <h4 className="text-2xl font-bold text-indigo-800">
                                                 Ngày {day.day} • {day.date}
                                             </h4>
-                                            {day.note && (
-                                                <span className="bg-indigo-500 text-white px-3 py-1 rounded-full text-sm">
-                                                    {day.note}
-                                                </span>
-                                            )}
+                                            <div className="flex items-center gap-3">
+                                                {day.location && (
+                                                    <span className="bg-indigo-500 text-white px-3 py-1 rounded-full text-sm">
+                                                        📍 {day.location}
+                                                    </span>
+                                                )}
+                                                {day.note && (
+                                                    <span className="bg-purple-500 text-white px-3 py-1 rounded-full text-sm">
+                                                        {day.note}
+                                                    </span>
+                                                )}
+                                            </div>
                                         </div>
 
                                         {/* Điểm đến */}
@@ -732,15 +1026,15 @@ export default function ItineraryPlanner() {
                                                                 <span className="text-sm text-yellow-600">
                                                                     ⭐ {destination.rating} ({destination.userRatingsTotal} đánh giá)
                                                                 </span>
-                                                            {destination.pricePerPerson > 0 ? (
-                                                                <span className="text-sm font-medium text-green-600">
+                                                                {destination.pricePerPerson > 0 ? (
+                                                                    <span className="text-sm font-medium text-green-600">
                                                                     💰 ~{new Intl.NumberFormat('vi-VN').format(destination.pricePerPerson)}₫/người
                                                                 </span>
-                                                            ) : (
-                                                                <span className="text-sm font-medium text-blue-600">
+                                                                ) : (
+                                                                    <span className="text-sm font-medium text-blue-600">
                                                                     🎉 Miễn phí
                                                                 </span>
-                                                            )}
+                                                                )}
                                                             </div>
                                                         </div>
                                                     </div>
@@ -783,29 +1077,29 @@ export default function ItineraryPlanner() {
                                 {result.hotels.map((hotel, index) => (
                                     <div key={index} className="border-2 border-gray-200 rounded-xl p-4 hover:shadow-md transition">
                                         {hotel.photo && (
-                                            <img 
-                                                src={hotel.photo} 
+                                            <img
+                                                src={hotel.photo}
                                                 alt={hotel.name}
                                                 className="w-full h-32 object-cover rounded-lg mb-3"
                                             />
                                         )}
                                         <h4 className="font-bold text-lg text-gray-800">{hotel.name}</h4>
                                         <p className="text-sm text-gray-600 mb-2">{hotel.address}</p>
-                                        
+
                                         <div className="flex items-center justify-between mb-2">
                                             <span className="text-yellow-600 font-semibold">
                                                 ⭐ {hotel.rating} ({hotel.userRatingsTotal || 0} đánh giá)
                                             </span>
                                             <span className={`px-2 py-1 rounded-full text-xs font-bold ${
                                                 hotel.category === 'luxury' ? 'bg-purple-100 text-purple-700' :
-                                                hotel.category === 'mid-range' ? 'bg-blue-100 text-blue-700' :
-                                                'bg-green-100 text-green-700'
+                                                    hotel.category === 'mid-range' ? 'bg-blue-100 text-blue-700' :
+                                                        'bg-green-100 text-green-700'
                                             }`}>
                                                 {hotel.category === 'luxury' ? '⭐ Cao cấp' :
-                                                hotel.category === 'mid-range' ? '💫 Tiêu chuẩn' : '💰 Tiết kiệm'}
+                                                    hotel.category === 'mid-range' ? '💫 Tiêu chuẩn' : '💰 Tiết kiệm'}
                                             </span>
                                         </div>
-                                        
+
                                         <p className="text-lg font-bold text-green-600">
                                             {new Intl.NumberFormat('vi-VN').format(hotel.pricePerNight)}₫/đêm
                                         </p>
