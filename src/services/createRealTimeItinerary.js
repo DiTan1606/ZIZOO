@@ -122,6 +122,7 @@ const typeToPlaces = {
     'Du lịch gia đình': ['zoo', 'aquarium', 'amusement_park', 'park'],
     'Chụp ảnh sống ảo': ['tourist_attraction', 'park', 'museum'],
     'Trải nghiệm bản địa': ['local_government_office', 'market', 'tourist_attraction']
+    'Trải nghiệm bản địa': ['market', 'tourist_attraction']
 };
 
 // Hàm normalize province name
