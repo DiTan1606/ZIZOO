@@ -1,7 +1,7 @@
 // src/services/createRealTimeItinerary.js
 import { getStormRisks, getFloodRisks, getFestivals, saveItinerary } from './firestoreService';
 import { predictRiskScore } from '../ml/riskModel';
-import { initPlacesService, searchNearbyPlaces, getPhotoUrl } from './placesService';
+import { initPlacesService, searchNearbyPlaces, getPhotoUrl, searchPlacesByText } from './placesService';
 import { getWeather } from './weatherService';
 import provinceCoords from '../assets/provinceCoord.json';
 import { toast } from 'react-toastify';
@@ -145,6 +145,8 @@ const normalizeVietnamLocation = (inputName) => {
 
     if (!inputName) return null;
     const lowerInput = inputName.toLowerCase().trim();
+    // SỬA: Nếu alias tồn tại thì trả về (ví dụ 'da lat' -> 'Lâm Đồng')
+    // Nếu không, trả về inputName GỐC (ví dụ 'Đà Lạt' -> 'Đà Lạt')
     return aliases[lowerInput] || inputName;
 };
 
@@ -154,7 +156,7 @@ const getRealTicketPrice = (placeType, province) => {
         'tourist_attraction': { min: 30000, max: 150000 },
         'museum': { min: 20000, max: 80000 },
         'park': { min: 10000, max: 50000 },
-        'zoo': { min: 50000, max: 120000 },
+        'zoo': { min: 50000, max: 120000 },
         'amusement_park': { min: 100000, max: 300000 },
         'beach': { min: 0, max: 20000 },
         'temple': { min: 0, max: 50000 },
@@ -180,6 +182,7 @@ const getHotelCategory = (priceLevel, rating) => {
 // ==================== HÀM CHÍNH ====================
 
 export const createRealTimeItinerary = async (prefs, userId, mapInstance) => {
+    // SỬA: Giữ nguyên 'province' (có thể là 'Đà Lạt' hoặc 'Lâm Đồng')
     const { province, types, adventureLevel, budget, days, travelers, startDate, ecoFriendly } = prefs;
     const month = new Date(startDate).getMonth() + 1;
 
@@ -206,11 +209,15 @@ export const createRealTimeItinerary = async (prefs, userId, mapInstance) => {
     let alerts = [];
     const risky = [];
 
+    // SỬA: Dùng (hoặc tạo mới) normalizedProvince CHỈ cho rủi ro, thời tiết, ...
+    const normalizedProvinceForData = normalizeVietnamLocation(province);
+
     // === KIỂM TRA RỦI RO ===
     try {
-        const storms = await getStormRisks(province, month);
-        const floods = await getFloodRisks(province, month);
-        const riskScore = predictRiskScore(month, province, storms, floods);
+        // Dùng biến đã chuẩn hóa để tra cứu data
+        const storms = await getStormRisks(normalizedProvinceForData, month);
+        const floods = await getFloodRisks(normalizedProvinceForData, month);
+        const riskScore = predictRiskScore(month, normalizedProvinceForData, storms, floods);
 
         if (riskScore > 0.7) {
             risky.push(province);
@@ -229,10 +236,11 @@ export const createRealTimeItinerary = async (prefs, userId, mapInstance) => {
 
     // === TÌM ĐIỂM ĐẾN ===
     let allDestinations = [];
-    const normalizedProvince = normalizeVietnamLocation(province);
-    const coord = provinceCoords[normalizedProvince];
+    // Dùng normalizedProvinceForData để lấy tọa độ trung tâm
+    const coord = provinceCoords[normalizedProvinceForData];
 
     if (!coord) {
+        // Báo lỗi bằng 'province' gốc
         throw new Error(`Không tìm thấy tọa độ cho ${province}`);
     }
 
@@ -243,44 +251,43 @@ export const createRealTimeItinerary = async (prefs, userId, mapInstance) => {
     // Lấy điểm đến cho mỗi loại
     for (const type of [...new Set(placeTypes)].slice(0, 4)) {
         try {
-            const results = await searchNearbyPlaces({
-                location: coord,
-                radius: 50000,
-                type: type,
-                keyword: province
-            });
+            // ===================== SỬA ĐỔI CHÍNH =====================
+            // Dùng 'province' (gốc) để tạo query.
+            // Ví dụ: "tourist_attraction in Đà Lạt" (thay vì "Lâm Đồng")
+            const query = `${type} in ${province}`;
+            console.log(`Đang tìm kiếm với query: "${query}" (tọa độ ${normalizedProvinceForData})`);
+            // =========================================================
+
+            const results = await searchPlacesByText(
+                query,    // Query: Dùng tên gốc (ví dụ "Đà Lạt")
+                coord,    // Location: Tọa độ trung tâm (của tỉnh/vùng)
+                50000     // Radius: Bán kính ưu tiên
+            );
 
             console.log(`Tìm thấy ${results.length} kết quả cho ${type} ở ${province}`);
 
-            // SỬA: Lọc theo ngân sách (price_level) TRƯỚC KHI SLICE
             const spots = results
                 .filter(p => {
                     const ratingOk = p.rating >= 3.8;
-                    // price_level cho điểm tham quan thường không chính xác (hoặc 0)
-                    // Tạm thời nới lỏng cho budget low: ưu tiên 0, 1, 2
-                    const priceLevel = p.price_level !== undefined ? p.price_level : 0; // Mặc định là miễn phí/không rõ
+                    const priceLevel = p.price_level !== undefined ? p.price_level : 0;
                     const budgetOk = budgetCategory === 'low' ? priceLevel <= 2 : true;
                     return ratingOk && budgetOk;
                 })
                 .sort((a, b) => (b.user_ratings_total || 0) - (a.user_ratings_total || 0))
                 .slice(0, 3)
                 .map(p => {
-                    // Đảm bảo tọa độ là số
                     const geometry = p.geometry?.location;
                     let lat, lng;
 
                     if (geometry && typeof geometry.lat === 'function') {
-                        // Nếu là LatLng object
                         lat = geometry.lat();
                         lng = geometry.lng();
                     } else {
-                        // Nếu là object thường
                         lat = Number(geometry?.lat || coord.lat);
                         lng = Number(geometry?.lng || coord.lng);
                     }
 
-                    // SỬA: Sử dụng giá vé thực tế thay vì ước lượng từ price_level
-                    const ticketPrice = getRealTicketPrice(type, normalizedProvince);
+                    const ticketPrice = getRealTicketPrice(type, normalizedProvinceForData);
                     const estimatedPrice = p.price_level !== undefined ? 
                         estimatePricePerPerson(p.price_level, 'attraction') : ticketPrice;
 
@@ -288,15 +295,15 @@ export const createRealTimeItinerary = async (prefs, userId, mapInstance) => {
                         name: p.name,
                         address: p.vicinity || 'Địa chỉ không xác định',
                         rating: p.rating || 4.0,
-                        userRatingsTotal: p.user_ratings_total || 10,
+                        userRatingsTotal: p.user_ratings_total || 10,
                         photo: p.photos?.[0] ? getPhotoUrl(p.photos[0].photo_reference) : null,
-                        pricePerPerson: estimatedPrice, // SỬA: Dùng giá thực tế
+                        pricePerPerson: estimatedPrice,
                         type: type,
-                        province: normalizedProvince,
+                        province: normalizedProvinceForData, // Lưu tỉnh chuẩn
                         lat: lat,
                         lng: lng,
                         placeId: p.place_id,
-                        isFree: estimatedPrice === 0 // Thêm thông tin miễn phí
+                        isFree: estimatedPrice === 0
                     };
                 });
 
@@ -309,14 +316,14 @@ export const createRealTimeItinerary = async (prefs, userId, mapInstance) => {
     // Nếu không tìm thấy đủ điểm, thêm điểm mặc định
     if (allDestinations.length === 0) {
         allDestinations.push({
-            name: `Điểm tham quan tại ${normalizedProvince}`,
+            name: `Điểm tham quan tại ${province}`, // Dùng tên gốc
             address: 'Khu vực trung tâm',
             rating: 4.0,
             userRatingsTotal: 50,
             photo: null,
             pricePerPerson: 100000,
             type: 'tourist_attraction',
-            province: normalizedProvince,
+            province: normalizedProvinceForData, // Dùng tên chuẩn
             lat: coord.lat,
             lng: coord.lng,
             placeId: 'default',
@@ -330,7 +337,6 @@ export const createRealTimeItinerary = async (prefs, userId, mapInstance) => {
 
     // === GỢI Ý ĂN UỐNG ===
     const meals = [];
-    // THÊM: Lấy mức giá nhà hàng phù hợp
     const allowedRestaurantPriceLevels = getPriceLevelsForBudget(budgetCategory);
 
     for (const day of dailyPlan) {
@@ -347,9 +353,8 @@ export const createRealTimeItinerary = async (prefs, userId, mapInstance) => {
                 keyword: 'cơm, phở, bún'
             });
             
-            // SỬA: Lọc nhà hàng theo ngân sách
             const filteredLunch = lunchResults
-                .filter(r => allowedRestaurantPriceLevels.includes(r.price_level !== undefined ? r.price_level : 2)) // Mặc định là 2 (Medium)
+                .filter(r => allowedRestaurantPriceLevels.includes(r.price_level !== undefined ? r.price_level : 2))
                 .sort((a, b) => (b.user_ratings_total || 0) - (a.user_ratings_total || 0));
             
             lunch = filteredLunch.length > 0 ? filteredLunch[0] : lunchResults[0];
@@ -359,7 +364,6 @@ export const createRealTimeItinerary = async (prefs, userId, mapInstance) => {
         }
 
         try {
-            // SỬA: Thêm keyword cao cấp nếu ngân sách cao
             const dinnerKeyword = budgetCategory === 'high' ? 'nhà hàng 5 sao, đặc sản cao cấp' : 'nhà hàng, đặc sản';
             const dinnerResults = await searchNearbyPlaces({
                 location: { lat: center.lat, lng: center.lng },
@@ -368,7 +372,6 @@ export const createRealTimeItinerary = async (prefs, userId, mapInstance) => {
                 keyword: dinnerKeyword
             });
 
-            // SỬA: Lọc nhà hàng theo ngân sách
             const filteredDinner = dinnerResults
                 .filter(r => allowedRestaurantPriceLevels.includes(r.price_level !== undefined ? r.price_level : 2))
                 .sort((a, b) => (b.user_ratings_total || 0) - (a.user_ratings_total || 0));
@@ -379,7 +382,6 @@ export const createRealTimeItinerary = async (prefs, userId, mapInstance) => {
             console.warn('Lỗi tìm nhà hàng tối:', err);
         }
 
-        // SỬA: Fallback meal theo budget
         const fallbackLunchPrice = budgetCategory === 'low' ? 60000 : (budgetCategory === 'high' ? 150000 : 80000);
         const fallbackDinnerPrice = budgetCategory === 'low' ? 80000 : (budgetCategory === 'high' ? 300000 : 150000);
 
@@ -396,7 +398,7 @@ export const createRealTimeItinerary = async (prefs, userId, mapInstance) => {
                 address: 'Gần điểm tham quan',
                 rating: 4.2,
                 userRatingsTotal: 50,
-                price: fallbackLunchPrice * travelers // SỬA
+                price: fallbackLunchPrice * travelers
             },
             dinner: dinner ? {
                 name: dinner.name,
@@ -407,10 +409,10 @@ export const createRealTimeItinerary = async (prefs, userId, mapInstance) => {
                 price: estimatePricePerPerson(dinner.price_level, 'restaurant') * travelers
             } : {
                 name: 'Nhà hàng đặc sản',
-                address: 'Khu trung tâm',
+                address: 'Khu trung tâm',
                 rating: 4.5,
                 userRatingsTotal: 120,
-                price: fallbackDinnerPrice * travelers // SỬA
+                price: fallbackDinnerPrice * travelers
             }
         });
     }
@@ -418,7 +420,6 @@ export const createRealTimeItinerary = async (prefs, userId, mapInstance) => {
     // === GỢI Ý KHÁCH SẠN ===
     const hotels = [];
     try {
-        // SỬA: Điều chỉnh tìm kiếm khách sạn theo ngân sách
         let hotelKeyword = 'khách sạn, hotel';
         let hotelSearchRadius = 10000;
 
@@ -426,8 +427,8 @@ export const createRealTimeItinerary = async (prefs, userId, mapInstance) => {
             hotelKeyword = 'resort, 5 star hotel, luxury hotel';
             hotelSearchRadius = 15000;
             if (travelers > 4) {
-                hotelKeyword += ', villa'; // Yêu cầu: nhiều người, nhiều tiền -> villa
-            }
+                hotelKeyword += ', villa';
+           }
         } else if (budgetCategory === 'low') {
             hotelKeyword = 'hostel, motel, budget hotel, homestay, nhà nghỉ';
             hotelSearchRadius = 7000;
@@ -435,53 +436,43 @@ export const createRealTimeItinerary = async (prefs, userId, mapInstance) => {
 
         const hotelResults = await searchNearbyPlaces({
             location: optimizedRoute[0],
-            radius: hotelSearchRadius, // SỬA
+            radius: hotelSearchRadius,
             type: 'lodging',
-            keyword: hotelKeyword // SỬA
+            keyword: hotelKeyword
         });
 
-        // PHÂN LOẠI KHÁCH SẠN THEO TIÊU CHUẨN
         const categorizedHotels = hotelResults
-            .filter(h => h.rating >= 3.5) // Chỉ lấy khách sạn có rating tốt
+            .filter(h => h.rating >= 3.5)
             .sort((a, b) => (b.user_ratings_total || 0) - (a.user_ratings_total || 0))
-            .slice(0, 10); // Lấy nhiều hơn để phân loại (tăng từ 5 lên 10)
+            .slice(0, 10);
 
-        // PHÂN LOẠI: Budget, Mid-range, Luxury
-        // SỬA: Dùng hàm getHotelCategory để phân loại
         const budgetHotels = categorizedHotels.filter(h => getHotelCategory(h.price_level, h.rating) === 'budget');
         const midRangeHotels = categorizedHotels.filter(h => getHotelCategory(h.price_level, h.rating) === 'mid-range');
         const luxuryHotels = categorizedHotels.filter(h => getHotelCategory(h.price_level, h.rating) === 'luxury');
 
-        // SỬA: CHỌN KHÁCH SẠN ƯU TIÊN THEO NGÂN SÁCH
         const selectedHotels = [];
         if (budgetCategory === 'high') {
-            // Ưu tiên Luxury -> Mid
             if (luxuryHotels.length > 0) selectedHotels.push(luxuryHotels[0]);
             if (midRangeHotels.length > 0) selectedHotels.push(midRangeHotels[0]);
             if (budgetHotels.length > 0) selectedHotels.push(budgetHotels[0]);
         } else if (budgetCategory === 'low') {
-            // Ưu tiên Budget -> Mid
             if (budgetHotels.length > 0) selectedHotels.push(budgetHotels[0]);
             if (midRangeHotels.length > 0) selectedHotels.push(midRangeHotels[0]);
             if (luxuryHotels.length > 0) selectedHotels.push(luxuryHotels[0]);
         } else {
-            // 'medium' ưu tiên Mid -> Budget -> Luxury
             if (midRangeHotels.length > 0) selectedHotels.push(midRangeHotels[0]);
             if (budgetHotels.length > 0) selectedHotels.push(budgetHotels[0]);
             if (luxuryHotels.length > 0) selectedHotels.push(luxuryHotels[0]);
         }
         
-        // Nếu không đủ, thêm từ danh sách gốc
         if (selectedHotels.length === 0 && categorizedHotels.length > 0) {
             selectedHotels.push(...categorizedHotels.slice(0, 3));
         } else if (selectedHotels.length < 2) {
-            // Thêm bổ sung (nếu có)
             const allSelectedIds = new Set(selectedHotels.map(h => h.place_id));
             const remainingCategorized = categorizedHotels.filter(h => !allSelectedIds.has(h.place_id));
             selectedHotels.push(...remainingCategorized.slice(0, 3 - selectedHotels.length));
         }
         
-        // Chỉ lấy tối đa 3 khách sạn gợi ý
         const finalHotelSuggestions = selectedHotels.slice(0, 3);
 
         hotels.push(...finalHotelSuggestions.map(h => {
@@ -496,14 +487,11 @@ export const createRealTimeItinerary = async (prefs, userId, mapInstance) => {
                 lng = Number(geometry?.lng || coord.lng);
             }
 
-            // SỬA: Tính giá phòng theo loại khách sạn và số người
             const basePrice = estimatePricePerPerson(h.price_level, 'hotel');
-            // Giá phòng có thể điều chỉnh theo rating và số người
             let pricePerNight = basePrice;
             if (h.rating >= 4.5) pricePerNight *= 1.3;
             else if (h.rating >= 4.0) pricePerNight *= 1.1;
 
-            // Nếu số người lớn hơn 2, có thể tính thêm phụ phí
             if (travelers > 2) {
                 pricePerNight *= (1 + (travelers - 2) * 0.3);
             }
@@ -520,13 +508,12 @@ export const createRealTimeItinerary = async (prefs, userId, mapInstance) => {
                 priceLevel: h.price_level,
                 lat: lat,
                 lng: lng,
-                category: getHotelCategory(h.price_level, h.rating) // Thêm phân loại
+                category: getHotelCategory(h.price_level, h.rating)
             };
         }));
 
     } catch (err) {
         console.warn('Lỗi tìm khách sạn:', err);
-        // SỬA: FALLBACK KHÁCH SẠN MẶC ĐỊNH THEO NGÂN SÁCH
         let fallbackHotel;
         if (budgetCategory === 'high') {
             fallbackHotel = {
@@ -545,10 +532,10 @@ export const createRealTimeItinerary = async (prefs, userId, mapInstance) => {
                 pricePerNight: 400000 * (1 + (travelers - 2) * 0.3),
                 category: 'budget',
                 lat: coord.lat, lng: coord.lng
-            };
+            };
         } else {
             fallbackHotel = {
-                name: 'Khách sạn 3 sao (Mặc định)',
+                name: 'Khách sạn 3 sao (Mặc định)',
                 address: 'Trung tâm thành phố',
                 rating: 4.2, userRatingsTotal: 80,
                 pricePerNight: 600000 * (1 + (travelers - 2) * 0.3),
@@ -557,12 +544,13 @@ export const createRealTimeItinerary = async (prefs, userId, mapInstance) => {
             };
         }
         hotels.push(fallbackHotel);
-    }
+   }
 
     // === THỜI TIẾT & LỄ HỘI ===
     let weatherInfo = 'Không có dữ liệu';
     try {
-        const weather = await getWeather(normalizedProvince);
+        // Dùng biến chuẩn để lấy data
+        const weather = await getWeather(normalizedProvinceForData);
         weatherInfo = weather ? `${weather.temp}°C, ${weather.description}` : 'Không có dữ liệu';
     } catch (err) {
         console.warn('Lỗi lấy thời tiết:', err);
@@ -570,22 +558,21 @@ export const createRealTimeItinerary = async (prefs, userId, mapInstance) => {
 
     let festivalInfo = null;
     try {
+        // Dùng biến chuẩn để lấy data
         const festivalData = await getFestivals(month);
-        const festival = festivalData.find(f => f.Province === normalizedProvince);
+        const festival = festivalData.find(f => f.Province === normalizedProvinceForData);
         festivalInfo = festival ? `Có ${festival.FestivalCount} lễ hội` : null;
     } catch (err) {
         console.warn('Lỗi lấy lễ hội:', err);
     }
 
     // === TÍNH TOÁN CHI PHÍ ===
-    // SỬA: Lấy fallback cost theo budget
     let fallbackHotelCost = 600000;
     if (budgetCategory === 'high') fallbackHotelCost = 2000000;
-    else if (budgetCategory === 'low') fallbackHotelCost = 400000;
-    // Sửa: hotels[0] là khách sạn ưu tiên theo budget
+    else if (budgetCategory === 'low') fallbackHotelCost = 400000;
     const hotelCost = (hotels[0]?.pricePerNight || fallbackHotelCost) * days;
     const foodCost = meals.reduce((sum, meal) => sum + meal.lunch.price + meal.dinner.price, 0);
-    const entranceCost = allDestinations.reduce((sum, dest) => sum + dest.pricePerPerson, 0) * travelers; // SỬA: Giá vé * số người
+    const entranceCost = allDestinations.reduce((sum, dest) => sum + dest.pricePerPerson, 0) * travelers;
     const transportCost = 200000 * days;
 
     const totalCost = hotelCost + foodCost + entranceCost + transportCost;
@@ -613,8 +600,8 @@ export const createRealTimeItinerary = async (prefs, userId, mapInstance) => {
         userId,
         prefs: {
             ...prefs,
-            province: normalizedProvince,
-            landmarks: prefs.landmarks || [normalizedProvince]
+            province: province, // Giữ lại tên gốc
+            landmarks: prefs.landmarks || [province]
         },
         dailyPlan: formattedDays,
         hotels,
@@ -627,11 +614,11 @@ export const createRealTimeItinerary = async (prefs, userId, mapInstance) => {
             entrance: entranceCost,
             entranceDetails: allDestinations.map(dest => ({
                 name: dest.name,
-                price: dest.pricePerPerson, // Đây là giá vé / người
+                price: dest.pricePerPerson,
                 isFree: dest.isFree
             })),
             transport: transportCost,
-            total: totalCost,
+            total: totalCost,
             remaining: remainingBudget
         },
         source: 'Google Places API + Risk Analysis',
@@ -653,3 +640,37 @@ export const createRealTimeItinerary = async (prefs, userId, mapInstance) => {
     console.log('Itinerary created successfully:', itinerary);
     return itinerary;
 };
+
+// =========================================================
+// SỬA LẠI HÀM NORMALIZE (Đã sửa ở trên, nhưng để đây cho rõ)
+// =========================================================
+/*
+const normalizeVietnamLocation = (inputName) => {
+    const aliases = {
+        'lam dong': 'Lâm Đồng',
+        'ho chi minh': 'Hồ Chí Minh',
+        'hanoi': 'Hà Nội',
+        'danang': 'Đà Nẵng',
+        'hue': 'Thừa Thiên Huế',
+        'nha trang': 'Khánh Hòa',
+        'da lat': 'Lâm Đồng', // <--- Chỉ dùng cái này để tra cứu
+        'phu quoc': 'Kiên Giang',
+        'hoi an': 'Quảng Nam',
+        'sapa': 'Lào Cai',
+        'ho chi minh city': 'Hồ Chí Minh',
+        'hồ chí minh': 'Hồ Chí Minh',
+        'sài gòn': 'Hồ Chí Minh',
+        'tphcm': 'Hồ Chí Minh'
+    };
+
+    if (!inputName) return null;
+    const lowerInput = inputName.toLowerCase().trim();
+    
+    // Nếu gõ 'da lat', 'nha trang' -> trả về Tỉnh ('Lâm Đồng', 'Khánh Hòa')
+    if (aliases[lowerInput]) {
+        return aliases[lowerInput];
+    }
+    // Nếu gõ 'Đà Lạt' (viết hoa), 'Lâm Đồng' -> trả về chính nó
+    return inputName;
+};
+*/
