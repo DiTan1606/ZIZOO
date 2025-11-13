@@ -1,7 +1,8 @@
 // src/services/createRealTimeItinerary.js
 import { getStormRisks, getFloodRisks, getFestivals, saveItinerary } from './firestoreService';
 import { predictRiskScore } from '../ml/riskModel';
-import { initPlacesService, searchNearbyPlaces, getPhotoUrl } from './placesService';
+// SỬA: Thêm searchPlacesByText vào import
+import { initPlacesService, searchNearbyPlaces, getPhotoUrl, searchPlacesByText } from './placesService';
 import { getWeather } from './weatherService';
 import provinceCoords from '../assets/provinceCoord.json';
 import { toast } from 'react-toastify';
@@ -121,7 +122,7 @@ const typeToPlaces = {
     'Thiền và yoga': ['spa', 'yoga', 'park'],
     'Du lịch gia đình': ['zoo', 'aquarium', 'amusement_park', 'park'],
     'Chụp ảnh sống ảo': ['tourist_attraction', 'park', 'museum'],
-    'Trải nghiệm bản địa': ['local_government_office', 'market', 'tourist_attraction']
+    'Trải nghiệm bản địa': ['market', 'tourist_attraction']
 };
 
 // Hàm normalize province name
@@ -154,7 +155,7 @@ const getRealTicketPrice = (placeType, province) => {
         'tourist_attraction': { min: 30000, max: 150000 },
         'museum': { min: 20000, max: 80000 },
         'park': { min: 10000, max: 50000 },
-        'zoo': { min: 50000, max: 120000 },
+        'zoo': { min: 50000, max: 120000 },
         'amusement_park': { min: 100000, max: 300000 },
         'beach': { min: 0, max: 20000 },
         'temple': { min: 0, max: 50000 },
@@ -243,12 +244,28 @@ export const createRealTimeItinerary = async (prefs, userId, mapInstance) => {
     // Lấy điểm đến cho mỗi loại
     for (const type of [...new Set(placeTypes)].slice(0, 4)) {
         try {
+            // ===================== SỬA ĐỔI CHÍNH =====================
+            // Chuyển từ nearbySearch (dễ tràn) sang textSearch (giới hạn tốt hơn)
+            // Hàm textSearch sẽ hiểu "in [Tỉnh]" để lọc theo ranh giới,
+            // thay vì quét 1 vòng tròn 50km
+            const query = `${type} in ${normalizedProvince}`;
+            console.log(`Đang tìm kiếm với query: "${query}" tại ${normalizedProvince}`);
+
+            const results = await searchPlacesByText(
+                query,    // Query: "tourist_attraction in Lâm Đồng"
+                coord,    // Location: Tọa độ trung tâm (để ưu tiên)
+                50000     // Radius: Bán kính ưu tiên (giữ nguyên)
+            );
+
+            /* Code cũ (đã bị thay thế):
             const results = await searchNearbyPlaces({
                 location: coord,
                 radius: 50000,
                 type: type,
                 keyword: province
             });
+            */
+            // =================== KẾT THÚC SỬA ĐỔI ===================
 
             console.log(`Tìm thấy ${results.length} kết quả cho ${type} ở ${province}`);
 
@@ -288,7 +305,7 @@ export const createRealTimeItinerary = async (prefs, userId, mapInstance) => {
                         name: p.name,
                         address: p.vicinity || 'Địa chỉ không xác định',
                         rating: p.rating || 4.0,
-                        userRatingsTotal: p.user_ratings_total || 10,
+                        userRatingsTotal: p.user_ratings_total || 10,
                         photo: p.photos?.[0] ? getPhotoUrl(p.photos[0].photo_reference) : null,
                         pricePerPerson: estimatedPrice, // SỬA: Dùng giá thực tế
                         type: type,
@@ -297,6 +314,7 @@ export const createRealTimeItinerary = async (prefs, userId, mapInstance) => {
                         lng: lng,
                         placeId: p.place_id,
                         isFree: estimatedPrice === 0 // Thêm thông tin miễn phí
+  
                     };
                 });
 
@@ -329,8 +347,8 @@ export const createRealTimeItinerary = async (prefs, userId, mapInstance) => {
     const dailyPlan = splitIntoDays(optimizedRoute, days);
 
     // === GỢI Ý ĂN UỐNG ===
+    // (Không thay đổi - Dùng nearbySearch là đúng logic)
     const meals = [];
-    // THÊM: Lấy mức giá nhà hàng phù hợp
     const allowedRestaurantPriceLevels = getPriceLevelsForBudget(budgetCategory);
 
     for (const day of dailyPlan) {
@@ -364,7 +382,7 @@ export const createRealTimeItinerary = async (prefs, userId, mapInstance) => {
             const dinnerResults = await searchNearbyPlaces({
                 location: { lat: center.lat, lng: center.lng },
                 radius: 5000,
-                type: 'restaurant',
+               type: 'restaurant',
                 keyword: dinnerKeyword
             });
 
@@ -403,7 +421,7 @@ export const createRealTimeItinerary = async (prefs, userId, mapInstance) => {
                 address: dinner.vicinity,
                 rating: dinner.rating,
                 userRatingsTotal: dinner.user_ratings_total,
-                photo: dinner.photos?.[0] ? getPhotoUrl(dinner.photos[0].photo_reference) : null,
+                photo: dinner.photos?.[0] ? getPhotoUrl(dinner.photos[0].photo_reference) : null,
                 price: estimatePricePerPerson(dinner.price_level, 'restaurant') * travelers
             } : {
                 name: 'Nhà hàng đặc sản',
@@ -416,6 +434,7 @@ export const createRealTimeItinerary = async (prefs, userId, mapInstance) => {
     }
 
     // === GỢI Ý KHÁCH SẠN ===
+    // (Không thay đổi - Dùng nearbySearch là đúng logic)
     const hotels = [];
     try {
         // SỬA: Điều chỉnh tìm kiếm khách sạn theo ngân sách
@@ -545,7 +564,7 @@ export const createRealTimeItinerary = async (prefs, userId, mapInstance) => {
                 pricePerNight: 400000 * (1 + (travelers - 2) * 0.3),
                 category: 'budget',
                 lat: coord.lat, lng: coord.lng
-            };
+           };
         } else {
             fallbackHotel = {
                 name: 'Khách sạn 3 sao (Mặc định)',
@@ -628,7 +647,7 @@ export const createRealTimeItinerary = async (prefs, userId, mapInstance) => {
             entranceDetails: allDestinations.map(dest => ({
                 name: dest.name,
                 price: dest.pricePerPerson, // Đây là giá vé / người
-                isFree: dest.isFree
+                isFree: dest.isFree
             })),
             transport: transportCost,
             total: totalCost,
@@ -648,7 +667,7 @@ export const createRealTimeItinerary = async (prefs, userId, mapInstance) => {
     } catch (err) {
         console.error('Lỗi lưu itinerary:', err);
         toast.warn('Tạo thành công nhưng chưa lưu được vào database');
-    }
+   }
 
     console.log('Itinerary created successfully:', itinerary);
     return itinerary;
