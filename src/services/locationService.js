@@ -1,6 +1,81 @@
 // src/services/locationService.js
 import provinceCoords from '../assets/provinceCoord.json';
 
+
+// src/services/firestoreService.js
+import { db } from '../firebase';
+import {
+    collection, addDoc, getDocs, query, where, doc, updateDoc, setDoc, getDoc,
+    orderBy, limit, serverTimestamp
+} from 'firebase/firestore';
+
+// === CÁC HÀM CŨ (giữ nguyên) ===
+export const saveCachedPlace = async (placeId, data) => {
+    await setDoc(doc(db, 'cached_places', placeId), { ...data, updatedAt: serverTimestamp() }, { merge: true });
+};
+
+export const getCachedPlace = async (placeId) => {
+    const snap = await getDoc(doc(db, 'cached_places', placeId));
+    return snap.exists() ? snap.data() : null;
+};
+
+export const getCachedPlacesByProvince = async (province, types = [], forceRefresh = false) => {
+    const now = Date.now();
+    let q = query(
+        collection(db, 'cached_places'),
+        where('province', '==', province)
+    );
+    if (types.length > 0) {
+        q = query(q, where('types', 'array-contains-any', types));
+    }
+    const snap = await getDocs(q);
+    const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+    const isStale = data.length > 0 && data.some(d => now - d.updatedAt.toMillis() > 7 * 24 * 60 * 60 * 1000);
+    if (forceRefresh || isStale || data.length === 0) {
+        return [];
+    }
+    return data;
+};
+
+export const getStormRisks = async (province, month) => {
+    if (!province || !month) return [];
+    const q = query(
+        collection(db, 'storms'),
+        where('Tỉnh', '==', province),
+        where('Tháng', '==', month)
+    );
+    const snap = await getDocs(q);
+    return snap.docs.map(d => d.data());
+};
+
+export const getFloodRisks = async (province, month) => {
+    if (!province || !month) return [];
+    const q = query(
+        collection(db, 'floods'),
+        where('Tỉnh', '==', province),
+        where('Tháng', '==', month)
+    );
+    const snap = await getDocs(q);
+    return snap.docs.map(d => d.data());
+};
+
+export const getFestivals = async (month) => {
+    const q = query(collection(db, 'festivals'), where('Tháng', '==', month));
+    const snap = await getDocs(q);
+    return snap.docs.map(d => d.data());
+};
+
+export const saveItinerary = async (userId, itinerary) => {
+    return await addDoc(collection(db, 'itineraries'), { userId, ...itinerary });
+};
+
+// === HÀM MỚI: LẤY LỊCH TRÌNH CỦA USER ===
+export const getUserItineraries = async (userId) => {
+    const q = query(collection(db, 'itineraries'), where('userId', '==', userId));
+    const snap = await getDocs(q);
+    return snap.docs.map(d => d.data());
+};
 // Map các tên địa danh phổ biến
 const vietnamLocationAliases = {
     // Thành phố
