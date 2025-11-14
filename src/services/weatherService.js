@@ -6,6 +6,7 @@ const OPENWEATHER_API_KEY = process.env.REACT_APP_OPENWEATHER_API_KEY || null;
 const OPENWEATHER_BASE_URL = 'https://api.openweathermap.org/data/2.5';
 
 export const getWeather = async (province) => {
+    console.log(`Lấy thời tiết hiện tại cho ${province}`);
     if (!OPENWEATHER_API_KEY) {
         console.warn('OpenWeather API key chưa có → Fallback');
         return { temp: 25, condition: 'Sunny', description: 'Thời tiết đẹp' };
@@ -15,18 +16,24 @@ export const getWeather = async (province) => {
         const res = await axios.get(
             `${OPENWEATHER_BASE_URL}/weather?q=${province},VN&appid=${OPENWEATHER_API_KEY}&units=metric&lang=vi`
         );
-        return {
+        const result = {
             temp: Math.round(res.data.main.temp),
             condition: res.data.weather[0].main,
             description: res.data.weather[0].description,
         };
+        console.log(`Kết quả thời tiết hiện tại cho ${province}:`, result);
+        return result;
     } catch (err) {
         console.error('Weather API lỗi:', err.response?.status || err.message);
+        if (err.response?.status === 401) {
+            console.error("Lỗi 401: API key không hợp lệ");
+        }
         return { temp: 25, condition: 'Sunny', description: 'Thời tiết đẹp' };
     }
 };
 
 export const get7DayWeatherForecast = async (province, startDate = new Date()) => {
+    console.log(`Lấy dự báo 7 ngày cho ${province} từ ${startDate.toISOString().split('T')[0]}`);
     if (!OPENWEATHER_API_KEY) {
         console.warn('OpenWeather API key chưa có → Fallback 7 ngày');
         return Array.from({ length: 7 }, (_, i) => {
@@ -59,30 +66,34 @@ export const get7DayWeatherForecast = async (province, startDate = new Date()) =
     }
 
     try {
+        console.log(`Gọi API OpenWeather cho ${province} với tọa độ:`, coord);
         const res = await axios.get(
-            `${OPENWEATHER_BASE_URL}/forecast/daily?lat=${coord.lat}&lon=${coord.lng}&cnt=7&units=metric&appid=${OPENWEATHER_API_KEY}&lang=vi`
+            `${OPENWEATHER_BASE_URL}/forecast?lat=${coord.lat}&lon=${coord.lng}&units=metric&appid=${OPENWEATHER_API_KEY}&lang=vi`
         );
-
-        if (res.data.cod !== '200' || !res.data.list) {
-            throw new Error(`Dữ liệu dự báo không hợp lệ: ${res.data.message || 'Không có list'}`);
-        }
-
-        const forecast = res.data.list.map((day, index) => {
-            const date = new Date(startDate);
-            date.setDate(date.getDate() + index);
-            return {
-                date: date.toISOString().split('T')[0],
-                temp: Math.round(day.temp?.day || 25),
-                description: day.weather?.[0]?.description || 'Thời tiết đẹp',
-                rainChance: Math.round((day.pop || 0) * 100),
-                icon: day.weather?.[0]?.icon || '01d',
-            };
-        });
-
-        console.log(`Dự báo 7 ngày cho ${province}:`, forecast);
-        return forecast;
+        const forecast = res.data.list.slice(0, 40).reduce((acc, item) => {
+            const date = new Date(item.dt * 1000).toISOString().split('T')[0];
+            if (!acc[date]) acc[date] = { temp: 0, count: 0, rain: 0, description: '', icon: '' };
+            acc[date].temp += item.main.temp;
+            acc[date].count += 1;
+            acc[date].rain += item.rain?.['3h'] || 0;
+            acc[date].description = item.weather[0].description;
+            acc[date].icon = item.weather[0].icon;
+            return acc;
+        }, {});
+        const dailyForecast = Object.entries(forecast).slice(0, 7).map(([date, data]) => ({
+            date,
+            temp: Math.round(data.temp / data.count),
+            description: data.description,
+            rainChance: Math.round((data.rain / data.count) * 100 / 3), // Chuẩn hóa mưa 3h sang phần trăm
+            icon: data.icon,
+        }));
+        console.log(`Dự báo 7 ngày cho ${province}:`, dailyForecast);
+        return dailyForecast;
     } catch (err) {
         console.error(`Lỗi lấy dự báo 7 ngày cho ${province}:`, err.response?.status || err.message);
+        if (err.response?.status === 401) {
+            console.error("Lỗi 401: API key không hợp lệ");
+        }
         try {
             const currentWeather = await getWeather(province);
             return Array.from({ length: 7 }, (_, i) => {

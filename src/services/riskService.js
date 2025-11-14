@@ -7,9 +7,17 @@ import { isHighRiskMonth } from '../utils/riskConfig';
 
 const OPENWEATHER_KEY = process.env.REACT_APP_OPENWEATHER_API_KEY;
 
-console.log("OPENWEATHER KEY ĐANG DÙNG:", process.env.REACT_APP_OPENWEATHER_API_KEY);
+// Log API key khi tải file
+console.log("OPENWEATHER KEY ĐANG DÙNG:", OPENWEATHER_KEY);
 
 export const predictRisk = async (province, selectedDate) => {
+    console.log(`Bắt đầu predictRisk cho ${province} vào ${selectedDate}`);
+    
+    // Kiểm tra tỉnh hợp lệ
+    if (!provinceCoords[province]) {
+        console.warn(`Không tìm thấy tọa độ cho ${province}, dùng mặc định Hà Nội`);
+    }
+
     const date = new Date(selectedDate);
     const month = date.getMonth() + 1;
     const today = new Date();
@@ -18,71 +26,94 @@ export const predictRisk = async (province, selectedDate) => {
 
     const diffDays = Math.floor((date - today) / (1000 * 60 * 60 * 24));
     const isFuture = diffDays >= 0;
-    const isRealtime = isFuture && diffDays <= 5; // Free: 5 ngày (3h/lần)
+    const isRealtime = isFuture && diffDays <= 4; // Dự báo 5 ngày (40 bản ghi 3 giờ)
 
     try {
         // 1. DỮ LIỆU LỊCH SỬ (backup)
-        const q = query(
-            collection(db, 'weather_monthly'),
-            where('TinhThanh', '==', province),
-            where('Tháng', '==', month)
-        );
-        const snap = await getDocs(q);
+        console.log(`Truy vấn Firestore cho ${province}, tháng ${month}`);
         let avgRain = 120;
-        if (!snap.empty) {
-            const total = snap.docs.reduce((s, d) => s + (d.data().LuongMua || 0), 0);
-            avgRain = Math.round(total / snap.size);
+        try {
+            const q = query(
+                collection(db, 'weather_monthly'),
+                where('TinhThanh', '==', province),
+                where('Tháng', '==', month)
+            );
+            const snap = await getDocs(q);
+            console.log(`Kết quả Firestore: ${snap.size} tài liệu`);
+            if (!snap.empty) {
+                const total = snap.docs.reduce((s, d) => s + (d.data().LuongMua || 0), 0);
+                avgRain = Math.round(total / snap.size);
+            }
+        } catch (err) {
+            console.warn("Lỗi truy vấn Firestore, dùng giá trị mặc định:", err.message);
         }
 
-        // 2. DỰ BÁO THỰC TẾ – DÙNG ENDPOINT FREE (HÔM NAY + 5 NGÀY TỚI)
+        // 2. DỰ BÁO THỰC TẾ – DÙNG ENDPOINT /forecast
         let realtime = null;
         if (isRealtime && OPENWEATHER_KEY && OPENWEATHER_KEY !== "YOUR_KEY_HERE") {
             const coord = provinceCoords[province] || provinceCoords["Hà Nội"];
+            console.log(`Gọi API OpenWeather cho ${province} với tọa độ:`, coord);
             try {
                 const res = await axios.get('https://api.openweathermap.org/data/2.5/forecast', {
                     params: {
                         lat: coord.lat,
                         lon: coord.lng,
                         units: 'metric',
-                        appid: OPENWEATHER_KEY
+                        appid: OPENWEATHER_KEY,
+                        lang: 'vi'
                     }
                 });
-
-                const targetDateStr = date.toISOString().split('T')[0];
-                const dayData = res.data.list.filter(item => item.dt_txt.startsWith(targetDateStr));
-
-                if (dayData.length > 0) {
-                    const temps = dayData.map(d => d.main.temp);
-                    const feels = dayData.map(d => d.main.feels_like);
-                    const rains = dayData.map(d => d.rain?.['3h'] || 0);
-                    const winds = dayData.map(d => d.wind.speed * 3.6);
-                    const humidity = dayData.map(d => d.main.humidity);
-                    const pressure = dayData.map(d => d.main.pressure);
-                    const clouds = dayData.map(d => d.clouds.all);
-
-                    realtime = {
-                        temp: Math.round(temps.reduce((a, b) => a + b) / temps.length),
-                        tempMin: Math.round(Math.min(...temps)),
-                        tempMax: Math.round(Math.max(...temps)),
-                        feelsLike: Math.round(feels.reduce((a, b) => a + b) / feels.length),
-                        rain: Math.round(rains.reduce((a, b) => a + b, 0)),
-                        wind: Math.round(Math.max(...winds)),
-                        humidity: Math.round(humidity.reduce((a, b) => a + b) / humidity.length),
-                        pressure: Math.round(pressure.reduce((a, b) => a + b) / pressure.length),
-                        cloudiness: Math.round(clouds.reduce((a, b) => a + b) / clouds.length),
-                        description: dayData[dayData.length - 1].weather[0].description,
-                        icon: dayData[dayData.length - 1].weather[0].icon,
-                        timeRange: `${dayData[0].dt_txt.split(' ')[1].slice(0, 5)} - ${dayData[dayData.length - 1].dt_txt.split(' ')[1].slice(0, 5)}`
-                    };
+                console.log('Phản hồi từ OpenWeather:', res.data);
+                const forecasts = res.data.list;
+                if (forecasts && forecasts.length > 0) {
+                    // Tìm bản ghi gần nhất với ngày yêu cầu (dữ liệu 3 giờ/lần)
+                    const targetTimestamp = date.getTime() / 1000;
+                    const closestForecast = forecasts.reduce((closest, current) => {
+                        const diff = Math.abs(current.dt - targetTimestamp);
+                        return !closest || diff < Math.abs(closest.dt - targetTimestamp) ? current : closest;
+                    });
+                    if (closestForecast) {
+                        realtime = {
+                            temp: Math.round(closestForecast.main.temp),
+                            tempMin: Math.round(closestForecast.main.temp_min),
+                            tempMax: Math.round(closestForecast.main.temp_max),
+                            feelsLike: Math.round(closestForecast.main.feels_like),
+                            rain: Math.round(closestForecast.rain?.['3h'] || 0),
+                            wind: Math.round(closestForecast.wind.speed * 3.6),
+                            humidity: Math.round(closestForecast.main.humidity),
+                            pressure: Math.round(closestForecast.main.pressure),
+                            cloudiness: Math.round(closestForecast.clouds.all),
+                            description: closestForecast.weather[0].description,
+                            icon: closestForecast.weather[0].icon,
+                            timeRange: new Date(closestForecast.dt * 1000).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
+                        };
+                        console.log('Dữ liệu thời tiết thực tế:', realtime);
+                    }
                 }
             } catch (err) {
-                console.warn("OpenWeather lỗi, dùng lịch sử", err.message);
+                console.error("OpenWeather lỗi:", {
+                    message: err.message,
+                    status: err.response?.status,
+                    data: err.response?.data
+                });
+                if (err.response?.status === 401) {
+                    console.error("Lỗi 401: API key không hợp lệ. Vui lòng kiểm tra key hoặc tạo key mới tại https://openweathermap.org/api.");
+                } else if (err.response?.status === 429) {
+                    console.error("Lỗi 429: Vượt quá giới hạn gọi API (1,000 lần/ngày). Vui lòng thử lại sau 24 giờ.");
+                }
+            }
+        } else {
+            console.log('Không gọi API OpenWeather: thời gian không hợp lệ hoặc thiếu key');
+            if (!OPENWEATHER_KEY) {
+                console.warn("Thiếu OPENWEATHER_KEY trong biến môi trường");
             }
         }
 
         // 3. TÍNH RỦI RO
         let score = 0;
         let source = "";
+        const isHighRisk = isHighRiskMonth(province, month) || false;
+        console.log(`Tháng ${month} có rủi ro cao ở ${province}:`, isHighRisk);
 
         if (realtime) {
             source = "DỰ BÁO THỰC TẾ (OpenWeather Free)";
@@ -96,14 +127,15 @@ export const predictRisk = async (province, selectedDate) => {
             if (realtime.description.toLowerCase().includes('storm') ||
                 realtime.description.toLowerCase().includes('thunderstorm') ||
                 realtime.description.toLowerCase().includes('heavy')) score += 80;
-
         } else {
             source = "DỰ BÁO DỰA TRÊN LỊCH SỬ + AI";
             if (avgRain > 350) score += 60;
             else if (avgRain > 250) score += 45;
             else if (avgRain > 150) score += 25;
-            if (isHighRiskMonth(province, month)) score += 70;
+            if (isHighRisk) score += 70;
         }
+
+        console.log(`Điểm rủi ro tính được: ${score}, nguồn: ${source}`);
 
         // 4. PHÂN CẤP
         let result = {};
@@ -113,16 +145,18 @@ export const predictRisk = async (province, selectedDate) => {
         else if (score >= 30) result = { level: "Trung bình", color: "#facc15", msg: "CÓ THỂ MƯA – Mang ô dù" };
         else result = { level: "An toàn", color: "#22c55e", msg: "THOẢI MÁI ĐI CHƠI – Thời tiết đẹp!" };
 
-        return {
+        const finalResult = {
             province,
             date: date.toLocaleDateString('vi-VN'),
             level: result.level,
             color: result.color,
             message: result.msg,
             source,
-            isHighRiskMonth: isHighRiskMonth(province, month),
+            isHighRiskMonth: isHighRisk,
             details: { avgRain: realtime ? null : avgRain, realtime, score }
         };
+        console.log('Kết quả cuối cùng:', finalResult);
+        return finalResult;
 
     } catch (err) {
         console.error("Lỗi predictRisk:", err);

@@ -8,15 +8,29 @@ export default function RiskChecker() {
     const [date, setDate] = useState("");
     const [result, setResult] = useState(null);
     const [loading, setLoading] = useState(false);
+    const [error, setError] = useState(null);
 
     const handleCheck = async () => {
+        console.log(`handleCheck gọi cho ${province} vào ${date}`);
         if (!date) {
             alert("Vui lòng chọn ngày đi!");
+            setError("Vui lòng chọn ngày đi!");
             return;
         }
         setLoading(true);
-        const data = await predictRisk(province, date);
-        setResult(data);
+        setError(null);
+        try {
+            const data = await predictRisk(province, date);
+            console.log('Kết quả từ predictRisk:', data);
+            if (data.error) {
+                setError(data.error);
+            } else {
+                setResult(data);
+            }
+        } catch (err) {
+            console.error('Lỗi trong handleCheck:', err);
+            setError("Đã có lỗi xảy ra, vui lòng thử lại!");
+        }
         setLoading(false);
     };
 
@@ -67,12 +81,17 @@ export default function RiskChecker() {
                     >
                         {loading ? "Đang kiểm tra thời tiết..." : "XEM NGAY CÓ ĐI ĐƯỢC KHÔNG"}
                     </button>
+
+                    {error && (
+                        <div className="mt-6 text-center text-xl text-red-600 font-bold">
+                            {error}
+                        </div>
+                    )}
                 </div>
 
                 {/* Kết quả */}
                 {result && !result.error && (
                     <div className={`rounded-3xl shadow-2xl p-12 text-center animate-in ${result.level.includes("NGUY HIỂM") || result.level.includes("cao") ? 'bg-red-50 border-8 border-red-500' : result.level.includes("Trung bình") ? 'bg-yellow-50 border-8 border-yellow-500' : 'bg-green-50 border-8 border-green-500'}`}>
-
                         <h2 className="text-6xl font-extrabold mb-6" style={{ color: result.color }}>
                             {result.level}
                         </h2>
@@ -90,7 +109,7 @@ export default function RiskChecker() {
                         <div className="bg-white/80 rounded-3xl p-8 text-left text-xl">
                             <p><strong>Địa điểm:</strong> {result.province}</p>
                             <p><strong>Ngày đi:</strong> {result.date}</p>
-                            <p><strong>Mưa trung bình tháng:</strong> {result.details.avgRain} mm</p>
+                            <p><strong>Mưa trung bình tháng:</strong> {result.details.avgRain ? `${result.details.avgRain} mm` : 'Không có dữ liệu'}</p>
 
                             {result.details.realtime && (
                                 <div className="mt-8 p-8 bg-gradient-to-r from-blue-50 to-cyan-50 rounded-3xl border-4 border-blue-300">
