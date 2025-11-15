@@ -107,9 +107,9 @@ export default function RiskChecker() {
                         </p>
 
                         <div className="bg-white/80 rounded-3xl p-8 text-left text-xl">
-                            <p><strong>Địa điểm:</strong> {result.province}</p>
+                            {/* <p><strong>Địa điểm:</strong> {result.province}</p>
                             <p><strong>Ngày đi:</strong> {result.date}</p>
-                            <p><strong>Mưa trung bình tháng:</strong> {result.details.avgRain ? `${result.details.avgRain} mm` : 'Không có dữ liệu'}</p>
+                            <p><strong>Mưa trung bình tháng:</strong> {result.details.avgRain ? `${result.details.avgRain} mm` : 'Không có dữ liệu'}</p> */}
 
                             {result.details.realtime && (
                                 <div className="mt-8 p-8 bg-gradient-to-r from-blue-50 to-cyan-50 rounded-3xl border-4 border-blue-300">
