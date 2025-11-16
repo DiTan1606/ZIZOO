@@ -9,19 +9,35 @@ import Navbar from './components/Navbar';
 import ProtectedRoute from './components/ProtectedRoute';
 
 import Home from './pages/Home';
+import About from './pages/About';
+import Contact from './pages/Contact';
+import Feedback from './pages/Feedback';
+import UserProfile from './pages/UserProfile';
 import Login from './pages/Login';
 import Register from './pages/Register';
-import ItineraryPlanner from './pages/PersonalItineraryPlanner';
-import MyTrips from './pages/MyTrips';
 
-// IMPORT ML trainer
+import MyTrips from './pages/MyTrips';
+import PersonalizedRecommendations from './components/PersonalizedRecommendations';
+import CompleteItineraryPlanner from './components/CompleteItineraryPlanner';
+import ItineraryDemo from './pages/ItineraryDemo';
+
+// IMPORT ML trainer và AI training service
 import { retrainAllModels } from './ml/trainer';
+import { startAutoTraining } from './services/aiTrainingService';
 import RiskMapGoogle from './pages/RiskMapGoogle';
 
 function App() {
-    // Chỉ retrain ML models khi app khởi động
+    // Khởi động AI training system
     useEffect(() => {
-        retrainAllModels().catch(err => console.error('Retraining failed:', err));
+        // Retrain models khi app khởi động
+        retrainAllModels().catch(err => console.error('Initial retraining failed:', err));
+        
+        // Bắt đầu auto-training scheduler
+        startAutoTraining();
+        
+        return () => {
+            // Cleanup khi unmount (optional)
+        };
     }, []); // empty deps → chỉ chạy 1 lần
 
     return (
@@ -32,17 +48,13 @@ function App() {
                     <main className="container mx-auto px-4 py-8">
                         <Routes>
                             <Route path="/" element={<Home />} />
+                            <Route path="/about" element={<About />} />
+                            <Route path="/contact" element={<Contact />} />
+                            <Route path="/feedback" element={<Feedback />} />
                             <Route path="/risk-map" element={<RiskMapGoogle />} />
                             <Route path="/login" element={<Login />} />
                             <Route path="/register" element={<Register />} />
-                            <Route
-                                path="/planner"
-                                element={
-                                    <ProtectedRoute>
-                                        <ItineraryPlanner />
-                                    </ProtectedRoute>
-                                }
-                            />
+
                             <Route
                                 path="/mytrips"
                                 element={
@@ -51,6 +63,31 @@ function App() {
                                     </ProtectedRoute>
                                 }
                             />
+                            <Route
+                                path="/ai-recommendations"
+                                element={
+                                    <ProtectedRoute>
+                                        <PersonalizedRecommendations />
+                                    </ProtectedRoute>
+                                }
+                            />
+                            <Route
+                                path="/complete-planner"
+                                element={
+                                    <ProtectedRoute>
+                                        <CompleteItineraryPlanner />
+                                    </ProtectedRoute>
+                                }
+                            />
+                            <Route
+                                path="/profile"
+                                element={
+                                    <ProtectedRoute>
+                                        <UserProfile />
+                                    </ProtectedRoute>
+                                }
+                            />
+                            <Route path="/demo" element={<ItineraryDemo />} />
                         </Routes>
                     </main>
                     <ToastContainer

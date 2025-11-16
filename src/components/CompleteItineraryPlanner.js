@@ -1,0 +1,881 @@
+// src/components/CompleteItineraryPlanner.js
+import React, { useState } from 'react';
+import { useAuth } from '../context/AuthContext';
+import { useNavigate } from 'react-router-dom';
+import { toast } from 'react-toastify';
+import { createCompleteItinerary } from '../services/completeItineraryService';
+import ItineraryAlertsPanel from './ItineraryAlertsPanel';
+import './CompleteItineraryPlanner.css';
+
+const CompleteItineraryPlanner = () => {
+    const { currentUser } = useAuth();
+    const navigate = useNavigate();
+    const [step, setStep] = useState(1);
+    const [loading, setLoading] = useState(false);
+    // Get tomorrow's date for default
+    const getTomorrowDate = () => {
+        const tomorrow = new Date();
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        return tomorrow.toISOString().split('T')[0];
+    };
+
+    const [preferences, setPreferences] = useState({
+        destination: 'Vũng Tàu',
+        departureCity: 'Hồ Chí Minh',
+        startDate: getTomorrowDate(),
+        duration: 3,
+        travelers: 2,
+        budget: 3000000,
+        travelStyle: 'standard',
+        interests: ['food', 'photography', 'relaxation']
+    });
+    const [completeItinerary, setCompleteItinerary] = useState(null);
+
+    const vietnamCities = [
+        'Hà Nội', 'Hồ Chí Minh', 'Đà Nẵng', 'Hải Phòng', 'Cần Thơ',
+        'Nha Trang', 'Đà Lạt', 'Phú Quốc', 'Hội An', 'Huế', 'Sapa',
+        'Vũng Tàu', 'Quảng Ninh', 'Ninh Bình', 'Quy Nhon', 'Phan Thiết',
+        'Mũi Né', 'Rạch Giá', 'Hạ Long', 'Tam Cốc', 'Bắc Ninh',
+        'Thái Nguyên', 'Lào Cai', 'Điện Biên', 'Sơn La', 'Lai Châu',
+        'Cao Bằng', 'Lạng Sơn', 'Quảng Bình', 'Quảng Trị', 'Thừa Thiên Huế',
+        'Quảng Nam', 'Quảng Ngãi', 'Bình Định', 'Phú Yên', 'Khánh Hòa',
+        'Bình Thuận', 'Đồng Nai', 'Bà Rịa - Vũng Tàu', 'Long An', 'Tiền Giang',
+        'Bến Tre', 'Trà Vinh', 'Vĩnh Long', 'Đồng Tháp', 'An Giang', 'Kiên Giang',
+        'Hậu Giang', 'Sóc Trăng', 'Bạc Liêu', 'Cà Mau', 'Côn Đảo'
+    ];
+
+    const travelStyles = [
+        { value: 'budget', name: 'Tiết kiệm', desc: 'Tối ưu chi phí, trải nghiệm cơ bản' },
+        { value: 'standard', name: 'Trung bình', desc: 'Cân bằng chất lượng và giá cả' },
+        { value: 'comfort', name: 'Thoải mái', desc: 'Tiện nghi tốt, dịch vụ chất lượng' },
+        { value: 'luxury', name: 'Sang trọng', desc: 'Dịch vụ cao cấp, trải nghiệm đẳng cấp' }
+    ];
+
+    const interestOptions = [
+        { value: 'culture', name: 'Văn hóa', icon: '🏛️' },
+        { value: 'nature', name: 'Thiên nhiên', icon: '🌿' },
+        { value: 'food', name: 'Ẩm thực', icon: '🍜' },
+        { value: 'photography', name: 'Chụp ảnh', icon: '📸' },
+        { value: 'adventure', name: 'Mạo hiểm', icon: '🏔️' },
+        { value: 'relaxation', name: 'Thư giãn', icon: '🏖️' },
+        { value: 'shopping', name: 'Mua sắm', icon: '🛍️' },
+        { value: 'nightlife', name: 'Cuộc sống đêm', icon: '🌃' }
+    ];
+
+    const handleInputChange = (field, value) => {
+        // Validation for number inputs
+        if (field === 'duration') {
+            value = Math.max(1, Math.min(30, parseInt(value) || 1));
+        } else if (field === 'travelers') {
+            value = Math.max(1, Math.min(50, parseInt(value) || 1));
+        } else if (field === 'budget') {
+            value = Math.max(1000000, parseInt(value) || 1000000);
+        }
+        
+        setPreferences(prev => ({
+            ...prev,
+            [field]: value
+        }));
+    };
+
+    const handleInterestToggle = (interest) => {
+        setPreferences(prev => ({
+            ...prev,
+            interests: prev.interests.includes(interest)
+                ? prev.interests.filter(i => i !== interest)
+                : [...prev.interests, interest]
+        }));
+    };
+
+    const generateItinerary = async () => {
+        if (!currentUser) {
+            toast.error('Vui lòng đăng nhập để tạo lịch trình!');
+            return;
+        }
+
+        if (!preferences.destination || !preferences.startDate) {
+            toast.error('Vui lòng điền đầy đủ thông tin!');
+            return;
+        }
+
+        setLoading(true);
+        try {
+            const itinerary = await createCompleteItinerary(preferences, currentUser.uid);
+            setCompleteItinerary(itinerary);
+            setStep(3);
+            toast.success('🎉 Lịch trình hoàn chỉnh đã được tạo và lưu thành công!');
+        } catch (error) {
+            console.error('Lỗi tạo lịch trình:', error);
+            toast.error(`Lỗi: ${error.message}`);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const formatMoney = (amount) => {
+        return new Intl.NumberFormat('vi-VN').format(amount) + ' VNĐ';
+    };
+
+    const formatDate = (dateString) => {
+        return new Date(dateString).toLocaleDateString('vi-VN', {
+            weekday: 'long',
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric'
+        });
+    };
+
+    const printItinerary = () => {
+        window.print();
+    };
+
+    const downloadItinerary = () => {
+        const dataStr = JSON.stringify(completeItinerary, null, 2);
+        const dataBlob = new Blob([dataStr], { type: 'application/json' });
+        const url = URL.createObjectURL(dataBlob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `${completeItinerary.header.tripName}.json`;
+        link.click();
+    };
+
+    if (step === 1) {
+        return (
+            <div className="complete-itinerary-planner">
+                <div className="header">
+                    <h1>🗺️ Tạo Lịch Trình Du Lịch Hoàn Chỉnh</h1>
+                    <p>Lịch trình chi tiết với đầy đủ thông tin: lộ trình, chi phí, lưu trú, phương tiện, đồ đạc...</p>
+                    
+                    <div className="quick-test-section">
+                        <p>🚀 <strong>Quick Test:</strong> Đã điền sẵn: HCM → Vũng Tàu, ngày mai, 2 người, 3M VNĐ, 3N2Đ</p>
+                        <button 
+                            type="button" 
+                            className="btn-quick-test"
+                            onClick={() => setStep(2)}
+                            style={{
+                                background: '#28a745',
+                                color: 'white',
+                                border: 'none',
+                                padding: '8px 16px',
+                                borderRadius: '4px',
+                                cursor: 'pointer',
+                                fontSize: '14px',
+                                marginTop: '8px'
+                            }}
+                        >
+                            ⚡ Tạo ngay với thông tin mặc định
+                        </button>
+                    </div>
+                </div>
+
+                <div className="form-container">
+                    <div className="form-section">
+                        <h3>📍 Thông tin cơ bản</h3>
+                        
+                        <div className="form-row">
+                            <div className="form-group">
+                                <label>Điểm khởi hành</label>
+                                <select 
+                                    value={preferences.departureCity}
+                                    onChange={(e) => handleInputChange('departureCity', e.target.value)}
+                                >
+                                    {vietnamCities.map(city => (
+                                        <option key={city} value={city}>{city}</option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            <div className="form-group">
+                                <label>Điểm đến</label>
+                                <input
+                                    type="text"
+                                    value={preferences.destination}
+                                    onChange={(e) => handleInputChange('destination', e.target.value)}
+                                    placeholder="Nhập tên thành phố/địa điểm..."
+                                    list="destinations-list"
+                                />
+                                <datalist id="destinations-list">
+                                    {vietnamCities.filter(city => city !== preferences.departureCity).map(city => (
+                                        <option key={city} value={city}>{city}</option>
+                                    ))}
+                                </datalist>
+                                <small>💡 Gợi ý: Hà Nội, Đà Nẵng, Hội An, Đà Lạt, Phú Quốc, Nha Trang, Vũng Tàu...</small>
+                            </div>
+                        </div>
+
+                        <div className="form-row">
+                            <div className="form-group">
+                                <label>Ngày khởi hành</label>
+                                <input 
+                                    type="date"
+                                    value={preferences.startDate}
+                                    onChange={(e) => handleInputChange('startDate', e.target.value)}
+                                    min={new Date().toISOString().split('T')[0]}
+                                />
+                            </div>
+
+                            <div className="form-group">
+                                <label>Số ngày</label>
+                                <div className="number-input-container">
+                                    <input 
+                                        type="number"
+                                        value={preferences.duration}
+                                        onChange={(e) => handleInputChange('duration', parseInt(e.target.value) || 1)}
+                                        min="1"
+                                        max="30"
+                                        placeholder="Nhập số ngày..."
+                                    />
+                                    <div className="input-helper">
+                                        {preferences.duration === 1 
+                                            ? '1 ngày (đi trong ngày)' 
+                                            : `${preferences.duration} ngày ${preferences.duration - 1} đêm`
+                                        }
+                                    </div>
+                                </div>
+                                <div className="quick-options">
+                                    {[
+                                        { days: 1, label: '1 ngày' },
+                                        { days: 2, label: '2N1Đ' },
+                                        { days: 3, label: '3N2Đ' },
+                                        { days: 4, label: '4N3Đ' },
+                                        { days: 7, label: '1 tuần' }
+                                    ].map(({ days, label }) => (
+                                        <button
+                                            key={days}
+                                            type="button"
+                                            className={`quick-btn ${preferences.duration === days ? 'active' : ''}`}
+                                            onClick={() => handleInputChange('duration', days)}
+                                        >
+                                            {label}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div className="form-group">
+                                <label>Số người</label>
+                                <div className="number-input-container">
+                                    <input 
+                                        type="number"
+                                        value={preferences.travelers}
+                                        onChange={(e) => handleInputChange('travelers', parseInt(e.target.value) || 1)}
+                                        min="1"
+                                        max="50"
+                                        placeholder="Nhập số người..."
+                                    />
+                                    <div className="input-helper">
+                                        {preferences.travelers === 1 ? '1 người (Solo travel)' : 
+                                         preferences.travelers === 2 ? '2 người (Cặp đôi)' :
+                                         preferences.travelers <= 4 ? `${preferences.travelers} người (Gia đình nhỏ)` :
+                                         preferences.travelers <= 10 ? `${preferences.travelers} người (Nhóm bạn)` :
+                                         `${preferences.travelers} người (Đoàn lớn)`}
+                                    </div>
+                                </div>
+                                <div className="quick-options">
+                                    {[
+                                        { num: 1, label: 'Solo' },
+                                        { num: 2, label: 'Cặp đôi' },
+                                        { num: 4, label: 'Gia đình' },
+                                        { num: 6, label: 'Nhóm nhỏ' },
+                                        { num: 10, label: 'Nhóm lớn' }
+                                    ].map(({ num, label }) => (
+                                        <button
+                                            key={num}
+                                            type="button"
+                                            className={`quick-btn ${preferences.travelers === num ? 'active' : ''}`}
+                                            onClick={() => handleInputChange('travelers', num)}
+                                        >
+                                            {label}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="form-group">
+                            <label>Ngân sách tổng (VNĐ)</label>
+                            <input 
+                                type="number"
+                                value={preferences.budget}
+                                onChange={(e) => handleInputChange('budget', parseInt(e.target.value))}
+                                min="1000000"
+                                step="500000"
+                                placeholder="Nhập ngân sách..."
+                            />
+                            <div className="budget-suggestions">
+                                {[2000000, 5000000, 10000000, 20000000, 50000000].map(amount => (
+                                    <button
+                                        key={amount}
+                                        type="button"
+                                        className={preferences.budget === amount ? 'active' : ''}
+                                        onClick={() => handleInputChange('budget', amount)}
+                                    >
+                                        {formatMoney(amount)}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="form-section">
+                        <h3>💼 Phong cách du lịch</h3>
+                        <div className="travel-styles">
+                            {travelStyles.map(style => (
+                                <div 
+                                    key={style.value}
+                                    className={`travel-style ${preferences.travelStyle === style.value ? 'selected' : ''}`}
+                                    onClick={() => handleInputChange('travelStyle', style.value)}
+                                >
+                                    <h4>{style.name}</h4>
+                                    <p>{style.desc}</p>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
+                    <div className="form-section">
+                        <h3>🎯 Sở thích & Quan tâm</h3>
+                        <div className="interests-grid">
+                            {interestOptions.map(interest => (
+                                <div 
+                                    key={interest.value}
+                                    className={`interest-item ${preferences.interests.includes(interest.value) ? 'selected' : ''}`}
+                                    onClick={() => handleInterestToggle(interest.value)}
+                                >
+                                    <span className="icon">{interest.icon}</span>
+                                    <span className="name">{interest.name}</span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
+                    <div className="form-actions">
+                        <button 
+                            className="next-btn"
+                            onClick={() => setStep(2)}
+                            disabled={!preferences.destination || !preferences.startDate}
+                        >
+                            Tiếp theo: Xem trước lịch trình
+                        </button>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    if (step === 2) {
+        return (
+            <div className="complete-itinerary-planner">
+                <div className="header">
+                    <h1>📋 Xác nhận thông tin lịch trình</h1>
+                    <p>Kiểm tra lại thông tin trước khi tạo lịch trình hoàn chỉnh</p>
+                </div>
+
+                <div className="preview-container">
+                    <div className="preview-section">
+                        <h3>📍 Thông tin chuyến đi</h3>
+                        <div className="info-grid">
+                            <div className="info-item">
+                                <strong>Tuyến đường:</strong> {preferences.departureCity} → {preferences.destination}
+                            </div>
+                            <div className="info-item">
+                                <strong>Thời gian:</strong> {formatDate(preferences.startDate)} ({preferences.duration} ngày {preferences.duration - 1} đêm)
+                            </div>
+                            <div className="info-item">
+                                <strong>Số người:</strong> {preferences.travelers} người
+                            </div>
+                            <div className="info-item">
+                                <strong>Phong cách:</strong> {travelStyles.find(s => s.value === preferences.travelStyle)?.name}
+                            </div>
+                            <div className="info-item">
+                                <strong>Ngân sách:</strong> {formatMoney(preferences.budget)} ({formatMoney(Math.round(preferences.budget / preferences.travelers))}/người)
+                            </div>
+                            <div className="info-item">
+                                <strong>Sở thích:</strong> {preferences.interests.map(i => 
+                                    interestOptions.find(opt => opt.value === i)?.name || i
+                                ).filter(Boolean).join(', ') || 'Không có'}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="preview-section">
+                        <h3>📝 Lịch trình sẽ bao gồm</h3>
+                        <div className="features-list">
+                            <div className="feature-item">
+                                <span className="icon">📋</span>
+                                <div>
+                                    <strong>1. Thông tin cơ bản (Header)</strong>
+                                    <p>Tên chuyến đi, thời gian, số người, phong cách, ngân sách</p>
+                                </div>
+                            </div>
+                            <div className="feature-item">
+                                <span className="icon">📅</span>
+                                <div>
+                                    <strong>2. Lịch trình chi tiết theo từng ngày</strong>
+                                    <p>Giờ giấc cụ thể, địa điểm tham quan, bữa ăn, hoạt động tự do</p>
+                                </div>
+                            </div>
+                            <div className="feature-item">
+                                <span className="icon">💰</span>
+                                <div>
+                                    <strong>3. Danh sách chi phí dự kiến</strong>
+                                    <p>Vé máy bay/xe, khách sạn, ăn uống, tham quan, phát sinh</p>
+                                </div>
+                            </div>
+                            <div className="feature-item">
+                                <span className="icon">🚗</span>
+                                <div>
+                                    <strong>4. Phương tiện di chuyển</strong>
+                                    <p>Từ điểm khởi hành đến điểm đến và di chuyển tại địa phương</p>
+                                </div>
+                            </div>
+                            <div className="feature-item">
+                                <span className="icon">🏨</span>
+                                <div>
+                                    <strong>5. Lưu trú</strong>
+                                    <p>Gợi ý khách sạn/homestay phù hợp với ngân sách và phong cách</p>
+                                </div>
+                            </div>
+                            <div className="feature-item">
+                                <span className="icon">🎒</span>
+                                <div>
+                                    <strong>6. Danh sách đồ cần mang</strong>
+                                    <p>Phù hợp với điểm đến, thời tiết và hoạt động</p>
+                                </div>
+                            </div>
+                            <div className="feature-item">
+                                <span className="icon">⚠️</span>
+                                <div>
+                                    <strong>7. Lưu ý quan trọng</strong>
+                                    <p>Thời tiết, văn hóa, an toàn, số điện thoại khẩn cấp</p>
+                                </div>
+                            </div>
+                            <div className="feature-item">
+                                <span className="icon">🗺️</span>
+                                <div>
+                                    <strong>8. Bản đồ và tối ưu lộ trình</strong>
+                                    <p>Thứ tự di chuyển hợp lý, tiết kiệm thời gian</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="preview-actions">
+                        <button 
+                            className="back-btn"
+                            onClick={() => setStep(1)}
+                        >
+                            ← Quay lại chỉnh sửa
+                        </button>
+                        <button 
+                            className="generate-btn"
+                            onClick={generateItinerary}
+                            disabled={loading}
+                        >
+                            {loading ? (
+                                <div className="loading">
+                                    <div className="spinner"></div>
+                                    Đang tạo lịch trình hoàn chỉnh...
+                                </div>
+                            ) : (
+                                '🚀 Tạo lịch trình hoàn chỉnh'
+                            )}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    if (step === 3 && completeItinerary) {
+        return (
+            <div className="complete-itinerary-result">
+                <div className="result-header no-print">
+                    <h1>🎉 Lịch trình hoàn chỉnh đã sẵn sàng!</h1>
+                    <div className="actions">
+                        <button onClick={printItinerary} className="print-btn">
+                            🖨️ In lịch trình
+                        </button>
+                        <button onClick={downloadItinerary} className="download-btn">
+                            💾 Tải xuống
+                        </button>
+                        <button onClick={() => navigate('/mytrips')} className="view-trips-btn">
+                            ✈️ Xem chuyến đi của tôi
+                        </button>
+                        <button onClick={() => setStep(1)} className="new-btn">
+                            ➕ Tạo lịch trình mới
+                        </button>
+                    </div>
+                </div>
+
+                {/* Real-time Alerts Panel */}
+                <div className="no-print">
+                    <ItineraryAlertsPanel 
+                        itineraryId={completeItinerary.id}
+                        onAdjustmentAccepted={(alert, suggestion) => {
+                            toast.info(`Đã áp dụng: ${suggestion}`);
+                            // Có thể thêm logic để cập nhật lịch trình
+                        }}
+                    />
+                </div>
+
+                <div className="itinerary-content">
+                    {/* 1. THÔNG TIN CƠ BẢN */}
+                    <section className="itinerary-section">
+                        <h2>📋 1. Thông tin cơ bản</h2>
+                        <div className="header-info">
+                            <h3 className="trip-title">{completeItinerary.header.tripName}</h3>
+                            <div className="basic-info">
+                                <div className="info-row">
+                                    <span><strong>Thời gian:</strong> {completeItinerary.header.duration.startDate} - {completeItinerary.header.duration.endDate}</span>
+                                    <span><strong>Số người:</strong> {completeItinerary.header.travelers.total} người</span>
+                                </div>
+                                <div className="info-row">
+                                    <span><strong>Phong cách:</strong> {completeItinerary.header.travelStyle.name}</span>
+                                    <span><strong>Ngân sách:</strong> {formatMoney(completeItinerary.header.budget.total)}</span>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    {/* Data Quality Badge */}
+                    {completeItinerary.dataQuality && (
+                        <section className="data-quality-badge no-print">
+                            <div className="quality-indicator">
+                                <span className="quality-icon">
+                                    {completeItinerary.dataQuality.realTimeData ? '🟢' : '🟡'}
+                                </span>
+                                <div className="quality-info">
+                                    <strong>Chất lượng dữ liệu: {completeItinerary.dataQuality.realTimeData ? 'Thời gian thực' : 'Cơ bản'}</strong>
+                                    <div className="quality-details">
+                                        <span>Địa điểm: {completeItinerary.dataQuality.placesSource}</span>
+                                        <span>Thời tiết: {completeItinerary.dataQuality.weatherSource}</span>
+                                        {completeItinerary.dataQuality.monitoringActive && (
+                                            <span>🔍 Đang theo dõi thời gian thực</span>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        </section>
+                    )}
+
+                    {/* 2. LỊCH TRÌNH CHI TIẾT */}
+                    <section className="itinerary-section">
+                        <h2>📅 2. Lịch trình chi tiết theo từng ngày</h2>
+                        {completeItinerary.dailyItinerary.map((day, index) => (
+                            <div key={index} className="day-plan">
+                                <div className="day-header">
+                                    <h3>Ngày {day.day}: {day.date} - {day.theme}</h3>
+                                    <span className="day-cost">Chi phí ước tính: {formatMoney(day.estimatedCost)}</span>
+                                </div>
+
+                                <div className="day-schedule">
+                                    {day.schedule?.map((item, idx) => (
+                                        <div key={idx} className="schedule-item">
+                                            <div className="time">{item.time}</div>
+                                            <div className="activity">
+                                                <strong>{item.activity}</strong>
+                                                {item.duration && <span className="duration">({item.duration})</span>}
+                                                {item.notes && (
+                                                    <ul className="notes">
+                                                        {item.notes.map((note, noteIdx) => (
+                                                            <li key={noteIdx}>{note}</li>
+                                                        ))}
+                                                    </ul>
+                                                )}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+
+                                {day.specialNotes && day.specialNotes.length > 0 && (
+                                    <div className="day-notes">
+                                        <strong>💡 Lưu ý đặc biệt:</strong>
+                                        <ul>
+                                            {day.specialNotes.map((note, noteIdx) => (
+                                                <li key={noteIdx}>{note}</li>
+                                            ))}
+                                        </ul>
+                                    </div>
+                                )}
+                            </div>
+                        ))}
+                    </section>
+
+                    {/* 3. CHI PHÍ DỰ KIẾN */}
+                    <section className="itinerary-section">
+                        <h2>💰 3. Danh sách chi phí dự kiến</h2>
+                        <div className="cost-breakdown">
+                            <div className="cost-category">
+                                <h4>🚗 Phương tiện di chuyển</h4>
+                                <div className="cost-details">
+                                    <div className="cost-item">
+                                        <span>Vé khứ hồi ({completeItinerary.transport.intercity.departure.recommended.type})</span>
+                                        <span>{formatMoney(completeItinerary.costBreakdown.transport.intercity)}</span>
+                                    </div>
+                                    <div className="cost-item">
+                                        <span>Di chuyển tại địa phương</span>
+                                        <span>{formatMoney(completeItinerary.costBreakdown.transport.local)}</span>
+                                    </div>
+                                    <div className="cost-subtotal">
+                                        <span><strong>Tổng phương tiện:</strong></span>
+                                        <span><strong>{formatMoney(completeItinerary.costBreakdown.transport.total)}</strong></span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="cost-category">
+                                <h4>🏨 Lưu trú</h4>
+                                <div className="cost-details">
+                                    <div className="cost-item">
+                                        <span>{completeItinerary.costBreakdown.accommodation.type} ({completeItinerary.costBreakdown.accommodation.nights} đêm)</span>
+                                        <span>{formatMoney(completeItinerary.costBreakdown.accommodation.total)}</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="cost-category">
+                                <h4>🍜 Ăn uống</h4>
+                                <div className="cost-details">
+                                    <div className="cost-item">
+                                        <span>Ăn uống ({completeItinerary.header.duration.days} ngày)</span>
+                                        <span>{formatMoney(completeItinerary.costBreakdown.food.total)}</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="cost-category">
+                                <h4>🎯 Tham quan</h4>
+                                <div className="cost-details">
+                                    <div className="cost-item">
+                                        <span>Vé tham quan, hoạt động</span>
+                                        <span>{formatMoney(completeItinerary.costBreakdown.sightseeing.total)}</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="cost-category">
+                                <h4>💼 Chi phí phát sinh</h4>
+                                <div className="cost-details">
+                                    <div className="cost-item">
+                                        <span>Dự phòng ({completeItinerary.costBreakdown.contingency.percentage}%)</span>
+                                        <span>{formatMoney(completeItinerary.costBreakdown.contingency.amount)}</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="cost-total">
+                                <div className="total-row">
+                                    <span><strong>TỔNG CỘNG ({completeItinerary.summary.totalDays} ngày, {completeItinerary.preferences.travelers} người):</strong></span>
+                                    <span><strong>{formatMoney(completeItinerary.costBreakdown.grandTotal)}</strong></span>
+                                </div>
+                                <div className="per-person">
+                                    <span>💰 Chi phí/người: {formatMoney(completeItinerary.costBreakdown.perPerson)}</span>
+                                </div>
+                                <div className={`budget-status ${completeItinerary.costBreakdown.budgetStatus.withinBudget ? 'within' : 'over'}`}>
+                                    {completeItinerary.costBreakdown.budgetStatus.withinBudget ? 
+                                        `✅ Trong ngân sách (còn lại ${formatMoney(completeItinerary.costBreakdown.budgetStatus.difference)})` :
+                                        `⚠️ Vượt ngân sách ${formatMoney(Math.abs(completeItinerary.costBreakdown.budgetStatus.difference))}`
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    {/* 4. PHƯƠNG TIỆN DI CHUYỂN */}
+                    <section className="itinerary-section">
+                        <h2>🚗 4. Phương tiện di chuyển</h2>
+                        <div className="transport-plan">
+                            <div className="transport-category">
+                                <h4>✈️ Đi từ {completeItinerary.header.destination.departure} đến {completeItinerary.header.destination.main}</h4>
+                                <p><strong>Khuyến nghị:</strong> {completeItinerary.transport.intercity.departure.recommended.type}</p>
+                                <p><strong>Chi phí:</strong> {formatMoney(completeItinerary.transport.intercity.departure.recommended.cost)}/người</p>
+                            </div>
+                            
+                            <div className="transport-category">
+                                <h4>🚕 Di chuyển tại {completeItinerary.header.destination.main}</h4>
+                                <p><strong>Khuyến nghị:</strong> {completeItinerary.transport.local.recommended.type}</p>
+                                <p><strong>Chi phí:</strong> {formatMoney(completeItinerary.transport.local.recommended.costPerDay)}/ngày</p>
+                                <div className="transport-apps">
+                                    <strong>Apps hữu ích:</strong> {completeItinerary.transport.local.apps?.map(app => 
+                                        typeof app === 'object' ? app.name || app.description || app.type : app
+                                    ).join(', ') || 'Không có thông tin'}
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    {/* 5. LƯU TRÚ */}
+                    <section className="itinerary-section">
+                        <h2>🏨 5. Lưu trú</h2>
+                        <div className="accommodation-plan">
+                            <div className="accommodation-info">
+                                <h4>Thông tin lưu trú</h4>
+                                <p><strong>Loại hình:</strong> {completeItinerary.accommodation.recommended.type}</p>
+                                <p><strong>Thời gian:</strong> {completeItinerary.accommodation.duration.nights} đêm ({completeItinerary.accommodation.duration.checkIn} - {completeItinerary.accommodation.duration.checkOut})</p>
+                                <p><strong>Khu vực khuyến nghị:</strong> {completeItinerary.accommodation.recommended.location}</p>
+                                <p><strong>Mức giá:</strong> {completeItinerary.accommodation.recommended.priceRange}/đêm</p>
+                            </div>
+                            
+                            <div className="booking-platforms">
+                                <h4>Nền tảng đặt phòng</h4>
+                                <div className="platforms-list">
+                                    {completeItinerary.accommodation.bookingPlatforms.map((platform, idx) => (
+                                        <div key={idx} className="platform-item">
+                                            <strong>{platform.name}:</strong> {platform.commission}
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    {/* 6. DANH SÁCH ĐỒ CẦN MANG */}
+                    <section className="itinerary-section">
+                        <h2>🎒 6. Danh sách đồ cần mang</h2>
+                        <div className="packing-list">
+                            <div className="packing-category">
+                                <h4>📋 Đồ cần thiết</h4>
+                                <ul>
+                                    {completeItinerary.packingList.essential.map((item, idx) => (
+                                        <li key={idx}>{item}</li>
+                                    ))}
+                                </ul>
+                            </div>
+
+                            <div className="packing-category">
+                                <h4>👕 Quần áo</h4>
+                                <ul>
+                                    {completeItinerary.packingList.clothing.map((item, idx) => (
+                                        <li key={idx}>{item}</li>
+                                    ))}
+                                </ul>
+                            </div>
+
+                            <div className="packing-category">
+                                <h4>🔌 Đồ điện tử</h4>
+                                <ul>
+                                    {completeItinerary.packingList.electronics.map((item, idx) => (
+                                        <li key={idx}>{item}</li>
+                                    ))}
+                                </ul>
+                            </div>
+
+                            <div className="packing-category">
+                                <h4>🧴 Đồ vệ sinh</h4>
+                                <ul>
+                                    {completeItinerary.packingList.toiletries.map((item, idx) => (
+                                        <li key={idx}>{item}</li>
+                                    ))}
+                                </ul>
+                            </div>
+
+                            {completeItinerary.packingList.optional.length > 0 && (
+                                <div className="packing-category">
+                                    <h4>➕ Đồ tùy chọn</h4>
+                                    <ul>
+                                        {completeItinerary.packingList.optional.map((item, idx) => (
+                                            <li key={idx}>{item}</li>
+                                        ))}
+                                    </ul>
+                                </div>
+                            )}
+
+                            <div className="packing-category prohibited">
+                                <h4>🚫 Đồ không được mang</h4>
+                                <ul>
+                                    {completeItinerary.packingList.prohibited.map((item, idx) => (
+                                        <li key={idx}>{item}</li>
+                                    ))}
+                                </ul>
+                            </div>
+                        </div>
+                    </section>
+
+                    {/* 7. LƯU Ý QUAN TRỌNG */}
+                    <section className="itinerary-section">
+                        <h2>⚠️ 7. Lưu ý quan trọng</h2>
+                        <div className="important-notes">
+                            {Object.entries(completeItinerary.importantNotes).map(([category, notes]) => (
+                                <div key={category} className="notes-category">
+                                    <h4>{getCategoryIcon(category)} {getCategoryName(category)}</h4>
+                                    {Array.isArray(notes) ? (
+                                        <ul>
+                                            {notes.map((note, idx) => (
+                                                <li key={idx}>{note}</li>
+                                            ))}
+                                        </ul>
+                                    ) : typeof notes === 'object' && notes !== null ? (
+                                        <div className="object-notes">
+                                            {Object.entries(notes).map(([key, value]) => (
+                                                <p key={key}><strong>{key}:</strong> {value}</p>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <p>{notes}</p>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                    </section>
+
+                    {/* 8. BẢN ĐỒ VÀ LỘ TRÌNH */}
+                    <section className="itinerary-section">
+                        <h2>🗺️ 8. Bản đồ và tối ưu lộ trình</h2>
+                        <div className="route-optimization">
+                            <div className="route-overview">
+                                <h4>Tổng quan lộ trình</h4>
+                                <p><strong>Tổng số điểm đến:</strong> {completeItinerary.routeOptimization.overview.totalDestinations}</p>
+                                <p><strong>Chiến lược tối ưu:</strong> {completeItinerary.routeOptimization.overview.optimizationStrategy}</p>
+                            </div>
+
+                            <div className="route-tips">
+                                <h4>💡 Mẹo di chuyển</h4>
+                                <ul>
+                                    {completeItinerary.routeOptimization.tips.map((tip, idx) => (
+                                        <li key={idx}>{tip}</li>
+                                    ))}
+                                </ul>
+                            </div>
+                        </div>
+                    </section>
+                </div>
+            </div>
+        );
+    }
+
+    return null;
+};
+
+// Helper functions
+const getCategoryIcon = (category) => {
+    const icons = {
+        weather: '🌤️',
+        culture: '🏛️',
+        safety: '🛡️',
+        health: '🏥',
+        emergency: '🚨',
+        business: '🕐',
+        currency: '💱',
+        language: '🗣️',
+        customs: '📋'
+    };
+    return icons[category] || '📝';
+};
+
+const getCategoryName = (category) => {
+    const names = {
+        weather: 'Thời tiết',
+        culture: 'Văn hóa địa phương',
+        safety: 'An toàn',
+        health: 'Y tế',
+        emergency: 'Khẩn cấp',
+        business: 'Giờ mở cửa',
+        currency: 'Tiền tệ',
+        language: 'Ngôn ngữ',
+        customs: 'Phong tục'
+    };
+    return names[category] || category;
+};
+
+export default CompleteItineraryPlanner;
