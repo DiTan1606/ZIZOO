@@ -384,6 +384,7 @@
 
 .print-btn,
 .download-btn,
+.view-trips-btn,
 .new-btn {
     padding: 10px 20px;
     border: 2px solid white;
@@ -397,6 +398,7 @@
 
 .print-btn:hover,
 .download-btn:hover,
+.view-trips-btn:hover,
 .new-btn:hover {
     background: white;
     color: #28a745;
@@ -1033,4 +1035,93 @@ ed destination input */
 .object-notes p {
     margin: 5px 0;
     font-size: 14px;
+}/* Number
+ Input Styles */
+.number-input-container {
+    position: relative;
+}
+
+.number-input-container input[type="number"] {
+    width: 100%;
+    padding: 12px 16px;
+    border: 2px solid #e1e5e9;
+    border-radius: 8px;
+    font-size: 16px;
+    transition: all 0.3s ease;
+    background: white;
+}
+
+.number-input-container input[type="number"]:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.input-helper {
+    margin-top: 6px;
+    font-size: 13px;
+    color: #666;
+    font-style: italic;
+    min-height: 18px;
+}
+
+/* Quick Options Buttons */
+.quick-options {
+    display: flex;
+    gap: 8px;
+    margin-top: 10px;
+    flex-wrap: wrap;
+}
+
+.quick-btn {
+    padding: 6px 12px;
+    border: 1px solid #ddd;
+    background: white;
+    border-radius: 20px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    color: #666;
+    font-weight: 500;
+}
+
+.quick-btn:hover {
+    background: #f8f9fa;
+    border-color: #667eea;
+    color: #667eea;
+}
+
+.quick-btn.active {
+    background: #667eea;
+    border-color: #667eea;
+    color: white;
+    font-weight: 600;
+}
+
+.quick-btn.active:hover {
+    background: #5a6fd8;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .quick-options {
+        justify-content: center;
+    }
+    
+    .quick-btn {
+        flex: 1;
+        min-width: 60px;
+        text-align: center;
+    }
+}
+
+/* Input number spinner removal for cleaner look */
+.number-input-container input[type="number"]::-webkit-outer-spin-button,
+.number-input-container input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+.number-input-container input[type="number"] {
+    -moz-appearance: textfield;
 }

@@ -1,6 +1,7 @@
 // src/components/CompleteItineraryPlanner.js
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import { createCompleteItinerary } from '../services/completeItineraryService';
 import ItineraryAlertsPanel from './ItineraryAlertsPanel';
@@ -8,6 +9,7 @@ import './CompleteItineraryPlanner.css';
 
 const CompleteItineraryPlanner = () => {
     const { currentUser } = useAuth();
+    const navigate = useNavigate();
     const [step, setStep] = useState(1);
     const [loading, setLoading] = useState(false);
     // Get tomorrow's date for default
@@ -32,7 +34,14 @@ const CompleteItineraryPlanner = () => {
     const vietnamCities = [
         'Hà Nội', 'Hồ Chí Minh', 'Đà Nẵng', 'Hải Phòng', 'Cần Thơ',
         'Nha Trang', 'Đà Lạt', 'Phú Quốc', 'Hội An', 'Huế', 'Sapa',
-        'Vũng Tàu', 'Quảng Ninh', 'Ninh Bình', 'Quy Nhon'
+        'Vũng Tàu', 'Quảng Ninh', 'Ninh Bình', 'Quy Nhon', 'Phan Thiết',
+        'Mũi Né', 'Rạch Giá', 'Hạ Long', 'Tam Cốc', 'Bắc Ninh',
+        'Thái Nguyên', 'Lào Cai', 'Điện Biên', 'Sơn La', 'Lai Châu',
+        'Cao Bằng', 'Lạng Sơn', 'Quảng Bình', 'Quảng Trị', 'Thừa Thiên Huế',
+        'Quảng Nam', 'Quảng Ngãi', 'Bình Định', 'Phú Yên', 'Khánh Hòa',
+        'Bình Thuận', 'Đồng Nai', 'Bà Rịa - Vũng Tàu', 'Long An', 'Tiền Giang',
+        'Bến Tre', 'Trà Vinh', 'Vĩnh Long', 'Đồng Tháp', 'An Giang', 'Kiên Giang',
+        'Hậu Giang', 'Sóc Trăng', 'Bạc Liêu', 'Cà Mau', 'Côn Đảo'
     ];
 
     const travelStyles = [
@@ -54,6 +63,15 @@ const CompleteItineraryPlanner = () => {
     ];
 
     const handleInputChange = (field, value) => {
+        // Validation for number inputs
+        if (field === 'duration') {
+            value = Math.max(1, Math.min(30, parseInt(value) || 1));
+        } else if (field === 'travelers') {
+            value = Math.max(1, Math.min(50, parseInt(value) || 1));
+        } else if (field === 'budget') {
+            value = Math.max(1000000, parseInt(value) || 1000000);
+        }
+        
         setPreferences(prev => ({
             ...prev,
             [field]: value
@@ -85,7 +103,7 @@ const CompleteItineraryPlanner = () => {
             const itinerary = await createCompleteItinerary(preferences, currentUser.uid);
             setCompleteItinerary(itinerary);
             setStep(3);
-            toast.success('🎉 Lịch trình hoàn chỉnh đã được tạo!');
+            toast.success('🎉 Lịch trình hoàn chỉnh đã được tạo và lưu thành công!');
         } catch (error) {
             console.error('Lỗi tạo lịch trình:', error);
             toast.error(`Lỗi: ${error.message}`);
@@ -198,28 +216,79 @@ const CompleteItineraryPlanner = () => {
 
                             <div className="form-group">
                                 <label>Số ngày</label>
-                                <select 
-                                    value={preferences.duration}
-                                    onChange={(e) => handleInputChange('duration', parseInt(e.target.value))}
-                                >
-                                    {[2, 3, 4, 5, 6, 7, 10, 14].map(days => (
-                                        <option key={days} value={days}>
-                                            {days} ngày {days - 1} đêm
-                                        </option>
+                                <div className="number-input-container">
+                                    <input 
+                                        type="number"
+                                        value={preferences.duration}
+                                        onChange={(e) => handleInputChange('duration', parseInt(e.target.value) || 1)}
+                                        min="1"
+                                        max="30"
+                                        placeholder="Nhập số ngày..."
+                                    />
+                                    <div className="input-helper">
+                                        {preferences.duration === 1 
+                                            ? '1 ngày (đi trong ngày)' 
+                                            : `${preferences.duration} ngày ${preferences.duration - 1} đêm`
+                                        }
+                                    </div>
+                                </div>
+                                <div className="quick-options">
+                                    {[
+                                        { days: 1, label: '1 ngày' },
+                                        { days: 2, label: '2N1Đ' },
+                                        { days: 3, label: '3N2Đ' },
+                                        { days: 4, label: '4N3Đ' },
+                                        { days: 7, label: '1 tuần' }
+                                    ].map(({ days, label }) => (
+                                        <button
+                                            key={days}
+                                            type="button"
+                                            className={`quick-btn ${preferences.duration === days ? 'active' : ''}`}
+                                            onClick={() => handleInputChange('duration', days)}
+                                        >
+                                            {label}
+                                        </button>
                                     ))}
-                                </select>
+                                </div>
                             </div>
 
                             <div className="form-group">
                                 <label>Số người</label>
-                                <select 
-                                    value={preferences.travelers}
-                                    onChange={(e) => handleInputChange('travelers', parseInt(e.target.value))}
-                                >
-                                    {[1, 2, 3, 4, 5, 6, 8, 10].map(num => (
-                                        <option key={num} value={num}>{num} người</option>
+                                <div className="number-input-container">
+                                    <input 
+                                        type="number"
+                                        value={preferences.travelers}
+                                        onChange={(e) => handleInputChange('travelers', parseInt(e.target.value) || 1)}
+                                        min="1"
+                                        max="50"
+                                        placeholder="Nhập số người..."
+                                    />
+                                    <div className="input-helper">
+                                        {preferences.travelers === 1 ? '1 người (Solo travel)' : 
+                                         preferences.travelers === 2 ? '2 người (Cặp đôi)' :
+                                         preferences.travelers <= 4 ? `${preferences.travelers} người (Gia đình nhỏ)` :
+                                         preferences.travelers <= 10 ? `${preferences.travelers} người (Nhóm bạn)` :
+                                         `${preferences.travelers} người (Đoàn lớn)`}
+                                    </div>
+                                </div>
+                                <div className="quick-options">
+                                    {[
+                                        { num: 1, label: 'Solo' },
+                                        { num: 2, label: 'Cặp đôi' },
+                                        { num: 4, label: 'Gia đình' },
+                                        { num: 6, label: 'Nhóm nhỏ' },
+                                        { num: 10, label: 'Nhóm lớn' }
+                                    ].map(({ num, label }) => (
+                                        <button
+                                            key={num}
+                                            type="button"
+                                            className={`quick-btn ${preferences.travelers === num ? 'active' : ''}`}
+                                            onClick={() => handleInputChange('travelers', num)}
+                                        >
+                                            {label}
+                                        </button>
                                     ))}
-                                </select>
+                                </div>
                             </div>
                         </div>
 
@@ -323,8 +392,8 @@ const CompleteItineraryPlanner = () => {
                             </div>
                             <div className="info-item">
                                 <strong>Sở thích:</strong> {preferences.interests.map(i => 
-                                    interestOptions.find(opt => opt.value === i)?.name
-                                ).join(', ') || 'Không có'}
+                                    interestOptions.find(opt => opt.value === i)?.name || i
+                                ).filter(Boolean).join(', ') || 'Không có'}
                             </div>
                         </div>
                     </div>
@@ -429,6 +498,9 @@ const CompleteItineraryPlanner = () => {
                         </button>
                         <button onClick={downloadItinerary} className="download-btn">
                             💾 Tải xuống
+                        </button>
+                        <button onClick={() => navigate('/mytrips')} className="view-trips-btn">
+                            ✈️ Xem chuyến đi của tôi
                         </button>
                         <button onClick={() => setStep(1)} className="new-btn">
                             ➕ Tạo lịch trình mới
@@ -594,11 +666,11 @@ const CompleteItineraryPlanner = () => {
 
                             <div className="cost-total">
                                 <div className="total-row">
-                                    <span><strong>TỔNG CỘNG:</strong></span>
+                                    <span><strong>TỔNG CỘNG ({completeItinerary.summary.totalDays} ngày, {completeItinerary.preferences.travelers} người):</strong></span>
                                     <span><strong>{formatMoney(completeItinerary.costBreakdown.grandTotal)}</strong></span>
                                 </div>
                                 <div className="per-person">
-                                    <span>Chi phí/người: {formatMoney(completeItinerary.costBreakdown.perPerson)}</span>
+                                    <span>💰 Chi phí/người: {formatMoney(completeItinerary.costBreakdown.perPerson)}</span>
                                 </div>
                                 <div className={`budget-status ${completeItinerary.costBreakdown.budgetStatus.withinBudget ? 'within' : 'over'}`}>
                                     {completeItinerary.costBreakdown.budgetStatus.withinBudget ? 
@@ -625,7 +697,9 @@ const CompleteItineraryPlanner = () => {
                                 <p><strong>Khuyến nghị:</strong> {completeItinerary.transport.local.recommended.type}</p>
                                 <p><strong>Chi phí:</strong> {formatMoney(completeItinerary.transport.local.recommended.costPerDay)}/ngày</p>
                                 <div className="transport-apps">
-                                    <strong>Apps hữu ích:</strong> {completeItinerary.transport.local.apps.join(', ')}
+                                    <strong>Apps hữu ích:</strong> {completeItinerary.transport.local.apps?.map(app => 
+                                        typeof app === 'object' ? app.name || app.description || app.type : app
+                                    ).join(', ') || 'Không có thông tin'}
                                 </div>
                             </div>
                         </div>

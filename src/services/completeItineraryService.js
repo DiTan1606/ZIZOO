@@ -1,6 +1,6 @@
 // src/services/completeItineraryService.js
 import { db } from '../firebase';
-import { collection, addDoc } from 'firebase/firestore';
+import { collection, addDoc, getDocs, query, where, orderBy, getDoc, doc, deleteDoc } from 'firebase/firestore';
 import { searchPlacesByText, searchNearbyPlaces } from './placesService';
 import { get7DayWeatherForecast } from './weatherService';
 import { findRealPlacesByCategory, findRealRestaurants, getRealWeatherForItinerary } from './realTimeDataService';
@@ -93,6 +93,7 @@ export const createCompleteItinerary = async (preferences, userId) => {
 
             // Thông tin bổ sung
             preferences,
+            userId,
             summary: {
                 totalDays: duration,
                 totalNights: duration - 1,
@@ -103,8 +104,9 @@ export const createCompleteItinerary = async (preferences, userId) => {
             }
         };
 
-        // Lưu vào Firebase
-        await saveItineraryToFirebase(completeItinerary);
+        // Lưu vào Firebase và lấy ID
+        const itineraryId = await saveItineraryToFirebase(completeItinerary);
+        completeItinerary.id = itineraryId;
 
         // Bắt đầu monitoring cho alerts & adjustments
         if (completeItinerary && completeItinerary.id) {
@@ -180,8 +182,11 @@ const generateTripHeader = async (preferences) => {
  * 2. TẠO LỊCH TRÌNH CHI TIẾT THEO TỪNG NGÀY
  */
 const generateDailyItinerary = async (preferences) => {
-    const { destination, startDate, duration, interests, travelStyle } = preferences;
+    const { destination, startDate, duration, interests, travelStyle, budget, travelers } = preferences;
     const coord = provinceCoords[destination] || { lat: 16.047, lng: 108.220 };
+    
+    // Tính ngân sách hàng ngày
+    const dailyBudget = budget ? (budget * 0.6) / (duration * travelers) : 500000; // 60% budget cho activities
     
     const dailyPlans = [];
 
@@ -189,8 +194,8 @@ const generateDailyItinerary = async (preferences) => {
         const currentDate = new Date(startDate);
         currentDate.setDate(currentDate.getDate() + day);
 
-        // Tạo kế hoạch cho từng ngày
-        const dayPlan = await generateSingleDayPlan(day + 1, currentDate, destination, coord, interests, travelStyle);
+        // Tạo kế hoạch cho từng ngày với ngân sách
+        const dayPlan = await generateSingleDayPlan(day + 1, currentDate, destination, coord, interests, travelStyle, dailyBudget);
         dailyPlans.push(dayPlan);
     }
 
@@ -200,7 +205,7 @@ const generateDailyItinerary = async (preferences) => {
 /**
  * Tạo kế hoạch cho một ngày cụ thể - CẢI THIỆN ĐA DẠNG
  */
-const generateSingleDayPlan = async (dayNumber, date, destination, coord, interests, travelStyle) => {
+const generateSingleDayPlan = async (dayNumber, date, destination, coord, interests, travelStyle, dailyBudget = 500000) => {
     try {
         console.log(`📅 Generating DIVERSE day plan for Day ${dayNumber} in ${destination}...`);
 
@@ -268,7 +273,7 @@ const generateSingleDayPlan = async (dayNumber, date, destination, coord, intere
             },
             
             // Chi phí ước tính chi tiết
-            estimatedCost: calculateEnhancedDayCost(destinations, restaurants, travelStyle, dayNumber),
+            estimatedCost: calculateEnhancedDayCost(destinations, restaurants, travelStyle, dayNumber, dailyBudget),
             
             // Metadata mở rộng
             dataQuality: 'enhanced_real_data',
@@ -322,6 +327,7 @@ const generateHourlySchedule = (dayNumber, destinations, restaurants) => {
             activity: `Tham quan ${dest.name}`,
             type: 'sightseeing',
             duration: dest.recommendedTime || '1-2 giờ',
+            location: createLocationInfo(dest),
             location: dest,
             notes: dest.specialNotes || []
         });
@@ -358,25 +364,33 @@ const generateHourlySchedule = (dayNumber, destinations, restaurants) => {
  * 3. TẠO DANH SÁCH CHI PHÍ DỰ KIẾN
  */
 const generateCostBreakdown = async (preferences, dailyItinerary) => {
-    const { travelers, duration, travelStyle, departureCity, destination } = preferences;
+    const { travelers, duration, travelStyle, departureCity, destination, budget } = preferences;
     
-    // Chi phí vé máy bay/xe/tàu khứ hồi
-    const transportCost = calculateTransportCost(departureCity, destination, travelers, travelStyle);
+    // Tối ưu chi phí theo ngân sách
+    const budgetPerPerson = budget / travelers;
     
-    // Chi phí khách sạn
-    const accommodationCost = calculateAccommodationCost(duration - 1, travelers, travelStyle);
+    // Chi phí vé máy bay/xe/tàu khứ hồi - tối đa 30% ngân sách
+    const maxTransportCost = Math.min(budget * 0.3, calculateTransportCost(departureCity, destination, travelers, travelStyle));
+    const transportCost = maxTransportCost;
     
-    // Chi phí ăn uống
-    const foodCost = calculateFoodCost(dailyItinerary, travelers);
+    // Chi phí khách sạn - tối đa 35% ngân sách
+    const maxAccommodationCost = Math.min(budget * 0.35, calculateAccommodationCost(duration - 1, travelers, travelStyle));
+    const accommodationCost = maxAccommodationCost;
     
-    // Chi phí tham quan
-    const sightseeingCost = calculateSightseeingCost(dailyItinerary, travelers);
+    // Chi phí ăn uống - tối đa 25% ngân sách
+    const maxFoodCost = Math.min(budget * 0.25, calculateFoodCost(dailyItinerary, travelers));
+    const foodCost = maxFoodCost;
     
-    // Chi phí di chuyển tại điểm đến
-    const localTransportCost = calculateLocalTransportCost(duration, travelers, travelStyle);
+    // Chi phí tham quan - tối đa 15% ngân sách
+    const maxSightseeingCost = Math.min(budget * 0.15, calculateSightseeingCost(dailyItinerary, travelers));
+    const sightseeingCost = maxSightseeingCost;
     
-    // Chi phí phát sinh (10-20%)
-    const contingencyCost = Math.round((transportCost + accommodationCost + foodCost + sightseeingCost + localTransportCost) * 0.15);
+    // Chi phí di chuyển tại điểm đến - tối đa 10% ngân sách
+    const maxLocalTransportCost = Math.min(budget * 0.1, calculateLocalTransportCost(duration, travelers, travelStyle));
+    const localTransportCost = maxLocalTransportCost;
+    
+    // Chi phí phát sinh - 5% còn lại
+    const contingencyCost = Math.min(budget * 0.05, budget - (transportCost + accommodationCost + foodCost + sightseeingCost + localTransportCost));
     
     const grandTotal = transportCost + accommodationCost + foodCost + sightseeingCost + localTransportCost + contingencyCost;
 
@@ -732,11 +746,413 @@ const saveItineraryToFirebase = async (itinerary) => {
         console.log('💾 Saving sanitized itinerary to Firebase...');
         const docRef = await addDoc(collection(db, 'complete_itineraries'), sanitizedItinerary);
         console.log('✅ Lịch trình đã lưu với ID:', docRef.id);
+        
+        // Lịch trình đã được lưu với userId trong complete_itineraries
+        console.log('✅ Lịch trình đã được lưu với userId:', itinerary.userId);
+        
         return docRef.id;
     } catch (error) {
         console.error('❌ Lỗi lưu lịch trình:', error);
         console.error('Itinerary data:', JSON.stringify(itinerary, null, 2));
         throw error;
+    }
+};
+
+/**
+ * Thêm hoạt động biển cho các điểm đến ven biển
+ */
+const addBeachActivities = (destination, interests) => {
+    const coastalDestinations = [
+        'vũng tàu', 'phan thiết', 'mũi né', 'nha trang', 'đà nẵng', 
+        'hội an', 'phú quốc', 'quy nhon', 'sam son', 'cửa lò',
+        'hạ long', 'cát bà', 'sầm sơn', 'thiên cầm'
+    ];
+    
+    const isCoastal = coastalDestinations.some(coastal => 
+        destination.toLowerCase().includes(coastal)
+    );
+    
+    if (!isCoastal) return [];
+    
+    const beachActivities = [
+        `swimming beaches ${destination}`,
+        `water sports ${destination}`,
+        `beach resorts ${destination}`,
+        `fishing tours ${destination}`,
+        `boat trips ${destination}`,
+        `snorkeling ${destination}`,
+        `diving spots ${destination}`,
+        `beach volleyball ${destination}`,
+        `jet ski rental ${destination}`,
+        `parasailing ${destination}`,
+        `beach bars ${destination}`,
+        `seafood restaurants ${destination}`,
+        `sunset viewing ${destination}`,
+        `beach photography ${destination}`,
+        `sand dunes ${destination}`,
+        `fishing villages ${destination}`,
+        `lighthouse ${destination}`,
+        `coastal walks ${destination}`
+    ];
+    
+    // Lọc theo interests
+    if (interests.includes('adventure')) {
+        return beachActivities.filter(activity => 
+            activity.includes('water sports') || 
+            activity.includes('diving') || 
+            activity.includes('jet ski') ||
+            activity.includes('parasailing')
+        );
+    }
+    
+    if (interests.includes('photography')) {
+        return beachActivities.filter(activity => 
+            activity.includes('sunset') || 
+            activity.includes('lighthouse') || 
+            activity.includes('photography') ||
+            activity.includes('sand dunes')
+        );
+    }
+    
+    if (interests.includes('food')) {
+        return beachActivities.filter(activity => 
+            activity.includes('seafood') || 
+            activity.includes('fishing') ||
+            activity.includes('beach bars')
+        );
+    }
+    
+    if (interests.includes('relaxation')) {
+        return beachActivities.filter(activity => 
+            activity.includes('swimming') || 
+            activity.includes('beach resorts') || 
+            activity.includes('coastal walks')
+        );
+    }
+    
+    // Default beach activities
+    return [
+        `beaches ${destination}`,
+        `water sports ${destination}`,
+        `fishing villages ${destination}`,
+        `sunset viewing ${destination}`
+    ];
+};
+
+/**
+ * Lấy thời gian phù hợp cho hoạt động dựa trên tên địa điểm
+ */
+const getOptimalTimeForActivity = (placeName, currentTime) => {
+    const name = placeName.toLowerCase();
+    const [hours] = currentTime.split(':').map(Number);
+    
+    // Sunset/Sunrise activities
+    if (name.includes('sunset') || name.includes('hoàng hôn')) {
+        return '17:30'; // 5:30 PM for sunset
+    }
+    if (name.includes('sunrise') || name.includes('bình minh')) {
+        return '05:30'; // 5:30 AM for sunrise
+    }
+    
+    // Beach activities - best in morning or late afternoon
+    if (name.includes('beach') || name.includes('bãi biển') || name.includes('biển')) {
+        if (hours < 10) return currentTime; // Morning is good
+        if (hours > 16) return currentTime; // Late afternoon is good
+        return '08:00'; // Default to morning
+    }
+    
+    // Spa activities - afternoon/evening
+    if (name.includes('spa') || name.includes('massage')) {
+        if (hours < 14) return '15:00'; // Move to afternoon
+        return currentTime;
+    }
+    
+    // Market activities - morning
+    if (name.includes('market') || name.includes('chợ')) {
+        if (hours > 10) return '08:00'; // Markets are best in morning
+        return currentTime;
+    }
+    
+    // Temple/Religious sites - morning
+    if (name.includes('temple') || name.includes('chùa') || name.includes('đền')) {
+        if (hours > 16) return '09:00'; // Temples close early
+        return currentTime;
+    }
+    
+    return currentTime; // Default - no change
+};
+
+/**
+ * Kiểm tra xem địa điểm có phù hợp với du lịch không
+ */
+const isTourismPlace = (place) => {
+    const name = place.name?.toLowerCase() || '';
+    const types = place.types || [];
+    
+    // Danh sách từ khóa KHÔNG phù hợp với du lịch
+    const excludeKeywords = [
+        'phòng khám', 'bệnh viện', 'hospital', 'clinic', 'medical',
+        'ngân hàng', 'bank', 'atm', 'vietcombank', 'techcombank',
+        'công ty', 'company', 'office', 'văn phòng',
+        'trường học', 'school', 'university', 'đại học',
+        'cửa hàng điện thoại', 'mobile', 'phone store',
+        'garage', 'sửa chữa', 'repair', 'mechanic',
+        'pharmacy', 'nhà thuốc', 'drugstore',
+        'gas station', 'cửa hàng xăng', 'petrol',
+        'real estate', 'bất động sản',
+        'insurance', 'bảo hiểm',
+        'law firm', 'luật sư', 'lawyer',
+        'dentist', 'nha khoa', 'dental',
+        'veterinary', 'thú y',
+        'funeral', 'tang lễ',
+        'government', 'chính phủ', 'ủy ban',
+        'police', 'công an', 'cảnh sát',
+        'post office', 'bưu điện',
+        'rượu ngoại', 'liquor store', 'wine shop'
+    ];
+    
+    // Danh sách types KHÔNG phù hợp
+    const excludeTypes = [
+        'hospital', 'doctor', 'dentist', 'pharmacy', 'veterinary_care',
+        'bank', 'atm', 'finance', 'insurance_agency',
+        'gas_station', 'car_repair', 'car_dealer', 'car_wash',
+        'real_estate_agency', 'lawyer', 'accounting',
+        'government', 'police', 'post_office',
+        'school', 'university', 'library',
+        'funeral_home', 'cemetery',
+        'liquor_store', 'convenience_store'
+    ];
+    
+    // Kiểm tra từ khóa loại trừ
+    const hasExcludeKeyword = excludeKeywords.some(keyword => 
+        name.includes(keyword)
+    );
+    
+    // Kiểm tra types loại trừ
+    const hasExcludeType = excludeTypes.some(type => 
+        types.includes(type)
+    );
+    
+    if (hasExcludeKeyword || hasExcludeType) {
+        return false;
+    }
+    
+    // Danh sách từ khóa và types PHÙ HỢP với du lịch
+    const tourismKeywords = [
+        'bãi biển', 'beach', 'biển', 'sea',
+        'chùa', 'temple', 'pagoda', 'đền',
+        'bảo tàng', 'museum', 'gallery',
+        'công viên', 'park', 'garden', 'vườn',
+        'núi', 'mountain', 'hill', 'đồi',
+        'thác', 'waterfall', 'falls',
+        'hồ', 'lake', 'pond', 'đầm',
+        'cầu', 'bridge', 'cống',
+        'tượng', 'statue', 'monument', 'đài',
+        'lâu đài', 'castle', 'fortress', 'pháo đài',
+        'lighthouse', 'hải đăng',
+        'viewpoint', 'điểm ngắm', 'observation',
+        'tourist attraction', 'điểm tham quan',
+        'landmark', 'danh lam', 'thắng cảnh',
+        'resort', 'khu nghỉ dưỡng',
+        'spa', 'massage', 'wellness',
+        'aquarium', 'thủy cung', 'zoo', 'vườn thú',
+        'amusement park', 'khu vui chơi',
+        'market', 'chợ', 'bazaar',
+        'shopping mall', 'trung tâm thương mại',
+        'restaurant', 'nhà hàng', 'quán ăn',
+        'cafe', 'cà phê', 'coffee',
+        'bar', 'pub', 'club', 'karaoke',
+        'hotel', 'khách sạn', 'homestay'
+    ];
+    
+    const tourismTypes = [
+        'tourist_attraction', 'point_of_interest', 'establishment',
+        'natural_feature', 'park', 'beach', 'museum',
+        'place_of_worship', 'hindu_temple', 'buddhist_temple',
+        'church', 'mosque', 'synagogue',
+        'amusement_park', 'aquarium', 'zoo', 'campground',
+        'lodging', 'restaurant', 'food', 'meal_takeaway',
+        'cafe', 'bar', 'night_club',
+        'shopping_mall', 'store', 'market',
+        'spa', 'beauty_salon', 'gym', 'stadium',
+        'movie_theater', 'bowling_alley', 'casino',
+        'art_gallery', 'library', 'cultural_center'
+    ];
+    
+    // Kiểm tra từ khóa du lịch
+    const hasTourismKeyword = tourismKeywords.some(keyword => 
+        name.includes(keyword)
+    );
+    
+    // Kiểm tra types du lịch
+    const hasTourismType = tourismTypes.some(type => 
+        types.includes(type)
+    );
+    
+    return hasTourismKeyword || hasTourismType;
+};
+
+/**
+ * Calculate string similarity (Levenshtein distance)
+ */
+const calculateSimilarity = (str1, str2) => {
+    const matrix = [];
+    const len1 = str1.length;
+    const len2 = str2.length;
+
+    for (let i = 0; i <= len2; i++) {
+        matrix[i] = [i];
+    }
+
+    for (let j = 0; j <= len1; j++) {
+        matrix[0][j] = j;
+    }
+
+    for (let i = 1; i <= len2; i++) {
+        for (let j = 1; j <= len1; j++) {
+            if (str2.charAt(i - 1) === str1.charAt(j - 1)) {
+                matrix[i][j] = matrix[i - 1][j - 1];
+            } else {
+                matrix[i][j] = Math.min(
+                    matrix[i - 1][j - 1] + 1,
+                    matrix[i][j - 1] + 1,
+                    matrix[i - 1][j] + 1
+                );
+            }
+        }
+    }
+
+    const maxLen = Math.max(len1, len2);
+    return maxLen === 0 ? 1 : (maxLen - matrix[len2][len1]) / maxLen;
+};
+
+/**
+ * Generate interest-based queries for diverse destinations
+ */
+const generateInterestBasedQueries = (destination, interests, dayNumber) => {
+    const interestQueries = {
+        food: {
+            primary: [`famous restaurants ${destination}`, `local food markets ${destination}`, `food streets ${destination}`],
+            secondary: [`seafood restaurants ${destination}`, `traditional cuisine ${destination}`, `local specialties ${destination}`],
+            tertiary: [`street food areas ${destination}`, `night markets ${destination}`, `food courts ${destination}`]
+        },
+        photography: {
+            primary: [`scenic viewpoints ${destination}`, `beautiful landscapes ${destination}`, `photo spots ${destination}`],
+            secondary: [`historic buildings ${destination}`, `architectural sites ${destination}`, `panoramic views ${destination}`],
+            tertiary: [`sunset points ${destination}`, `observation decks ${destination}`, `lookout points ${destination}`]
+        },
+        adventure: {
+            primary: [`adventure activities ${destination}`, `outdoor sports ${destination}`, `hiking trails ${destination}`],
+            secondary: [`water sports ${destination}`, `beach activities ${destination}`, `mountain climbing ${destination}`],
+            tertiary: [`adventure tours ${destination}`, `extreme sports ${destination}`, `outdoor adventures ${destination}`]
+        },
+        relaxation: {
+            primary: [`beaches ${destination}`, `peaceful parks ${destination}`, `quiet gardens ${destination}`],
+            secondary: [`spa resorts ${destination}`, `wellness centers ${destination}`, `relaxing spots ${destination}`],
+            tertiary: [`serene lakes ${destination}`, `tranquil temples ${destination}`, `calm beaches ${destination}`]
+        },
+        culture: {
+            primary: [`museums ${destination}`, `temples ${destination}`, `historical sites ${destination}`],
+            secondary: [`cultural centers ${destination}`, `art galleries ${destination}`, `heritage buildings ${destination}`],
+            tertiary: [`traditional markets ${destination}`, `cultural villages ${destination}`, `historic districts ${destination}`]
+        },
+        nature: {
+            primary: [`beaches ${destination}`, `natural attractions ${destination}`, `scenic nature ${destination}`],
+            secondary: [`sand dunes ${destination}`, `coastal areas ${destination}`, `fishing villages ${destination}`],
+            tertiary: [`eco parks ${destination}`, `nature trails ${destination}`, `forest areas ${destination}`]
+        }
+    };
+
+    // Combine queries based on user interests
+    const result = { primary: [], secondary: [], tertiary: [] };
+    
+    interests.forEach(interest => {
+        if (interestQueries[interest]) {
+            result.primary.push(...interestQueries[interest].primary);
+            result.secondary.push(...interestQueries[interest].secondary);
+            result.tertiary.push(...interestQueries[interest].tertiary);
+        }
+    });
+
+    // Add variety with random selection
+    const shuffleArray = (array) => array.sort(() => 0.5 - Math.random());
+    
+    return {
+        primary: shuffleArray(result.primary).slice(0, 4),
+        secondary: shuffleArray(result.secondary).slice(0, 4),
+        tertiary: shuffleArray(result.tertiary).slice(0, 4)
+    };
+};
+
+/**
+ * Lấy danh sách lịch trình của user
+ */
+export const getUserItineraries = async (userId) => {
+    try {
+        // Query trực tiếp từ complete_itineraries collection
+        const completeItinerariesRef = collection(db, 'complete_itineraries');
+        const q = query(
+            completeItinerariesRef, 
+            where('userId', '==', userId)
+        );
+        
+        const querySnapshot = await getDocs(q);
+        const itineraries = [];
+        
+        querySnapshot.docs.forEach(docSnap => {
+            const data = docSnap.data();
+            
+            // Format data để match với MyTrips component
+            itineraries.push({
+                id: docSnap.id,
+                tripName: data.header?.tripName || `Chuyến đi ${data.header?.destination?.main}`,
+                destination: data.header?.destination?.main,
+                startDate: data.header?.duration?.startDate,
+                duration: data.header?.duration?.days,
+                travelers: typeof data.header?.travelers === 'object' 
+                    ? data.header.travelers?.total || data.header.travelers?.adults || 2 
+                    : data.header?.travelers || 2,
+                budget: data.header?.budget?.total,
+                createdAt: data.createdAt,
+                status: 'active',
+                fullItinerary: data // Toàn bộ data lịch trình
+            });
+        });
+        
+        // Sort by createdAt desc (client-side sorting)
+        itineraries.sort((a, b) => {
+            const dateA = a.createdAt?.toDate?.() || new Date(a.createdAt);
+            const dateB = b.createdAt?.toDate?.() || new Date(b.createdAt);
+            return dateB - dateA;
+        });
+        
+        return itineraries;
+    } catch (error) {
+        console.error('Error getting user itineraries:', error);
+        return [];
+    }
+};
+
+/**
+ * Xóa lịch trình của user
+ */
+export const deleteUserItinerary = async (userId, itineraryId) => {
+    try {
+        // Xóa trực tiếp từ complete_itineraries collection
+        const itineraryRef = doc(db, 'complete_itineraries', itineraryId);
+        const itineraryDoc = await getDoc(itineraryRef);
+        
+        if (itineraryDoc.exists() && itineraryDoc.data().userId === userId) {
+            await deleteDoc(itineraryRef);
+            console.log('✅ Đã xóa lịch trình');
+            return true;
+        } else {
+            console.warn('⚠️ Không tìm thấy lịch trình hoặc không có quyền xóa');
+            return false;
+        }
+    } catch (error) {
+        console.error('Error deleting user itinerary:', error);
+        return false;
     }
 };
 
@@ -754,27 +1170,34 @@ export {
 
 // Thêm các helper functions khác...
 const calculateTransportCost = (from, to, travelers, style) => {
-    return TRANSPORT_OPTIONS.intercity[style].cost * travelers;
+    // Giảm chi phí vận chuyển để phù hợp ngân sách
+    const baseCost = TRANSPORT_OPTIONS.intercity[style]?.cost || 800000;
+    return Math.min(baseCost * travelers, 1500000); // Tối đa 1.5M cho vận chuyển
 };
 
 const calculateAccommodationCost = (nights, travelers, style) => {
     const rooms = Math.ceil(travelers / 2);
-    return ACCOMMODATION_TYPES[style].pricePerNight * nights * rooms;
+    const baseCost = ACCOMMODATION_TYPES[style]?.pricePerNight || 300000;
+    return Math.min(baseCost * nights * rooms, nights * 400000); // Tối đa 400k/đêm
 };
 
 const calculateFoodCost = (dailyItinerary, travelers) => {
-    return dailyItinerary.length * 200000 * travelers; // 200k/người/ngày
+    // Giảm chi phí ăn uống xuống 150k/người/ngày
+    return dailyItinerary.length * 150000 * travelers;
 };
 
 const calculateSightseeingCost = (dailyItinerary, travelers) => {
+    // Giảm phí tham quan xuống 30k/địa điểm
     const totalEntryFees = dailyItinerary.reduce((sum, day) => 
-        sum + day.destinations.reduce((daySum, dest) => daySum + (dest.entryFee || 50000), 0), 0
+        sum + day.destinations.reduce((daySum, dest) => daySum + (dest.entryFee || 30000), 0), 0
     );
     return totalEntryFees * travelers;
 };
 
 const calculateLocalTransportCost = (duration, travelers, style) => {
-    return TRANSPORT_OPTIONS.local[style].costPerDay * duration * travelers;
+    // Giảm chi phí di chuyển địa phương xuống 80k/ngày
+    const dailyCost = TRANSPORT_OPTIONS.local[style]?.costPerDay || 80000;
+    return Math.min(dailyCost * duration * travelers, duration * 100000);
 };
 
 // getClimate and getSeason are imported from commonUtils
@@ -1643,25 +2066,30 @@ const findRealDestinationsForDay = async (dayNumber, destination, coord, interes
                 initPlacesService(window.hiddenMapForPlaces);
             }
             
-            // Tạo queries đa dạng hơn theo từng ngày
+            // Tạo queries dựa trên interests của user
+            const interestBasedQueries = generateInterestBasedQueries(destination, interests, dayNumber);
+            
             const daySpecificQueries = {
-                1: [
-                    `top attractions ${destination}`,
-                    `famous landmarks ${destination}`,
+                1: interestBasedQueries.primary || [
                     `tourist attractions ${destination}`,
-                    `sightseeing ${destination}`
+                    `famous landmarks ${destination}`,
+                    `must visit places ${destination}`,
+                    `top sightseeing ${destination}`,
+                    `popular destinations ${destination}`
                 ],
-                2: [
+                2: interestBasedQueries.secondary || [
                     `museums ${destination}`,
-                    `cultural sites ${destination}`,
                     `temples ${destination}`,
-                    `historical places ${destination}`
+                    `cultural sites ${destination}`,
+                    `historical places ${destination}`,
+                    `art galleries ${destination}`
                 ],
-                3: [
+                3: interestBasedQueries.tertiary || [
                     `beaches ${destination}`,
                     `parks ${destination}`,
-                    `nature ${destination}`,
-                    `viewpoints ${destination}`
+                    `nature spots ${destination}`,
+                    `scenic viewpoints ${destination}`,
+                    `outdoor activities ${destination}`
                 ]
             };
             
@@ -1682,8 +2110,36 @@ const findRealDestinationsForDay = async (dayNumber, destination, coord, interes
                                 // Lọc địa điểm chất lượng cao
                                 const hasGoodRating = place.rating >= 3.8;
                                 const hasReviews = place.user_ratings_total > 10;
-                                const notUsed = !usedDestinations.has(place.name) && !usedDestinations.has(place.place_id);
-                                return hasGoodRating && hasReviews && notUsed;
+                                
+                                // Lọc chỉ lấy địa điểm du lịch
+                                const isTourismRelated = isTourismPlace(place);
+                                // Enhanced anti-duplication with fuzzy matching
+                                const nameUsed = usedDestinations.has(place.name) || usedDestinations.has(place.name.toLowerCase());
+                                const idUsed = usedDestinations.has(place.place_id);
+                                
+                                // Enhanced fuzzy matching để tránh địa điểm tương tự
+                                const similarUsed = Array.from(usedDestinations).some(used => {
+                                    if (typeof used === 'string' && place.name) {
+                                        const placeName = place.name.toLowerCase();
+                                        const usedName = used.toLowerCase();
+                                        
+                                        // Exact match
+                                        if (placeName === usedName) return true;
+                                        
+                                        // Contains check
+                                        if (placeName.includes(usedName) || usedName.includes(placeName)) {
+                                            if (Math.min(placeName.length, usedName.length) > 5) return true;
+                                        }
+                                        
+                                        // Similarity check
+                                        const similarity = calculateSimilarity(usedName, placeName);
+                                        return similarity > 0.75; // 75% giống nhau thì coi như trùng
+                                    }
+                                    return false;
+                                });
+                                
+                                const notUsed = !nameUsed && !idUsed && !similarUsed;
+                                return hasGoodRating && hasReviews && notUsed && isTourismRelated;
                             })
                             .slice(0, 5) // Lấy nhiều hơn để có lựa chọn
                             .map(place => ({
@@ -1765,10 +2221,36 @@ const resetDestinationTracking = () => {
 const diversifyDestinations = (destinations, dayNumber) => {
     if (destinations.length === 0) return [];
 
-    // Lọc bỏ địa điểm đã dùng
-    const availableDestinations = destinations.filter(dest => 
-        !usedDestinations.has(dest.name) && !usedDestinations.has(dest.place_id)
-    );
+    console.log(`🔍 Day ${dayNumber}: Filtering ${destinations.length} destinations. Used so far:`, Array.from(usedDestinations).slice(0, 10));
+    
+    // Lọc bỏ địa điểm đã dùng với fuzzy matching
+    const availableDestinations = destinations.filter(dest => {
+        const nameUsed = usedDestinations.has(dest.name);
+        const idUsed = usedDestinations.has(dest.place_id);
+        
+        // Enhanced fuzzy matching để tránh địa điểm tương tự
+        const similarUsed = Array.from(usedDestinations).some(used => {
+            if (typeof used === 'string' && dest.name) {
+                const destName = dest.name.toLowerCase();
+                const usedName = used.toLowerCase();
+                
+                // Exact match
+                if (destName === usedName) return true;
+                
+                // Contains check
+                if (destName.includes(usedName) || usedName.includes(destName)) {
+                    if (Math.min(destName.length, usedName.length) > 5) return true;
+                }
+                
+                // Similarity check
+                const similarity = calculateSimilarity(usedName, destName);
+                return similarity > 0.75; // 75% giống nhau thì coi như trùng
+            }
+            return false;
+        });
+        
+        return !nameUsed && !idUsed && !similarUsed;
+    });
 
     if (availableDestinations.length === 0) {
         console.warn(`⚠️ No new destinations available for day ${dayNumber}, using fallback`);
@@ -1787,26 +2269,61 @@ const diversifyDestinations = (destinations, dayNumber) => {
     const selected = [];
     const targetCount = Math.min(dayNumber === 1 ? 3 : 4, availableDestinations.length);
     
-    // Ưu tiên theo ngày với nhiều category hơn
+    // Shuffle để tăng tính ngẫu nhiên
+    const shuffled = [...availableDestinations].sort(() => 0.5 - Math.random());
+    
+    // Ưu tiên theo ngày với nhiều category hơn và tránh lặp
     const dayPriorities = {
-        1: ['tourist_attraction', 'lighthouse', 'landmark', 'point_of_interest', 'establishment'], // Ngày đầu - điểm nổi tiếng
-        2: ['museum', 'temple', 'religious', 'establishment', 'point_of_interest'], // Ngày 2 - văn hóa
-        3: ['beach', 'park', 'natural', 'viewpoint', 'tourist_attraction'] // Ngày 3 - thiên nhiên
+        1: ['tourist_attraction', 'lighthouse', 'landmark', 'point_of_interest'], // Ngày đầu - điểm nổi tiếng
+        2: ['museum', 'temple', 'religious', 'establishment'], // Ngày 2 - văn hóa
+        3: ['beach', 'park', 'natural_feature', 'viewpoint'], // Ngày 3 - thiên nhiên
+        4: ['amusement_park', 'zoo', 'aquarium', 'shopping_mall'], // Ngày 4 - giải trí
+        5: ['spa', 'night_market', 'local_government_office', 'cemetery'], // Ngày 5 - đặc biệt
+        6: ['university', 'library', 'hospital', 'school'], // Ngày 6 - khác
+        7: ['gas_station', 'atm', 'bank', 'post_office'] // Ngày 7+ - tiện ích
     };
     
-    const priorities = dayPriorities[dayNumber] || ['tourist_attraction', 'point_of_interest', 'establishment', 'museum', 'beach'];
+    const priorities = dayPriorities[dayNumber] || 
+        dayPriorities[((dayNumber - 1) % 7) + 1] || // Cycle through priorities
+        ['tourist_attraction', 'point_of_interest', 'establishment'];
     
-    // Chọn theo thứ tự ưu tiên
+    // Chọn theo thứ tự ưu tiên với random để tránh lặp
     for (const priority of priorities) {
         if (selected.length >= targetCount) break;
         
         if (byCategory[priority] && byCategory[priority].length > 0) {
-            const best = byCategory[priority].sort((a, b) => (b.rating || 0) - (a.rating || 0))[0];
-            selected.push(best);
-            // Mark as used
-            usedDestinations.add(best.name);
-            if (best.place_id) usedDestinations.add(best.place_id);
-            byCategory[priority] = byCategory[priority].filter(d => d.name !== best.name);
+            // Sort by rating và random để có diversity
+            const sortedPlaces = byCategory[priority]
+                .sort((a, b) => (b.rating || 0) - (a.rating || 0))
+                .slice(0, 3); // Lấy top 3 để random
+            
+            const randomPlace = sortedPlaces[Math.floor(Math.random() * sortedPlaces.length)];
+            selected.push(randomPlace);
+            
+            // Mark as used globally - multiple identifiers
+            usedDestinations.add(randomPlace.name);
+            usedDestinations.add(randomPlace.name.toLowerCase());
+            if (randomPlace.place_id) usedDestinations.add(randomPlace.place_id);
+            if (randomPlace.address) usedDestinations.add(randomPlace.address);
+            
+            // Add variations of the name
+            const nameVariations = [
+                randomPlace.name.replace(/\s+/g, ''),
+                randomPlace.name.replace(/[^\w\s]/gi, ''),
+                randomPlace.name.split(' ')[0] // First word
+            ];
+            nameVariations.forEach(variation => {
+                if (variation && variation.length > 3) {
+                    usedDestinations.add(variation.toLowerCase());
+                }
+            });
+            
+            // Remove from all categories to prevent reuse
+            Object.keys(byCategory).forEach(cat => {
+                byCategory[cat] = byCategory[cat].filter(d => 
+                    d.name !== randomPlace.name && d.place_id !== randomPlace.place_id
+                );
+            });
         }
     }
     
@@ -1818,13 +2335,31 @@ const diversifyDestinations = (destinations, dayNumber) => {
         const best = byCategory[category].sort((a, b) => (b.rating || 0) - (a.rating || 0))[0];
         if (!selected.find(s => s.name === best.name)) {
             selected.push(best);
-            // Mark as used
+            // Mark as used globally - multiple identifiers
             usedDestinations.add(best.name);
+            usedDestinations.add(best.name.toLowerCase());
             if (best.place_id) usedDestinations.add(best.place_id);
+            if (best.address) usedDestinations.add(best.address);
+            
+            // Add variations of the name
+            const nameVariations = [
+                best.name.replace(/\s+/g, ''),
+                best.name.replace(/[^\w\s]/gi, ''),
+                best.name.split(' ')[0] // First word
+            ];
+            nameVariations.forEach(variation => {
+                if (variation && variation.length > 3) {
+                    usedDestinations.add(variation.toLowerCase());
+                }
+            });
         }
     }
 
-    return selected.slice(0, targetCount);
+    const finalSelected = selected.slice(0, targetCount);
+    console.log(`✅ Day ${dayNumber}: Selected ${finalSelected.length} destinations:`, finalSelected.map(d => d.name));
+    console.log(`📊 Total used destinations now:`, usedDestinations.size);
+    
+    return finalSelected;
 };
 
 /**
@@ -1905,6 +2440,40 @@ const generateSpecialNotes = (place) => {
 const getRandomSelection = (array, count) => {
     const shuffled = [...array].sort(() => 0.5 - Math.random());
     return shuffled.slice(0, count);
+};
+
+/**
+ * Extract district from address
+ */
+const extractDistrict = (address) => {
+    if (!address) return null;
+    
+    // Extract district/ward from Vietnamese address
+    const districtMatch = address.match(/(Quận|Huyện|Phường|Xã)\s+([^,]+)/i);
+    if (districtMatch) return districtMatch[0];
+    
+    // Extract city/province
+    const cityMatch = address.match(/([^,]+),\s*([^,]+)$/);
+    if (cityMatch) return cityMatch[2].trim();
+    
+    return address.split(',')[0]?.trim();
+};
+
+/**
+ * Create location info object
+ */
+const createLocationInfo = (place) => {
+    return {
+        name: place.name,
+        address: place.address || place.vicinity || 'Địa chỉ đang cập nhật',
+        coordinates: place.lat && place.lng ? `${place.lat}, ${place.lng}` : null,
+        district: extractDistrict(place.address || place.vicinity),
+        googleMapsUrl: place.lat && place.lng ? 
+            `https://maps.google.com/?q=${place.lat},${place.lng}` : null,
+        rating: place.rating,
+        priceLevel: place.price_level,
+        dataSource: place.dataSource
+    };
 };
 
 /**
@@ -2217,12 +2786,29 @@ const findRealRestaurantsForDay = async (destination, coord, travelStyle) => {
                     
                     if (results && results.length > 0) {
                         const restaurants = results
-                            .filter(place => 
-                                place.types?.includes('restaurant') || 
-                                place.types?.includes('food') ||
-                                place.types?.includes('meal_takeaway')
-                            )
-                            .filter(place => place.rating >= 4.0)
+                            .filter(place => {
+                                // Kiểm tra là nhà hàng
+                                const isRestaurant = place.types?.includes('restaurant') || 
+                                    place.types?.includes('food') ||
+                                    place.types?.includes('meal_takeaway');
+                                return isRestaurant;
+                            })
+                            .filter(place => {
+                                // Kiểm tra rating và chưa được sử dụng
+                                const hasGoodRating = place.rating >= 4.0;
+                                const notUsed = !usedRestaurants.has(place.name) && !usedRestaurants.has(place.place_id);
+                                
+                                // Fuzzy matching cho nhà hàng
+                                const similarUsed = Array.from(usedRestaurants).some(used => {
+                                    if (typeof used === 'string' && place.name) {
+                                        const similarity = calculateSimilarity(used.toLowerCase(), place.name.toLowerCase());
+                                        return similarity > 0.8;
+                                    }
+                                    return false;
+                                });
+                                
+                                return hasGoodRating && notUsed && !similarUsed;
+                            })
                             .slice(0, 3)
                             .map(place => ({
                                 name: place.name,
@@ -2254,65 +2840,115 @@ const findRealRestaurantsForDay = async (destination, coord, travelStyle) => {
         // Lấy dữ liệu ẩm thực từ Firebase
         const localCuisines = await getLocalCuisinesByDestination(destination);
         
+        // Shuffle restaurants để tránh lặp lại
+        const shuffledRestaurants = [...realRestaurants].sort(() => 0.5 - Math.random());
+        
         // Tạo danh sách đa dạng từ dữ liệu thực và Firebase
-        const diverseOptions = {
-            breakfast: realRestaurants[0] ? {
-                name: realRestaurants[0].name,
+        const diverseOptions = {};
+        
+        // Breakfast - ưu tiên nhà hàng chưa dùng
+        const availableForBreakfast = shuffledRestaurants.filter(r => !usedRestaurants.has(r.name));
+        if (availableForBreakfast.length > 0) {
+            const selected = availableForBreakfast[0];
+            diverseOptions.breakfast = {
+                name: selected.name,
                 specialty: 'Ẩm thực địa phương',
                 priceRange: '30,000-50,000 VNĐ',
                 estimatedCost: 40000,
-                rating: realRestaurants[0].rating || 4.2,
-                isOpen: true, // Assume open during business hours
+                rating: selected.rating || 4.2,
+                isOpen: true,
                 dataSource: 'places_search_real',
-                address: realRestaurants[0].address
-            } : {
-                name: 'Quán ăn sáng địa phương',
+                address: selected.address
+            };
+            usedRestaurants.add(selected.name);
+        } else {
+            diverseOptions.breakfast = {
+                name: `Quán ăn sáng ${destination}`,
                 specialty: 'Phở bò/gà truyền thống',
                 priceRange: '30,000-50,000 VNĐ',
                 estimatedCost: 40000,
                 rating: 4.2,
                 isOpen: true,
                 dataSource: 'firebase_fallback'
-            },
-            lunch: realRestaurants[1] ? {
-                name: realRestaurants[1].name,
+            };
+        }
+        
+        // Lunch - ưu tiên nhà hàng khác
+        const availableForLunch = shuffledRestaurants.filter(r => !usedRestaurants.has(r.name));
+        if (availableForLunch.length > 0) {
+            const selected = availableForLunch[0];
+            diverseOptions.lunch = {
+                name: selected.name,
                 specialty: localCuisines.lunch || 'Cơm địa phương',
                 priceRange: '50,000-100,000 VNĐ',
                 estimatedCost: 75000,
-                rating: realRestaurants[1].rating || 4.3,
-                isOpen: true, // Assume open during business hours
+                rating: selected.rating || 4.3,
+                isOpen: true,
                 dataSource: 'places_search_real',
-                address: realRestaurants[1].address
-            } : {
-                name: 'Cơm bình dân',
+                address: selected.address
+            };
+            usedRestaurants.add(selected.name);
+        } else {
+            diverseOptions.lunch = {
+                name: `Nhà hàng cơm ${destination}`,
                 specialty: localCuisines.lunch || 'Cơm địa phương',
                 priceRange: '50,000-100,000 VNĐ',
                 estimatedCost: 75000,
                 rating: 4.3,
                 isOpen: true,
                 dataSource: 'firebase_fallback'
-            },
-            dinner: await findRandomDinnerRestaurant(realRestaurants, destination, coord, usedRestaurants),
-            
-            // Thêm street food với địa chỉ thật từ Google Places
-            streetFood: await findRealStreetFood(destination, coord),
-            
-            // Thêm cafes với địa chỉ thật từ Google Places
-            cafes: await findRealCafes(destination, coord),
-            
-            localSpecialties: localCuisines.specialties || [
-                {
-                    name: 'Món đặc sản địa phương',
-                    specialty: 'Theo mùa',
-                    priceRange: '50,000-150,000 VNĐ',
-                    estimatedCost: 100000,
-                    rating: 4.4,
-                    dataSource: 'firebase_fallback'
-                }
-            ]
-        };
+            };
+        }
+        
+        // Dinner - ưu tiên nhà hàng khác nữa
+        const availableForDinner = shuffledRestaurants.filter(r => !usedRestaurants.has(r.name));
+        if (availableForDinner.length > 0) {
+            const selected = availableForDinner[0];
+            diverseOptions.dinner = {
+                name: selected.name,
+                specialty: localCuisines.dinner || 'Hải sản tươi sống',
+                priceRange: '100,000-200,000 VNĐ',
+                estimatedCost: 150000,
+                rating: selected.rating || 4.4,
+                isOpen: true,
+                dataSource: 'places_search_real',
+                address: selected.address
+            };
+            usedRestaurants.add(selected.name);
+        } else {
+            diverseOptions.dinner = {
+                name: `Nhà hàng hải sản ${destination}`,
+                specialty: localCuisines.dinner || 'Hải sản tươi sống',
+                priceRange: '100,000-200,000 VNĐ',
+                estimatedCost: 150000,
+                rating: 4.4,
+                isOpen: true,
+                dataSource: 'firebase_fallback'
+            };
+        }
+        
+        // Thêm street food với địa chỉ thật từ Google Places
+        diverseOptions.streetFood = await findRealStreetFood(destination, coord);
+        
+        // Thêm cafes với địa chỉ thật từ Google Places
+        diverseOptions.cafes = await findRealCafes(destination, coord);
+        
+        // Thêm local specialties
+        diverseOptions.localSpecialties = localCuisines.specialties || [
+            {
+                name: 'Món đặc sản địa phương',
+                specialty: 'Theo mùa',
+                priceRange: '50,000-150,000 VNĐ',
+                estimatedCost: 100000,
+                rating: 4.4,
+                dataSource: 'firebase_fallback'
+            }
+        ];
 
+        // Restaurants đã được mark as used trong quá trình tạo diverseOptions
+        
         console.log(`✅ Found diverse dining options from Firebase: ${Object.keys(diverseOptions).length} categories`);
+        console.log(`📊 Total used restaurants now:`, usedRestaurants.size);
         return diverseOptions;
 
     } catch (error) {
@@ -2788,24 +3424,31 @@ const generateRealDaySpecialNotes = (dayNumber, destinations, destination, weath
 /**
  * Tính chi phí thực tế cho ngày
  */
-const calculateRealDayCost = (destinations, restaurants, travelStyle) => {
+const calculateRealDayCost = (destinations, restaurants, travelStyle, dailyBudget = 500000) => {
     let totalCost = 0;
 
-    // Chi phí tham quan (từ dữ liệu thật)
+    // Chi phí tham quan - giảm xuống tối đa 30% ngân sách ngày
+    const maxSightseeingCost = dailyBudget * 0.3;
+    let sightseeingCost = 0;
     destinations.forEach(dest => {
-        totalCost += dest.entryFee || 0;
+        sightseeingCost += dest.entryFee || 20000; // Giảm từ 50k xuống 20k
     });
+    totalCost += Math.min(sightseeingCost, maxSightseeingCost);
 
-    // Chi phí ăn uống (từ dữ liệu thật)
-    if (restaurants.breakfast) totalCost += restaurants.breakfast.estimatedCost || 50000;
-    if (restaurants.lunch) totalCost += restaurants.lunch.estimatedCost || 100000;
-    if (restaurants.dinner) totalCost += restaurants.dinner.estimatedCost || 150000;
+    // Chi phí ăn uống - tối đa 50% ngân sách ngày
+    const maxFoodCost = dailyBudget * 0.5;
+    let foodCost = 0;
+    if (restaurants.breakfast) foodCost += Math.min(restaurants.breakfast.estimatedCost || 30000, 30000);
+    if (restaurants.lunch) foodCost += Math.min(restaurants.lunch.estimatedCost || 60000, 60000);
+    if (restaurants.dinner) foodCost += Math.min(restaurants.dinner.estimatedCost || 80000, 80000);
+    totalCost += Math.min(foodCost, maxFoodCost);
 
-    // Chi phí di chuyển
-    const transportCost = TRANSPORT_OPTIONS.local[travelStyle]?.costPerDay || 100000;
+    // Chi phí di chuyển - tối đa 20% ngân sách ngày
+    const maxTransportCost = dailyBudget * 0.2;
+    const transportCost = Math.min(TRANSPORT_OPTIONS.local[travelStyle]?.costPerDay || 60000, maxTransportCost);
     totalCost += transportCost;
 
-    return Math.round(totalCost);
+    return Math.round(Math.min(totalCost, dailyBudget));
 };
 
 // determineDayCategories đã được định nghĩa ở trên
@@ -3292,27 +3935,37 @@ const generateWeatherRecommendations = (weather, destination) => {
 /**
  * Tính chi phí ngày nâng cao
  */
-const calculateEnhancedDayCost = (destinations, restaurants, travelStyle, dayNumber) => {
-    const multiplier = TRAVEL_STYLES[travelStyle].multiplier;
+const calculateEnhancedDayCost = (destinations, restaurants, travelStyle, dayNumber, dailyBudget = 500000) => {
+    const multiplier = Math.min(TRAVEL_STYLES[travelStyle]?.multiplier || 1, 1.2); // Giới hạn multiplier
     
-    // Chi phí tham quan
-    const sightseeingCost = destinations.reduce((sum, dest) => sum + (dest.entryFee || 50000), 0);
+    // Chi phí tham quan - giảm xuống
+    const sightseeingCost = Math.min(
+        destinations.reduce((sum, dest) => sum + (dest.entryFee || 25000), 0),
+        dailyBudget * 0.3
+    );
     
-    // Chi phí ăn uống đa dạng
+    // Chi phí ăn uống đa dạng - tối ưu
     let foodCost = 0;
-    if (restaurants.breakfast) foodCost += restaurants.breakfast.estimatedCost || 50000;
-    if (restaurants.lunch) foodCost += restaurants.lunch.estimatedCost || 100000;
-    if (restaurants.dinner) foodCost += restaurants.dinner.estimatedCost || 150000;
-    if (restaurants.streetFood) foodCost += 30000; // Street food
-    if (restaurants.cafes) foodCost += 40000; // Cafe
+    if (restaurants.breakfast) foodCost += Math.min(restaurants.breakfast.estimatedCost || 30000, 30000);
+    if (restaurants.lunch) foodCost += Math.min(restaurants.lunch.estimatedCost || 60000, 60000);
+    if (restaurants.dinner) foodCost += Math.min(restaurants.dinner.estimatedCost || 80000, 80000);
+    if (restaurants.streetFood) foodCost += 20000; // Giảm street food
+    if (restaurants.cafes) foodCost += 25000; // Giảm cafe
+    foodCost = Math.min(foodCost, dailyBudget * 0.5);
     
-    // Chi phí di chuyển trong ngày
-    const transportCost = TRANSPORT_OPTIONS.local[travelStyle].costPerDay;
+    // Chi phí di chuyển trong ngày - giảm
+    const transportCost = Math.min(
+        TRANSPORT_OPTIONS.local[travelStyle]?.costPerDay || 60000,
+        dailyBudget * 0.15
+    );
     
-    // Chi phí mua sắm/phát sinh (tăng theo ngày)
-    const miscCost = 50000 + (dayNumber * 20000);
+    // Chi phí mua sắm/phát sinh - giảm đáng kể
+    const miscCost = Math.min(30000 + (dayNumber * 10000), dailyBudget * 0.1);
     
-    const totalCost = (sightseeingCost + foodCost + transportCost + miscCost) * multiplier;
+    const totalCost = Math.min(
+        (sightseeingCost + foodCost + transportCost + miscCost) * multiplier,
+        dailyBudget
+    );
     
     return Math.round(totalCost);
 };

@@ -9,9 +9,13 @@ import Navbar from './components/Navbar';
 import ProtectedRoute from './components/ProtectedRoute';
 
 import Home from './pages/Home';
+import About from './pages/About';
+import Contact from './pages/Contact';
+import Feedback from './pages/Feedback';
+import UserProfile from './pages/UserProfile';
 import Login from './pages/Login';
 import Register from './pages/Register';
-import ItineraryPlanner from './pages/PersonalItineraryPlanner';
+
 import MyTrips from './pages/MyTrips';
 import PersonalizedRecommendations from './components/PersonalizedRecommendations';
 import CompleteItineraryPlanner from './components/CompleteItineraryPlanner';
@@ -44,17 +48,13 @@ function App() {
                     <main className="container mx-auto px-4 py-8">
                         <Routes>
                             <Route path="/" element={<Home />} />
+                            <Route path="/about" element={<About />} />
+                            <Route path="/contact" element={<Contact />} />
+                            <Route path="/feedback" element={<Feedback />} />
                             <Route path="/risk-map" element={<RiskMapGoogle />} />
                             <Route path="/login" element={<Login />} />
                             <Route path="/register" element={<Register />} />
-                            <Route
-                                path="/planner"
-                                element={
-                                    <ProtectedRoute>
-                                        <ItineraryPlanner />
-                                    </ProtectedRoute>
-                                }
-                            />
+
                             <Route
                                 path="/mytrips"
                                 element={
@@ -76,6 +76,14 @@ function App() {
                                 element={
                                     <ProtectedRoute>
                                         <CompleteItineraryPlanner />
+                                    </ProtectedRoute>
+                                }
+                            />
+                            <Route
+                                path="/profile"
+                                element={
+                                    <ProtectedRoute>
+                                        <UserProfile />
                                     </ProtectedRoute>
                                 }
                             />
