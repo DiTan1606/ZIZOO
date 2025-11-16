@@ -29,6 +29,18 @@
     }
   </script>
 
+  <!-- Google Maps JavaScript API với Places Library -->
+  <script async defer 
+    src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDu_KSQ7R2pcoY3l2a0d9P28nKVNuQ_ZHU&libraries=places&callback=initMap">
+  </script>
+  <script>
+    // Global callback function for Google Maps API
+    window.initMap = function() {
+      console.log('✅ Google Maps API loaded with Places library');
+      window.googleMapsLoaded = true;
+    };
+  </script>
+
   <title>ZIZOO - Lên Kế Hoạch Du Lịch Thông Minh</title>
 </head>
 <body class="bg-gradient-to-br from-blue-50 to-indigo-100 min-h-screen">

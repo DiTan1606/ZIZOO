@@ -23,6 +23,12 @@ export default function Navbar() {
                 <div className="flex items-center space-x-6 text-lg">
                     <Link to="/" className="hover:text-yellow-300 transition">Trang chủ</Link>
                     <Link to="/planner" className="hover:text-yellow-300 transition">Lên kế hoạch</Link>
+                    <Link to="/complete-planner" className="hover:text-yellow-300 transition flex items-center gap-1">
+                        📋 Lịch trình hoàn chỉnh
+                    </Link>
+                    <Link to="/ai-recommendations" className="hover:text-yellow-300 transition flex items-center gap-1">
+                        🤖 AI Gợi ý
+                    </Link>
                     <Link to="/mytrips" className="hover:text-yellow-300 transition">Chuyến đi</Link>
                     {currentUser ? (
                         <>

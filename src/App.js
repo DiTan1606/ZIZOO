@@ -13,15 +13,27 @@ import Login from './pages/Login';
 import Register from './pages/Register';
 import ItineraryPlanner from './pages/PersonalItineraryPlanner';
 import MyTrips from './pages/MyTrips';
+import PersonalizedRecommendations from './components/PersonalizedRecommendations';
+import CompleteItineraryPlanner from './components/CompleteItineraryPlanner';
+import ItineraryDemo from './pages/ItineraryDemo';
 
-// IMPORT ML trainer
+// IMPORT ML trainer và AI training service
 import { retrainAllModels } from './ml/trainer';
+import { startAutoTraining } from './services/aiTrainingService';
 import RiskMapGoogle from './pages/RiskMapGoogle';
 
 function App() {
-    // Chỉ retrain ML models khi app khởi động
+    // Khởi động AI training system
     useEffect(() => {
-        retrainAllModels().catch(err => console.error('Retraining failed:', err));
+        // Retrain models khi app khởi động
+        retrainAllModels().catch(err => console.error('Initial retraining failed:', err));
+        
+        // Bắt đầu auto-training scheduler
+        startAutoTraining();
+        
+        return () => {
+            // Cleanup khi unmount (optional)
+        };
     }, []); // empty deps → chỉ chạy 1 lần
 
     return (
@@ -51,6 +63,23 @@ function App() {
                                     </ProtectedRoute>
                                 }
                             />
+                            <Route
+                                path="/ai-recommendations"
+                                element={
+                                    <ProtectedRoute>
+                                        <PersonalizedRecommendations />
+                                    </ProtectedRoute>
+                                }
+                            />
+                            <Route
+                                path="/complete-planner"
+                                element={
+                                    <ProtectedRoute>
+                                        <CompleteItineraryPlanner />
+                                    </ProtectedRoute>
+                                }
+                            />
+                            <Route path="/demo" element={<ItineraryDemo />} />
                         </Routes>
                     </main>
                     <ToastContainer

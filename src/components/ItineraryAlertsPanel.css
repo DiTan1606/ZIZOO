@@ -1,0 +1,396 @@
+/* src/components/ItineraryAlertsPanel.css */
+.alerts-panel {
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    padding: 20px;
+    margin: 20px 0;
+    border: 1px solid #e1e5e9;
+}
+
+.alerts-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    padding-bottom: 15px;
+    border-bottom: 2px solid #f8f9fa;
+}
+
+.alerts-header h3 {
+    margin: 0;
+    color: #333;
+    font-size: 1.3em;
+}
+
+.alert-count {
+    background: #dc3545;
+    color: white;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.no-alerts {
+    color: #28a745;
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.no-itinerary {
+    text-align: center;
+    padding: 40px;
+    color: #6c757d;
+}
+
+/* Active Alerts */
+.active-alerts {
+    margin-bottom: 25px;
+}
+
+.active-alerts h4 {
+    margin: 0 0 15px 0;
+    color: #495057;
+    font-size: 1.1em;
+}
+
+.alert-item {
+    border: 1px solid #e1e5e9;
+    border-left: 4px solid #dc3545;
+    border-radius: 8px;
+    margin-bottom: 15px;
+    background: white;
+    transition: all 0.3s ease;
+}
+
+.alert-item:hover {
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.alert-item.severity-high {
+    border-left-color: #dc3545;
+    background: #fff5f5;
+}
+
+.alert-item.severity-medium {
+    border-left-color: #fd7e14;
+    background: #fff8f0;
+}
+
+.alert-item.severity-low {
+    border-left-color: #0dcaf0;
+    background: #f0fcff;
+}
+
+.alert-header {
+    display: flex;
+    align-items: center;
+    padding: 15px;
+    gap: 12px;
+}
+
+.alert-icon {
+    font-size: 1.2em;
+    flex-shrink: 0;
+}
+
+.alert-title {
+    flex: 1;
+}
+
+.alert-title strong {
+    display: block;
+    color: #333;
+    margin-bottom: 4px;
+}
+
+.alert-type {
+    font-size: 12px;
+    color: #6c757d;
+    background: #f8f9fa;
+    padding: 2px 8px;
+    border-radius: 12px;
+}
+
+.alert-time {
+    font-size: 12px;
+    color: #6c757d;
+    flex-shrink: 0;
+}
+
+.alert-content {
+    padding: 0 15px 15px 15px;
+}
+
+.alert-message {
+    margin: 0 0 12px 0;
+    color: #495057;
+    line-height: 1.5;
+}
+
+.alert-location {
+    margin-bottom: 12px;
+    font-size: 14px;
+    color: #6c757d;
+}
+
+.suggested-actions {
+    background: #f8f9fa;
+    padding: 12px;
+    border-radius: 6px;
+    margin-top: 12px;
+}
+
+.suggested-actions strong {
+    display: block;
+    margin-bottom: 8px;
+    color: #495057;
+}
+
+.suggested-actions ul {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.suggested-actions li {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 0;
+    border-bottom: 1px solid #e9ecef;
+}
+
+.suggested-actions li:last-child {
+    border-bottom: none;
+}
+
+.accept-suggestion-btn {
+    background: #28a745;
+    color: white;
+    border: none;
+    border-radius: 50%;
+    width: 24px;
+    height: 24px;
+    cursor: pointer;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+}
+
+.accept-suggestion-btn:hover {
+    background: #218838;
+    transform: scale(1.1);
+}
+
+.alert-details {
+    margin-top: 12px;
+}
+
+.alert-details summary {
+    cursor: pointer;
+    color: #007bff;
+    font-size: 12px;
+}
+
+.alert-details pre {
+    background: #f8f9fa;
+    padding: 8px;
+    border-radius: 4px;
+    font-size: 10px;
+    overflow-x: auto;
+    margin-top: 8px;
+}
+
+/* History Section */
+.history-section {
+    border-top: 1px solid #e9ecef;
+    padding-top: 20px;
+}
+
+.history-toggle {
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    color: #495057;
+    padding: 8px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: all 0.2s ease;
+    width: 100%;
+}
+
+.history-toggle:hover {
+    background: #e9ecef;
+}
+
+.history-toggle:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.alerts-history {
+    margin-top: 15px;
+}
+
+.alerts-history h4 {
+    margin: 0 0 12px 0;
+    color: #495057;
+    font-size: 1em;
+}
+
+.history-list {
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.history-item {
+    border: 1px solid #e9ecef;
+    border-radius: 6px;
+    margin-bottom: 10px;
+    background: #fafafa;
+}
+
+.history-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 12px;
+    background: #f1f3f4;
+    border-bottom: 1px solid #e9ecef;
+}
+
+.history-time {
+    font-size: 12px;
+    color: #495057;
+    font-weight: 500;
+}
+
+.history-count {
+    font-size: 11px;
+    color: #6c757d;
+    background: white;
+    padding: 2px 6px;
+    border-radius: 10px;
+}
+
+.history-alerts {
+    padding: 8px 12px;
+}
+
+.history-alert {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 4px;
+    font-size: 13px;
+}
+
+.history-alert-icon {
+    font-size: 14px;
+}
+
+.history-alert-title {
+    color: #495057;
+}
+
+.history-more {
+    font-size: 11px;
+    color: #6c757d;
+    font-style: italic;
+    margin-top: 4px;
+}
+
+.no-history {
+    text-align: center;
+    color: #6c757d;
+    font-style: italic;
+    padding: 20px;
+}
+
+/* Monitoring Status */
+.monitoring-status {
+    border-top: 1px solid #e9ecef;
+    padding-top: 15px;
+    margin-top: 20px;
+}
+
+.status-indicator {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.status-indicator.active .status-dot {
+    width: 8px;
+    height: 8px;
+    background: #28a745;
+    border-radius: 50%;
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0% { opacity: 1; }
+    50% { opacity: 0.5; }
+    100% { opacity: 1; }
+}
+
+.status-indicator span:last-child {
+    font-size: 14px;
+    color: #28a745;
+    font-weight: 500;
+}
+
+.monitoring-info {
+    margin-left: 16px;
+}
+
+.monitoring-info small {
+    color: #6c757d;
+    font-size: 12px;
+    line-height: 1.4;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .alerts-panel {
+        padding: 15px;
+        margin: 15px 0;
+    }
+    
+    .alerts-header {
+        flex-direction: column;
+        gap: 10px;
+        align-items: flex-start;
+    }
+    
+    .alert-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+    }
+    
+    .alert-title {
+        order: -1;
+    }
+    
+    .suggested-actions li {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+    }
+    
+    .accept-suggestion-btn {
+        align-self: flex-end;
+    }
+    
+    .history-header {
+        flex-direction: column;
+        gap: 5px;
+        align-items: flex-start;
+    }
+}

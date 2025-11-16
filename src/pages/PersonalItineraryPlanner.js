@@ -1,6 +1,6 @@
 // src/pages/PersonalItineraryPlanner.js
-import React, { useState, useRef, useEffect } from 'react';
-import { format, addDays } from 'date-fns';
+import React, { useState, useRef } from 'react';
+import { format } from 'date-fns';
 import { useAuth } from '../context/AuthContext';
 import { toast } from 'react-toastify';
 import MapViewer from '../components/MapViewer';
@@ -10,645 +10,574 @@ import { createPersonalItinerary } from '../services/personalItineraryService';
 import {
     TRAVEL_STYLES,
     TRAVEL_GROUPS,
-    AGE_GROUPS,
-    TRAVEL_PACES,
-    ACCOMMODATION_TYPES,
-    TRANSPORTATION_OPTIONS,
     INTERESTS,
-    DIET_PREFERENCES,
-    ACTIVITY_TYPES,
     validatePersonalInput,
-    calculatePersonalSummary,
-    generateSmartSuggestions,
-    handleLocationUpdate
+    calculatePersonalSummary
 } from '../services/personalInputService';
-
-// Địa điểm phổ biến
-const POPULAR_DESTINATIONS = [
-    'Hà Nội', 'TP. Hồ Chí Minh', 'Đà Nẵng', 'Hạ Long', 'Hội An',
-    'Huế', 'Nha Trang', 'Phú Quốc', 'Sapa', 'Đà Lạt',
-    'Cần Thơ', 'Vũng Tàu', 'Quy Nhơn', 'Tam Đảo', 'Mộc Châu'
-];
 
 export default function PersonalItineraryPlanner() {
     const { currentUser } = useAuth();
     const [prefs, setPrefs] = useState({
-        // Thông tin cơ bản
-        departureDate: format(new Date(), 'yyyy-MM-dd'),
-        duration: 3,
-        departureLocation: '',
         destination: '',
+        duration: 3,
         travelers: 2,
         budget: 5000000,
-
-        // Phong cách & Nhóm
-        travelStyle: '',
-        travelGroup: '',
-        ageGroup: '',
-        travelPace: 'balanced',
-
-        // Chỗ ở & Di chuyển
-        accommodationType: 'hotel',
-        transportation: 'taxi',
-
-        // Sở thích
-        interests: [],
-        dietPreference: 'normal',
-        preferredActivities: [],
-
-        // Yêu cầu đặc biệt
-        specialRequirements: ''
+        travelStyle: 'standard',
+        interests: []
     });
 
     const [result, setResult] = useState(null);
     const [loading, setLoading] = useState(false);
+    const [generatingStep, setGeneratingStep] = useState('');
     const [mapReady, setMapReady] = useState(false);
-    const [suggestions, setSuggestions] = useState([]);
-    const [locationInput, setLocationInput] = useState('');
 
     const mapRef = useRef(null);
     const mapInitialized = useRef(false);
 
     // Tính toán summary
-    const tripSummary = calculatePersonalSummary(prefs);
-    const smartSuggestions = generateSmartSuggestions(prefs);
+    const tripSummary = calculatePersonalSummary({
+        ...prefs,
+        departureDate: format(new Date(), 'yyyy-MM-dd')
+    });
 
-    // Xử lý thêm địa điểm
-    const handleAddLocation = async () => {
-        if (!locationInput.trim()) {
-            toast.warning('📍 Vui lòng nhập địa điểm!');
-            return;
-        }
-
-        try {
-            const result = await handleLocationUpdate('add', locationInput, []);
-            setPrefs(prev => ({ ...prev, destination: locationInput }));
-            setLocationInput('');
-            toast.success(result.message);
-        } catch (err) {
-            toast.error(err.message);
-        }
-    };
-
+    // Khởi tạo map
     const handleMapReady = () => {
         if (mapInitialized.current) return;
         mapInitialized.current = true;
         setMapReady(true);
-        toast.success('🗺️ Bản đồ đã sẵn sàng!');
     };
 
     // Tạo lịch trình
-    // Trong handleGenerate function, thêm:
     const handleGenerate = async () => {
-        const errors = validatePersonalInput(prefs, currentUser);
-        if (errors.length > 0) {
-            errors.forEach(error => toast.error(error));
+        if (!currentUser) {
+            toast.error('🔐 Vui lòng đăng nhập để tạo lịch trình!');
             return;
         }
 
-        if (loading || !mapReady) {
-            toast.info('🗺️ Đang chờ bản đồ khởi tạo...');
+        if (!prefs.destination.trim()) {
+            toast.error('🎯 Vui lòng nhập điểm đến!');
             return;
         }
+
+        if (loading) return;
 
         setLoading(true);
-        try {
-            // XÓA dòng kiểm tra Places Service Status
-            // const status = getPlacesServiceStatus(); // DÒNG NÀY GÂY LỖI
+        setGeneratingStep('Đang khởi tạo...');
 
+        try {
             console.log('🔧 Bắt đầu tạo lịch trình...');
 
+            setGeneratingStep('Đang tìm địa điểm phù hợp...');
             const itinerary = await createPersonalItinerary(
                 prefs,
                 currentUser.uid,
                 mapRef.current?.map
             );
+
             setResult(itinerary);
-            toast.success('🎉 Lịch trình cá nhân đã được tạo thành công!');
+            toast.success('🎉 Lịch trình đã sẵn sàng!');
         } catch (err) {
             console.error('Lỗi tạo itinerary:', err);
-            toast.error('❌ Lỗi tạo lịch trình! Vui lòng thử lại.');
+            toast.error(`❌ ${err.message || 'Lỗi tạo lịch trình'}`);
         } finally {
             setLoading(false);
+            setGeneratingStep('');
         }
     };
+
+    // Xử lý thay đổi interests
+    const handleInterestChange = (interestValue) => {
+        setPrefs(prev => ({
+            ...prev,
+            interests: prev.interests.includes(interestValue)
+                ? prev.interests.filter(i => i !== interestValue)
+                : [...prev.interests, interestValue]
+        }));
+    };
+
+    // Định dạng tiền
+    const formatMoney = (amount) => {
+        return new Intl.NumberFormat('vi-VN').format(amount) + '₫';
+    };
+
     return (
-        <div className="max-w-7xl mx-auto p-4">
+        <div className="max-w-4xl mx-auto p-4">
             {/* Header */}
             <div className="text-center mb-8">
-                <h1 className="text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-purple-700 mb-4">
-                    🗺️ Lịch Trình Du Lịch Cá Nhân
+                <h1 className="text-3xl font-bold text-gray-800 mb-3">
+                    🗺️ Tạo Lịch Trình Du Lịch
                 </h1>
-                <p className="text-lg text-gray-600 max-w-2xl mx-auto">
-                    Tạo lịch trình du lịch hoàn toàn cá nhân hóa theo sở thích và nhu cầu của bạn
+                <p className="text-gray-600">
+                    Chỉ cần nhập điểm đến - chúng tôi lo phần còn lại!
                 </p>
             </div>
 
-            {/* Smart Suggestions */}
-            {smartSuggestions.length > 0 && (
-                <div className="bg-blue-50 border border-blue-200 p-4 rounded-lg mb-6">
-                    <h3 className="font-semibold text-blue-700 mb-2">💡 Gợi ý thông minh:</h3>
-                    <div className="flex flex-wrap gap-2">
-                        {smartSuggestions.map((suggestion, index) => (
-                            <span key={index} className="bg-white text-blue-600 px-3 py-1 rounded-full text-sm border border-blue-200">
-                                {suggestion}
-                            </span>
-                        ))}
-                    </div>
+            {/* Form */}
+            <div className="bg-white rounded-2xl shadow-lg p-6 mb-8">
+
+                {/* ĐIỂM ĐẾN */}
+                <div className="mb-6">
+                    <label className="block text-lg font-semibold text-gray-800 mb-3">
+                        🎯 Bạn muốn đi đâu?
+                    </label>
+                    <input
+                        type="text"
+                        value={prefs.destination}
+                        onChange={e => setPrefs({ ...prefs, destination: e.target.value })}
+                        placeholder="Nhập tỉnh/thành phố (ví dụ: Đà Lạt, Nha Trang, Phú Quốc...)"
+                        className="w-full p-4 border-2 border-blue-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-lg"
+                    />
+                    <p className="text-sm text-gray-500 mt-2">
+                        💡 Gợi ý: Hà Nội, Đà Nẵng, Hội An, Đà Lạt, Phú Quốc, Nha Trang...
+                    </p>
                 </div>
-            )}
 
-            {/* Main Form */}
-            <div className="bg-white rounded-xl shadow-lg p-6 mb-8">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-
-                    {/* THÔNG TIN CƠ BẢN */}
-                    <div className="lg:col-span-3 bg-gradient-to-r from-blue-50 to-purple-50 p-4 rounded-xl border-2 border-blue-200">
-                        <h3 className="text-lg font-bold text-blue-700 mb-4 flex items-center gap-2">
-                            📋 Thông Tin Cơ Bản
-                        </h3>
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                            {/* Ngày khởi hành */}
-                            <div>
-                                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                                    🗓️ Ngày Khởi Hành
-                                </label>
-                                <input
-                                    type="date"
-                                    value={prefs.departureDate}
-                                    onChange={e => setPrefs({ ...prefs, departureDate: e.target.value })}
-                                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                                    min={format(new Date(), 'yyyy-MM-dd')}
-                                />
-                            </div>
-
-                            {/* Số ngày */}
-                            <div>
-                                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                                    ⏱️ Số Ngày
-                                </label>
-                                <input
-                                    type="number"
-                                    value={prefs.duration}
-                                    onChange={e => setPrefs({ ...prefs, duration: Math.max(1, +e.target.value) })}
-                                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                                    min="1"
-                                    max="30"
-                                />
-                            </div>
-
-                            {/* Số người */}
-                            <div>
-                                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                                    👥 Số Người
-                                </label>
-                                <input
-                                    type="number"
-                                    value={prefs.travelers}
-                                    onChange={e => setPrefs({ ...prefs, travelers: Math.max(1, +e.target.value) })}
-                                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                                    min="1"
-                                    max="20"
-                                />
-                            </div>
-
-                            {/* Ngân sách */}
-                            <div>
-                                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                                    💰 Ngân Sách (VNĐ)
-                                </label>
-                                <input
-                                    type="number"
-                                    value={prefs.budget}
-                                    onChange={e => setPrefs({ ...prefs, budget: +e.target.value })}
-                                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                                    min="500000"
-                                    step="100000"
-                                />
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* ĐỊA ĐIỂM */}
-                    <div className="lg:col-span-3">
-                        <h3 className="text-lg font-bold text-gray-700 mb-4 flex items-center gap-2">
-                            📍 Địa Điểm
-                        </h3>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            {/* Điểm xuất phát */}
-                            <div className="bg-green-50 p-4 rounded-xl border-2 border-green-200">
-                                <label className="block text-sm font-semibold text-gray-700 mb-3">
-                                    🚀 Điểm Xuất Phát
-                                </label>
-                                <select
-                                    value={prefs.departureLocation}
-                                    onChange={e => setPrefs({ ...prefs, departureLocation: e.target.value })}
-                                    className="w-full p-3 border border-green-300 rounded-lg focus:ring-2 focus:ring-green-500"
-                                >
-                                    <option value="">Chọn điểm xuất phát</option>
-                                    {POPULAR_DESTINATIONS.map(dest => (
-                                        <option key={dest} value={dest}>{dest}</option>
-                                    ))}
-                                </select>
-                            </div>
-
-                            {/* Điểm đến */}
-                            <div className="bg-orange-50 p-4 rounded-xl border-2 border-orange-200">
-                                <label className="block text-sm font-semibold text-gray-700 mb-3">
-                                    🎯 Điểm Đến
-                                </label>
-                                <div className="flex gap-2">
-                                    <select
-                                        value={prefs.destination}
-                                        onChange={e => setPrefs({ ...prefs, destination: e.target.value })}
-                                        className="flex-1 p-3 border border-orange-300 rounded-lg focus:ring-2 focus:ring-orange-500"
-                                    >
-                                        <option value="">Chọn điểm đến</option>
-                                        {POPULAR_DESTINATIONS.map(dest => (
-                                            <option key={dest} value={dest}>{dest}</option>
-                                        ))}
-                                    </select>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* PHONG CÁCH & NHÓM */}
-                    <div className="lg:col-span-3 bg-gradient-to-r from-purple-50 to-pink-50 p-4 rounded-xl border-2 border-purple-200">
-                        <h3 className="text-lg font-bold text-purple-700 mb-4 flex items-center gap-2">
-                            👨‍👩‍👧‍👦 Phong Cách & Nhóm
-                        </h3>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            {/* Phong cách du lịch */}
-                            <div>
-                                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                                    💼 Phong Cách
-                                </label>
-                                <select
-                                    value={prefs.travelStyle}
-                                    onChange={e => setPrefs({ ...prefs, travelStyle: e.target.value })}
-                                    className="w-full p-3 border border-purple-300 rounded-lg focus:ring-2 focus:ring-purple-500"
-                                >
-                                    <option value="">Chọn phong cách</option>
-                                    {TRAVEL_STYLES.map(style => (
-                                        <option key={style.value} value={style.value}>
-                                            {style.label}
-                                        </option>
-                                    ))}
-                                </select>
-                            </div>
-
-                            {/* Nhóm du lịch */}
-                            <div>
-                                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                                    👥 Nhóm Du Lịch
-                                </label>
-                                <select
-                                    value={prefs.travelGroup}
-                                    onChange={e => setPrefs({ ...prefs, travelGroup: e.target.value })}
-                                    className="w-full p-3 border border-purple-300 rounded-lg focus:ring-2 focus:ring-purple-500"
-                                >
-                                    <option value="">Chọn nhóm</option>
-                                    {TRAVEL_GROUPS.map(group => (
-                                        <option key={group.value} value={group.value}>
-                                            {group.label}
-                                        </option>
-                                    ))}
-                                </select>
-                            </div>
-
-                            {/* Độ tuổi chính */}
-                            <div>
-                                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                                    🎂 Độ Tuổi Chính
-                                </label>
-                                <select
-                                    value={prefs.ageGroup}
-                                    onChange={e => setPrefs({ ...prefs, ageGroup: e.target.value })}
-                                    className="w-full p-3 border border-purple-300 rounded-lg focus:ring-2 focus:ring-purple-500"
-                                >
-                                    <option value="">Chọn độ tuổi</option>
-                                    {AGE_GROUPS.map(age => (
-                                        <option key={age.value} value={age.value}>
-                                            {age.label}
-                                        </option>
-                                    ))}
-                                </select>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* TỐC ĐỘ & CHỖ Ở */}
-                    <div className="md:col-span-2">
-                        <h3 className="text-lg font-bold text-gray-700 mb-4 flex items-center gap-2">
-                            ⚡ Tốc Độ & Chỗ Ở
-                        </h3>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {/* Tốc độ du lịch */}
-                            <div className="bg-yellow-50 p-4 rounded-xl border-2 border-yellow-200">
-                                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                                    🚶‍♂️ Tốc Độ
-                                </label>
-                                <select
-                                    value={prefs.travelPace}
-                                    onChange={e => setPrefs({ ...prefs, travelPace: e.target.value })}
-                                    className="w-full p-3 border border-yellow-300 rounded-lg focus:ring-2 focus:ring-yellow-500"
-                                >
-                                    {TRAVEL_PACES.map(pace => (
-                                        <option key={pace.value} value={pace.value}>
-                                            {pace.label}
-                                        </option>
-                                    ))}
-                                </select>
-                                <p className="text-xs text-gray-600 mt-1">
-                                    {TRAVEL_PACES.find(p => p.value === prefs.travelPace)?.description}
-                                </p>
-                            </div>
-
-                            {/* Loại chỗ ở */}
-                            <div className="bg-teal-50 p-4 rounded-xl border-2 border-teal-200">
-                                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                                    🏨 Chỗ Ở
-                                </label>
-                                <select
-                                    value={prefs.accommodationType}
-                                    onChange={e => setPrefs({ ...prefs, accommodationType: e.target.value })}
-                                    className="w-full p-3 border border-teal-300 rounded-lg focus:ring-2 focus:ring-teal-500"
-                                >
-                                    {ACCOMMODATION_TYPES.map(acc => (
-                                        <option key={acc.value} value={acc.value}>
-                                            {acc.label}
-                                        </option>
-                                    ))}
-                                </select>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* PHƯƠNG TIỆN */}
-                    <div className="bg-blue-50 p-4 rounded-xl border-2 border-blue-200">
-                        <h3 className="text-lg font-bold text-gray-700 mb-4 flex items-center gap-2">
-                            🚗 Di Chuyển
-                        </h3>
+                {/* 4 THÔNG TIN CƠ BẢN */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                    {/* Số ngày */}
+                    <div>
                         <label className="block text-sm font-semibold text-gray-700 mb-2">
-                            🚕 Phương Tiện
+                            ⏱️ Số ngày
                         </label>
                         <select
-                            value={prefs.transportation}
-                            onChange={e => setPrefs({ ...prefs, transportation: e.target.value })}
-                            className="w-full p-3 border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                            value={prefs.duration}
+                            onChange={e => setPrefs({ ...prefs, duration: +e.target.value })}
+                            className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                         >
-                            {TRANSPORTATION_OPTIONS.map(transport => (
-                                <option key={transport.value} value={transport.value}>
-                                    {transport.label}
+                            <option value={2}>2 ngày 1 đêm</option>
+                            <option value={3}>3 ngày 2 đêm</option>
+                            <option value={4}>4 ngày 3 đêm</option>
+                            <option value={5}>5 ngày 4 đêm</option>
+                            <option value={7}>7 ngày 6 đêm</option>
+                        </select>
+                    </div>
+
+                    {/* Số người */}
+                    <div>
+                        <label className="block text-sm font-semibold text-gray-700 mb-2">
+                            👥 Số người
+                        </label>
+                        <select
+                            value={prefs.travelers}
+                            onChange={e => setPrefs({ ...prefs, travelers: +e.target.value })}
+                            className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                        >
+                            <option value={1}>1 người</option>
+                            <option value={2}>2 người</option>
+                            <option value={3}>3 người</option>
+                            <option value={4}>4 người</option>
+                            <option value={5}>5 người</option>
+                            <option value={6}>6 người</option>
+                            <option value={8}>8 người</option>
+                            <option value={10}>10 người</option>
+                        </select>
+                    </div>
+
+                    {/* Ngân sách - NHẬP TÙY Ý */}
+                    <div>
+                        <label className="block text-sm font-semibold text-gray-700 mb-2">
+                            💰 Ngân sách (VNĐ)
+                        </label>
+                        <input
+                            type="number"
+                            value={prefs.budget}
+                            onChange={e => setPrefs({ ...prefs, budget: +e.target.value })}
+                            placeholder="Nhập số tiền..."
+                            className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                            min="100000"
+                            step="100000"
+                        />
+                        <div className="flex flex-wrap gap-1 mt-2">
+                            {[1000000, 2000000, 5000000, 10000000, 20000000].map(amount => (
+                                <button
+                                    key={amount}
+                                    type="button"
+                                    onClick={() => setPrefs({ ...prefs, budget: amount })}
+                                    className={`px-2 py-1 text-xs rounded border ${
+                                        prefs.budget === amount
+                                            ? 'bg-blue-500 text-white border-blue-500'
+                                            : 'bg-gray-100 text-gray-700 border-gray-300'
+                                    }`}
+                                >
+                                    {formatMoney(amount)}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* Phong cách */}
+                    <div>
+                        <label className="block text-sm font-semibold text-gray-700 mb-2">
+                            💼 Phong cách
+                        </label>
+                        <select
+                            value={prefs.travelStyle}
+                            onChange={e => setPrefs({ ...prefs, travelStyle: e.target.value })}
+                            className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                        >
+                            {TRAVEL_STYLES.map(style => (
+                                <option key={style.value} value={style.value}>
+                                    {style.label}
                                 </option>
                             ))}
                         </select>
-                        <p className="text-xs text-gray-600 mt-1">
-                            {TRANSPORTATION_OPTIONS.find(t => t.value === prefs.transportation)?.description}
+                    </div>
+                </div>
+
+                {/* SỞ THÍCH */}
+                <div className="mb-6">
+                    <label className="block text-sm font-semibold text-gray-700 mb-3">
+                        🎯 Sở thích của bạn (tuỳ chọn)
+                    </label>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                        {INTERESTS.map(interest => (
+                            <label
+                                key={interest.value}
+                                className={`flex items-center gap-2 cursor-pointer p-2 rounded-lg border transition-all text-sm ${
+                                    prefs.interests.includes(interest.value)
+                                        ? 'bg-blue-50 border-blue-500 text-blue-700'
+                                        : 'bg-gray-50 border-gray-200 text-gray-600 hover:border-blue-300'
+                                }`}
+                            >
+                                <input
+                                    type="checkbox"
+                                    checked={prefs.interests.includes(interest.value)}
+                                    onChange={() => handleInterestChange(interest.value)}
+                                    className="w-3 h-3 text-blue-600 rounded focus:ring-blue-500"
+                                />
+                                <span className="flex items-center gap-1">
+                                    <span>{interest.icon}</span>
+                                    <span>{interest.label}</span>
+                                </span>
+                            </label>
+                        ))}
+                    </div>
+                </div>
+
+                {/* Thông tin ngân sách */}
+                <div className="bg-blue-50 p-4 rounded-lg mb-4">
+                    <div className="text-center">
+                        <p className="text-lg font-semibold text-blue-800">
+                            💰 Ngân sách của bạn: {formatMoney(prefs.budget)}
+                        </p>
+                        <p className="text-sm text-blue-600">
+                            {prefs.travelers} người × {prefs.duration} ngày = {formatMoney(prefs.budget / prefs.travelers)}/người
                         </p>
                     </div>
+                </div>
 
-                    {/* SỞ THÍCH & INTERESTS */}
-                    <div className="lg:col-span-3 bg-gradient-to-r from-green-50 to-emerald-50 p-4 rounded-xl border-2 border-green-200">
-                        <h3 className="text-lg font-bold text-green-700 mb-4 flex items-center gap-2">
-                            🎯 Sở Thích Cá Nhân
-                        </h3>
-
-                        {/* Interests */}
-                        <div className="mb-6">
-                            <label className="block text-sm font-semibold text-gray-700 mb-3">
-                                ❤️ Sở Thích Của Bạn
-                            </label>
-                            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-                                {INTERESTS.map(interest => (
-                                    <label
-                                        key={interest.value}
-                                        className={`flex items-center gap-2 cursor-pointer p-3 rounded-lg border-2 transition-all ${
-                                            prefs.interests.includes(interest.value)
-                                                ? 'bg-white border-green-500 shadow-md'
-                                                : 'bg-gray-50 border-gray-200 hover:border-green-300'
-                                        }`}
-                                    >
-                                        <input
-                                            type="checkbox"
-                                            checked={prefs.interests.includes(interest.value)}
-                                            onChange={e => {
-                                                const updated = e.target.checked
-                                                    ? [...prefs.interests, interest.value]
-                                                    : prefs.interests.filter(i => i !== interest.value);
-                                                setPrefs({ ...prefs, interests: updated });
-                                            }}
-                                            className="w-4 h-4 text-green-600 rounded focus:ring-green-500"
-                                        />
-                                        <span className="text-sm font-medium flex items-center gap-1">
-                                            <span>{interest.icon}</span>
-                                            <span>{interest.label}</span>
-                                        </span>
-                                    </label>
-                                ))}
-                            </div>
+                {/* Nút tạo */}
+                <button
+                    onClick={handleGenerate}
+                    disabled={loading || !prefs.destination.trim()}
+                    className="w-full bg-gradient-to-r from-green-500 to-blue-600 text-white py-4 rounded-xl font-bold text-lg shadow-lg hover:shadow-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                    {loading ? (
+                        <div className="flex items-center justify-center gap-2">
+                            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                            <span>{generatingStep || 'Đang tạo lịch trình...'}</span>
                         </div>
-
-                        {/* Diet Preference */}
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <div>
-                                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                                    🍽️ Chế Độ Ăn
-                                </label>
-                                <select
-                                    value={prefs.dietPreference}
-                                    onChange={e => setPrefs({ ...prefs, dietPreference: e.target.value })}
-                                    className="w-full p-3 border border-green-300 rounded-lg focus:ring-2 focus:ring-green-500"
-                                >
-                                    {DIET_PREFERENCES.map(diet => (
-                                        <option key={diet.value} value={diet.value}>
-                                            {diet.label}
-                                        </option>
-                                    ))}
-                                </select>
-                            </div>
-
-                            {/* Activities */}
-                            <div>
-                                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                                    🎪 Hoạt Động Ưa Thích
-                                </label>
-                                <select
-                                    value={prefs.preferredActivities}
-                                    onChange={e => setPrefs({ ...prefs, preferredActivities: e.target.value })}
-                                    className="w-full p-3 border border-green-300 rounded-lg focus:ring-2 focus:ring-green-500"
-                                    multiple
-                                    size="3"
-                                >
-                                    {ACTIVITY_TYPES.map(activity => (
-                                        <option key={activity.value} value={activity.value}>
-                                            {activity.icon} {activity.label}
-                                        </option>
-                                    ))}
-                                </select>
-                                <p className="text-xs text-gray-600 mt-1">
-                                    Giữ Ctrl để chọn nhiều
-                                </p>
-                            </div>
+                    ) : (
+                        <div className="flex items-center justify-center gap-2">
+                            <span className="text-xl">🚀</span>
+                            <span>TẠO LỊCH TRÌNH NGAY</span>
                         </div>
-                    </div>
+                    )}
+                </button>
 
-                    {/* YÊU CẦU ĐẶC BIỆT */}
-                    <div className="lg:col-span-3 bg-orange-50 p-4 rounded-xl border-2 border-orange-200">
-                        <h3 className="text-lg font-bold text-orange-700 mb-4 flex items-center gap-2">
-                            💫 Yêu Cầu Đặc Biệt
-                        </h3>
-                        <textarea
-                            value={prefs.specialRequirements}
-                            onChange={e => setPrefs({ ...prefs, specialRequirements: e.target.value })}
-                            placeholder="Ví dụ: Có trẻ nhỏ cần khu vui chơi, ăn chay, dị ứng hải sản, cần hướng dẫn viên, yêu cầu đặc biệt về chỗ ở..."
-                            rows="3"
-                            className="w-full p-3 border border-orange-300 rounded-lg focus:ring-2 focus:ring-orange-500 resize-none"
-                        />
-                    </div>
-
-                    {/* SUMMARY & GENERATE BUTTON */}
-                    <div className="lg:col-span-3">
-                        {/* Trip Summary */}
-                        <div className="bg-gradient-to-br from-indigo-500 to-purple-600 text-white p-6 rounded-xl shadow-lg mb-6">
-                            <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
-                                📊 Tóm Tắt Chuyến Đi
-                            </h3>
-                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                                <div className="text-center">
-                                    <p className="opacity-90">📅 Ngày đi</p>
-                                    <p className="font-bold">{tripSummary.startDate}</p>
-                                </div>
-                                <div className="text-center">
-                                    <p className="opacity-90">🏁 Ngày về</p>
-                                    <p className="font-bold">{tripSummary.endDate}</p>
-                                </div>
-                                <div className="text-center">
-                                    <p className="opacity-90">⏱️ Tổng ngày</p>
-                                    <p className="font-bold">{tripSummary.totalDays} ngày</p>
-                                </div>
-                                <div className="text-center">
-                                    <p className="opacity-90">👥 Số người</p>
-                                    <p className="font-bold">{tripSummary.totalTravelers} người</p>
-                                </div>
-                                <div className="text-center">
-                                    <p className="opacity-90">💰 Tổng ngân sách</p>
-                                    <p className="font-bold">{tripSummary.adjustedBudget}₫</p>
-                                </div>
-                                <div className="text-center">
-                                    <p className="opacity-90">📆 Chi phí/ngày</p>
-                                    <p className="font-bold">{tripSummary.budgetPerDay}₫</p>
-                                </div>
-                                <div className="text-center">
-                                    <p className="opacity-90">👤 Chi phí/người</p>
-                                    <p className="font-bold">{tripSummary.budgetPerPerson}₫</p>
-                                </div>
-                                <div className="text-center">
-                                    <p className="opacity-90">🎯 Chi phí/người/ngày</p>
-                                    <p className="font-bold">{tripSummary.budgetPerPersonPerDay}₫</p>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Generate Button */}
-                        <button
-                            onClick={handleGenerate}
-                            disabled={loading || !mapReady || !currentUser}
-                            className="w-full bg-gradient-to-r from-green-600 via-blue-600 to-purple-600 text-white py-6 rounded-2xl font-bold text-xl shadow-2xl hover:scale-105 transition transform disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 relative overflow-hidden"
-                        >
-                            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -skew-x-12 transform translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000"></div>
-                            <div className="relative z-10 flex items-center justify-center gap-3">
-                                {loading ? (
-                                    <>
-                                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white"></div>
-                                        <span>Đang tạo lịch trình cá nhân...</span>
-                                    </>
-                                ) : (
-                                    <>
-                                        <span className="text-2xl">🚀</span>
-                                        <span>TẠO LỊCH TRÌNH CÁ NHÂN HÓA</span>
-                                    </>
-                                )}
-                            </div>
-                        </button>
-
-                        {/* Error Messages */}
-                        <div className="mt-3 text-center space-y-1">
-                            {!currentUser && (
-                                <p className="text-red-600 font-semibold animate-pulse">
-                                    🔐 Vui lòng đăng nhập để tạo lịch trình!
-                                </p>
-                            )}
-                            {currentUser && (
-                                <p className="text-green-600 font-semibold">
-                                    ✅ Sẵn sàng tạo lịch trình cá nhân!
-                                </p>
-                            )}
-                        </div>
-                    </div>
+                {/* Thông báo trạng thái */}
+                <div className="mt-3 text-center">
+                    {!currentUser ? (
+                        <p className="text-red-600 font-semibold">
+                            🔐 Vui lòng đăng nhập để tạo lịch trình!
+                        </p>
+                    ) : !prefs.destination.trim() ? (
+                        <p className="text-orange-600">
+                            🎯 Hãy nhập điểm đến để bắt đầu
+                        </p>
+                    ) : (
+                        <p className="text-green-600 font-semibold">
+                            ✅ Sẵn sàng tạo lịch trình cho {prefs.destination}!
+                        </p>
+                    )}
                 </div>
             </div>
 
             {/* Map */}
-            <div className="bg-white rounded-2xl shadow-2xl overflow-hidden border-4 border-blue-300 mb-8">
-                <div className="bg-gradient-to-r from-blue-600 to-purple-700 text-white p-4">
-                    <h3 className="text-xl font-bold flex items-center gap-2">
-                        <span>🗺️</span>
-                        Bản Đồ Hành Trình
+            <div className="bg-white rounded-2xl shadow-lg overflow-hidden mb-8">
+                <div className="bg-blue-600 text-white p-4">
+                    <h3 className="text-lg font-bold">
+                        🗺️ Bản đồ {prefs.destination || 'điểm đến'}
                     </h3>
                 </div>
-                <div className="h-96 lg:h-[500px]">
+                <div className="h-64 md:h-80">
                     <MapViewer
                         ref={mapRef}
                         points={[]}
                         showRoute={false}
                         onMapReady={handleMapReady}
                         center={{ lat: 16.0471, lng: 108.2258 }}
-                        key="personal-itinerary-map"
                     />
                 </div>
             </div>
 
-            {/* Results Display */}
+            {/* Kết quả */}
             {result && (
-                <div className="space-y-8 animate-fade-in">
-                    {/* Result header */}
-                    <div className="text-center bg-gradient-to-r from-green-500 to-emerald-600 text-white py-8 rounded-2xl shadow-lg">
-                        <h2 className="text-3xl font-bold mb-2">🎉 Lịch Trình Cá Nhân Đã Sẵn Sàng!</h2>
-                        <p className="text-lg opacity-90">
-                            {result.summary.departure} → {result.summary.destination} • {result.summary.duration} ngày
+                <div className="space-y-6 animate-fade-in">
+                    {/* Header kết quả */}
+                    <div className="text-center bg-gradient-to-r from-green-400 to-blue-500 text-white py-6 rounded-2xl shadow-lg">
+                        <h2 className="text-2xl font-bold mb-2">🎉 Lịch Trình Đã Sẵn Sàng!</h2>
+                        <p className="text-lg">
+                            {result.summary.destination} • {result.summary.duration} ngày • {result.summary.travelers} người
+                        </p>
+                        <p className="text-sm opacity-90 mt-1">
+                            {result.summary.style} • {result.summary.totalPlaces} địa điểm
                         </p>
                     </div>
 
-                    {/* Display itinerary details here */}
-                    {/* ... (similar to previous result display) */}
-                </div>
-            )}
-            {result && (
-                <div className="space-y-8 animate-fade-in">
-                    {/* Photography Highlights */}
-                    {result.summary.photographySpots > 0 && (
-                        <div className="bg-gradient-to-r from-purple-500 to-pink-600 text-white p-6 rounded-2xl shadow-lg">
-                            <div className="flex items-center justify-between">
-                                <div>
-                                    <h3 className="text-2xl font-bold mb-2 flex items-center gap-2">
-                                        📸 Điểm Chụp Ảnh Tuyệt Đẹp
-                                    </h3>
-                                    <p className="text-lg opacity-90">
-                                        Đã tìm thấy {result.summary.photographySpots} địa điểm hoàn hảo cho chụp ảnh
-                                    </p>
+                    {/* Chi phí */}
+                    {result.costBreakdown && (
+                        <div className="bg-gradient-to-r from-green-50 to-blue-50 border border-green-200 p-6 rounded-xl">
+                            <h3 className="font-bold text-green-800 mb-4 flex items-center gap-2 text-lg">
+                                💰 Tổng chi phí ước tính
+                            </h3>
+                            <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-center">
+                                <div className="bg-white p-3 rounded-lg shadow-sm">
+                                    <div className="text-xl font-bold text-green-600">
+                                        {formatMoney(result.costBreakdown.total)}
+                                    </div>
+                                    <div className="text-xs text-green-700 font-semibold">Tổng cộng</div>
                                 </div>
-                                <div className="text-4xl">🌟</div>
+                                <div className="bg-white p-3 rounded-lg shadow-sm">
+                                    <div className="text-lg font-bold text-blue-600">
+                                        {formatMoney(result.costBreakdown.perPerson)}
+                                    </div>
+                                    <div className="text-xs text-blue-700">/ người</div>
+                                </div>
+                                <div className="bg-white p-3 rounded-lg shadow-sm">
+                                    <div className="text-lg font-bold text-orange-600">
+                                        {formatMoney(Math.round(result.costBreakdown.total / result.summary.duration))}
+                                    </div>
+                                    <div className="text-xs text-orange-700">/ ngày</div>
+                                </div>
+                                <div className="bg-white p-3 rounded-lg shadow-sm">
+                                    <div className="text-lg font-bold text-purple-600">
+                                        {formatMoney(result.costBreakdown.accommodations)}
+                                    </div>
+                                    <div className="text-xs text-purple-700">Chỗ ở</div>
+                                </div>
+                                <div className={`p-3 rounded-lg shadow-sm ${
+                                    result.costBreakdown.withinBudget ? 'bg-green-100' : 'bg-red-100'
+                                }`}>
+                                    <div className={`text-lg font-bold ${
+                                        result.costBreakdown.withinBudget ? 'text-green-600' : 'text-red-600'
+                                    }`}>
+                                        {result.costBreakdown.withinBudget ? '✅ Đủ ngân sách' : '⚠️ Vượt ngân sách'}
+                                    </div>
+                                    <div className="text-xs text-gray-600">
+                                        {formatMoney(prefs.budget)} → {formatMoney(result.costBreakdown.total)}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Lịch trình hàng ngày */}
+                    {result.dailyPlan && result.dailyPlan.map(dayPlan => (
+                        <div key={dayPlan.day} className="bg-white rounded-xl shadow-md border border-gray-200 overflow-hidden">
+                            <div className="bg-gradient-to-r from-blue-500 to-blue-600 text-white p-4">
+                                <h3 className="text-lg font-bold">
+                                    📅 Ngày {dayPlan.day} - {dayPlan.date}
+                                </h3>
+                                {dayPlan.theme && (
+                                    <p className="text-blue-100 text-sm mt-1">{dayPlan.theme}</p>
+                                )}
                             </div>
 
-                            {/* Photography Tips */}
-                            {result.photographyTips.length > 0 && (
-                                <div className="mt-4 bg-white/20 p-4 rounded-lg">
-                                    <h4 className="font-bold mb-2">💡 Mẹo chụp ảnh:</h4>
-                                    <ul className="list-disc list-inside space-y-1 text-sm">
-                                        {result.photographyTips.map((tip, index) => (
-                                            <li key={index}>{tip}</li>
+                            <div className="p-4">
+                                {/* Địa điểm */}
+                                <div className="mb-6">
+                                    <h4 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
+                                        📍 Địa điểm tham quan
+                                        <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full">
+                                            {dayPlan.places.length} địa điểm
+                                        </span>
+                                    </h4>
+                                    <div className="space-y-3">
+                                        {dayPlan.places.map((place, index) => (
+                                            <div key={index} className="flex items-start gap-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                                                <div className={`flex-shrink-0 w-3 h-3 mt-2 rounded-full ${
+                                                    place.isPhotographySpot ? 'bg-green-500' : 'bg-blue-500'
+                                                }`}></div>
+                                                <div className="flex-1">
+                                                    <div className="flex items-center gap-2 mb-2 flex-wrap">
+                                                        <span className="font-semibold text-gray-900">{place.name}</span>
+                                                        {place.isPhotographySpot && (
+                                                            <span className="bg-green-100 text-green-800 px-2 py-1 rounded-full text-xs font-bold flex items-center gap-1">
+                                                                📸 Ảnh đẹp
+                                                            </span>
+                                                        )}
+                                                        <span className="text-sm text-gray-500 flex items-center gap-1">
+                                                            ⭐ {place.rating}
+                                                            {place.userRatingsTotal && (
+                                                                <span>({place.userRatingsTotal})</span>
+                                                            )}
+                                                        </span>
+                                                        {place.pricePerPerson > 0 && (
+                                                            <span className="text-sm text-orange-600 font-medium">
+                                                                💰 {formatMoney(place.pricePerPerson)}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <p className="text-sm text-gray-600 mb-2">{place.address}</p>
+
+                                                    {place.bestVisitTime && (
+                                                        <div className="flex items-center gap-2 text-xs text-green-600 bg-green-50 px-2 py-1 rounded">
+                                                            <span>🕒</span>
+                                                            <span>Thời gian tốt nhất: {place.bestVisitTime}</span>
+                                                        </div>
+                                                    )}
+
+                                                    {place.photographyInfo && place.photographyInfo.photoTips && (
+                                                        <div className="mt-2">
+                                                            <p className="text-xs font-medium text-gray-700 mb-1">📷 Mẹo chụp ảnh:</p>
+                                                            <ul className="text-xs text-gray-600 space-y-1">
+                                                                {place.photographyInfo.photoTips.slice(0, 2).map((tip, tipIndex) => (
+                                                                    <li key={tipIndex}>• {tip}</li>
+                                                                ))}
+                                                            </ul>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {/* Trải nghiệm ẩm thực */}
+                                {dayPlan.foodExperiences && dayPlan.foodExperiences.length > 0 && (
+                                    <div className="mb-6">
+                                        <h4 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
+                                            🍽️ Trải nghiệm ẩm thực
+                                        </h4>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                            {dayPlan.foodExperiences.map((food, index) => (
+                                                <div key={index} className="flex items-center gap-3 p-3 bg-orange-50 rounded-lg border border-orange-200">
+                                                    <div className="text-orange-500 text-xl">🍴</div>
+                                                    <div className="flex-1">
+                                                        <div className="font-medium text-orange-800">{food.name}</div>
+                                                        <div className="text-sm text-orange-700">{food.specialty}</div>
+                                                        <div className="flex items-center gap-2 mt-1">
+                                                            <span className="text-xs text-gray-600">⭐ {food.rating}</span>
+                                                            {food.pricePerPerson && (
+                                                                <span className="text-xs text-gray-600">
+                                                                    💰 {formatMoney(food.pricePerPerson)}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Thông tin bổ sung */}
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    {/* Điểm chụp ảnh */}
+                                    {dayPlan.photographySpots && dayPlan.photographySpots.length > 0 && (
+                                        <div className="bg-green-50 p-3 rounded-lg border border-green-200">
+                                            <h4 className="font-semibold text-green-800 mb-2 flex items-center gap-2">
+                                                📸 Điểm chụp ảnh
+                                            </h4>
+                                            <div className="text-sm text-green-700">
+                                                <p>Có {dayPlan.photographySpots.length} điểm chụp ảnh đẹp trong ngày</p>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Ghi chú */}
+                                    {dayPlan.notes && (
+                                        <div className="bg-blue-50 p-3 rounded-lg border border-blue-200">
+                                            <h4 className="font-semibold text-blue-800 mb-2 flex items-center gap-2">
+                                                💡 Ghi chú
+                                            </h4>
+                                            <div className="text-sm text-blue-700">
+                                                {Array.isArray(dayPlan.notes)
+                                                    ? dayPlan.notes.map((note, idx) => <p key={idx}>• {note}</p>)
+                                                    : <p>• {dayPlan.notes}</p>
+                                                }
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    ))}
+
+                    {/* Đặc sản địa phương */}
+                    {result.specialties && result.specialties.length > 0 && (
+                        <div className="bg-gradient-to-r from-orange-50 to-amber-50 border border-orange-200 p-6 rounded-xl">
+                            <h3 className="font-bold text-orange-800 mb-4 flex items-center gap-2 text-lg">
+                                🍜 Đặc sản địa phương không thể bỏ lỡ
+                            </h3>
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                {result.specialties.map((specialty, index) => (
+                                    <div key={index} className="bg-white p-4 rounded-lg shadow-sm border border-orange-100 hover:shadow-md transition-shadow">
+                                        <div className="font-semibold text-orange-700 mb-2">{specialty.name}</div>
+                                        <div className="text-sm text-orange-600 mb-3">{specialty.description}</div>
+                                        <div className="flex justify-between items-center text-xs text-gray-500">
+                                            {specialty.price > 0 ? (
+                                                <span className="font-medium text-green-600">
+                                                    💰 {formatMoney(specialty.price)}
+                                                </span>
+                                            ) : (
+                                                <span className="text-gray-400">💵 Giá tham khảo</span>
+                                            )}
+                                            {specialty.bestSeason && specialty.bestSeason !== 'Cả năm' && (
+                                                <span className="bg-amber-100 text-amber-800 px-2 py-1 rounded">
+                                                    🗓️ {specialty.bestSeason}
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Mẹo và gợi ý */}
+                    {result.tips && (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            {/* Mẹo chụp ảnh */}
+                            {result.tips.photography && result.tips.photography.length > 0 && (
+                                <div className="bg-yellow-50 border border-yellow-200 p-4 rounded-xl">
+                                    <h3 className="font-bold text-yellow-800 mb-3 flex items-center gap-2">
+                                        📷 Mẹo chụp ảnh
+                                    </h3>
+                                    <ul className="text-sm text-yellow-700 space-y-2">
+                                        {result.tips.photography.map((tip, index) => (
+                                            <li key={index} className="flex items-start gap-2">
+                                                <span>•</span>
+                                                <span>{tip}</span>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </div>
+                            )}
+
+                            {/* Thời gian tốt nhất */}
+                            {result.tips.bestTimes && result.tips.bestTimes.length > 0 && (
+                                <div className="bg-blue-50 border border-blue-200 p-4 rounded-xl">
+                                    <h3 className="font-bold text-blue-800 mb-3 flex items-center gap-2">
+                                        ⏰ Thời gian tham quan tốt nhất
+                                    </h3>
+                                    <ul className="text-sm text-blue-700 space-y-2">
+                                        {result.tips.bestTimes.map((time, index) => (
+                                            <li key={index} className="flex items-start gap-2">
+                                                <span>•</span>
+                                                <span>{time}</span>
+                                            </li>
                                         ))}
                                     </ul>
                                 </div>
@@ -656,122 +585,44 @@ export default function PersonalItineraryPlanner() {
                         </div>
                     )}
 
-                    {/* Daily Plans với photography info */}
-                    {result.dailyPlan.map(dayPlan => (
-                        <div key={dayPlan.day} className="bg-white rounded-2xl shadow-lg overflow-hidden border-2 border-blue-200">
-                            <div className="bg-gradient-to-r from-blue-600 to-purple-700 text-white p-4">
-                                <div className="flex justify-between items-center">
-                                    <h3 className="text-xl font-bold">📅 Ngày {dayPlan.day} - {dayPlan.date}</h3>
-                                    <span className="bg-white/20 px-3 py-1 rounded-full text-sm">
-                            {dayPlan.destinations.length}/{dayPlan.maxPlaces} địa điểm
-                        </span>
-                                </div>
-                                {dayPlan.photographySpots.length > 0 && (
-                                    <div className="flex items-center gap-2 mt-2 text-yellow-300">
-                                        <span>📸</span>
-                                        <span>{dayPlan.photographySpots.length} điểm chụp ảnh đẹp</span>
+                    {/* Điểm nổi bật */}
+                    {result.highlights && (
+                        <div className="bg-gradient-to-r from-purple-50 to-pink-50 border border-purple-200 p-6 rounded-xl">
+                            <h3 className="font-bold text-purple-800 mb-4 text-lg text-center">
+                                ✨ Điểm nổi bật trong chuyến đi
+                            </h3>
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                                {result.highlights.mustVisit && result.highlights.mustVisit.length > 0 && (
+                                    <div className="text-center">
+                                        <div className="text-2xl mb-2">⭐</div>
+                                        <div className="font-semibold text-purple-700">Must-visit</div>
+                                        <div className="text-sm text-purple-600">{result.highlights.mustVisit.length} địa điểm</div>
                                     </div>
                                 )}
-                            </div>
-
-                            <div className="p-6">
-                                {/* Photography Tips for the day */}
-                                {dayPlan.photographyTips.length > 0 && (
-                                    <div className="bg-yellow-50 border border-yellow-200 p-4 rounded-lg mb-4">
-                                        <h4 className="font-bold text-yellow-800 mb-2 flex items-center gap-2">
-                                            📷 Mẹo chụp ảnh ngày {dayPlan.day}
-                                        </h4>
-                                        <ul className="list-disc list-inside space-y-1 text-yellow-700">
-                                            {dayPlan.photographyTips.map((tip, index) => (
-                                                <li key={index}>{tip}</li>
-                                            ))}
-                                        </ul>
+                                {result.highlights.photographyHotspots && result.highlights.photographyHotspots.length > 0 && (
+                                    <div className="text-center">
+                                        <div className="text-2xl mb-2">📸</div>
+                                        <div className="font-semibold text-purple-700">Điểm chụp ảnh</div>
+                                        <div className="text-sm text-purple-600">{result.highlights.photographyHotspots.length} điểm</div>
                                     </div>
                                 )}
-
-                                {/* Destinations với photography info */}
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    {dayPlan.destinations.map((place, index) => (
-                                        <div key={index} className={`border rounded-lg p-4 ${
-                                            place.isPhotographySpot
-                                                ? 'bg-gradient-to-r from-green-50 to-emerald-50 border-green-300'
-                                                : 'bg-gray-50 border-gray-200'
-                                        }`}>
-                                            <div className="flex justify-between items-start mb-2">
-                                                <h4 className="font-bold text-lg">{place.name}</h4>
-                                                {place.isPhotographySpot && (
-                                                    <span className="bg-green-500 text-white px-2 py-1 rounded-full text-xs font-bold flex items-center gap-1">
-                                            📸 HOT
-                                        </span>
-                                                )}
-                                            </div>
-
-                                            <div className="flex items-center gap-4 text-sm text-gray-600 mb-2">
-                                                {place.rating && (
-                                                    <span className="flex items-center gap-1">
-                                            ⭐ {place.rating}
-                                        </span>
-                                                )}
-                                                {place.photographyInfo?.score && (
-                                                    <span className="flex items-center gap-1">
-                                            📷 {place.photographyInfo.score}/20
-                                        </span>
-                                                )}
-                                            </div>
-
-                                            {/* Photography Info */}
-                                            {place.isPhotographySpot && place.photographyInfo && (
-                                                <div className="bg-white/50 p-3 rounded-lg border border-green-200 mt-2">
-                                                    <div className="flex items-center gap-2 text-green-700 font-semibold mb-1">
-                                                        <span>🕒</span>
-                                                        <span>Thời gian đẹp: {place.photographyInfo.bestTime}</span>
-                                                    </div>
-                                                    {place.photographyInfo.photoTips.length > 0 && (
-                                                        <div className="text-sm text-green-600">
-                                                            <span className="font-medium">💡 Mẹo: </span>
-                                                            {place.photographyInfo.photoTips[0]}
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            )}
-
-                                            <p className="text-gray-600 text-sm mt-2">
-                                                {place.vicinity}
-                                            </p>
-                                        </div>
-                                    ))}
-                                </div>
-
-                                {/* Activities & Meals */}
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                                    <div className="bg-blue-50 p-4 rounded-lg">
-                                        <h4 className="font-bold text-blue-700 mb-2">🍽️ Bữa ăn</h4>
-                                        <ul className="space-y-1 text-sm">
-                                            <li>• {dayPlan.meals.breakfast}</li>
-                                            <li>• {dayPlan.meals.lunch}</li>
-                                            <li>• {dayPlan.meals.dinner}</li>
-                                        </ul>
+                                {result.highlights.culturalSpots && result.highlights.culturalSpots.length > 0 && (
+                                    <div className="text-center">
+                                        <div className="text-2xl mb-2">🏛️</div>
+                                        <div className="font-semibold text-purple-700">Văn hóa</div>
+                                        <div className="text-sm text-purple-600">{result.highlights.culturalSpots.length} điểm</div>
                                     </div>
-                                    <div className="bg-purple-50 p-4 rounded-lg">
-                                        <h4 className="font-bold text-purple-700 mb-2">🎯 Hoạt động</h4>
-                                        <ul className="space-y-1 text-sm">
-                                            {dayPlan.activities.map((activity, idx) => (
-                                                <li key={idx}>• {activity}</li>
-                                            ))}
-                                        </ul>
-                                    </div>
-                                </div>
-
-                                {/* Notes */}
-                                {dayPlan.notes && (
-                                    <div className="bg-orange-50 p-4 rounded-lg mt-4 border border-orange-200">
-                                        <h4 className="font-bold text-orange-700 mb-1">📝 Ghi chú</h4>
-                                        <p className="text-orange-800 text-sm">{dayPlan.notes}</p>
+                                )}
+                                {result.highlights.natureSpots && result.highlights.natureSpots.length > 0 && (
+                                    <div className="text-center">
+                                        <div className="text-2xl mb-2">🌳</div>
+                                        <div className="font-semibold text-purple-700">Thiên nhiên</div>
+                                        <div className="text-sm text-purple-600">{result.highlights.natureSpots.length} điểm</div>
                                     </div>
                                 )}
                             </div>
                         </div>
-                    ))}
+                    )}
                 </div>
             )}
         </div>
