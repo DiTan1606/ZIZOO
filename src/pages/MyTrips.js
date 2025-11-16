@@ -61,9 +61,58 @@ export default function MyTrips() {
         }).format(amount);
     };
 
-    const formatDate = (dateString) => {
-        if (!dateString) return 'N/A';
-        return new Date(dateString).toLocaleDateString('vi-VN');
+    const formatDate = (dateInput) => {
+        if (!dateInput) {
+            console.log('⚠️ formatDate: dateInput is null/undefined');
+            return 'N/A';
+        }
+        
+        try {
+            console.log('📅 formatDate input:', dateInput, 'Type:', typeof dateInput, 'Has toDate:', !!dateInput?.toDate);
+            
+            let date;
+            
+            // Xử lý Firestore Timestamp
+            if (dateInput.toDate && typeof dateInput.toDate === 'function') {
+                console.log('✅ Using Firestore Timestamp.toDate()');
+                date = dateInput.toDate();
+            }
+            // Xử lý Date object
+            else if (dateInput instanceof Date) {
+                console.log('✅ Using Date object');
+                date = dateInput;
+            }
+            // Xử lý string format vi-VN (dd/mm/yyyy)
+            else if (typeof dateInput === 'string' && dateInput.includes('/')) {
+                console.log('✅ Parsing vi-VN format (dd/mm/yyyy)');
+                const parts = dateInput.split('/');
+                if (parts.length === 3) {
+                    // Convert "15/12/2024" to "2024-12-15"
+                    const [day, month, year] = parts;
+                    date = new Date(`${year}-${month}-${day}`);
+                } else {
+                    date = new Date(dateInput);
+                }
+            }
+            // Xử lý string hoặc number
+            else {
+                console.log('✅ Parsing as string/number');
+                date = new Date(dateInput);
+            }
+            
+            // Kiểm tra date hợp lệ
+            if (isNaN(date.getTime())) {
+                console.warn('❌ Invalid date after parsing:', dateInput);
+                return 'N/A';
+            }
+            
+            const formatted = date.toLocaleDateString('vi-VN');
+            console.log('✅ Formatted date:', formatted);
+            return formatted;
+        } catch (error) {
+            console.error('❌ Error formatting date:', error, dateInput);
+            return 'N/A';
+        }
     };
 
     return (
@@ -176,7 +225,7 @@ export default function MyTrips() {
                                             </button>
                                         </div>
                                         <div className="text-right text-sm text-gray-500">
-                                            <div>Tạo lúc: {formatDate(trip.createdAt?.toDate?.() || trip.createdAt)}</div>
+                                            <div>Tạo lúc: {formatDate(trip.createdAt)}</div>
                                             <span className="bg-green-100 text-green-800 px-2 py-1 rounded-full text-xs">
                                                 Lịch trình hoàn chỉnh
                                             </span>

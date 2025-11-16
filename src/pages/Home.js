@@ -32,7 +32,7 @@ export default function Home() {
                 {/* Nút hành động */}
                 <div className="flex flex-col sm:flex-row gap-6 justify-center items-center">
                     <Link
-                        to="/planner"
+                        to="/complete-planner"
                         className="px-12 py-6 text-2xl font-bold text-white bg-gradient-to-r from-blue-600 to-indigo-700 rounded-full shadow-2xl hover:shadow-3xl transform hover:scale-110 transition-all duration-300"
                     >
                         Bắt đầu lập kế hoạch ngay

@@ -65,8 +65,8 @@ export const searchNearbyPlaces = async (options) => {
     });
 };
 
-// Text Search - SỬA để gọi API thật
-export const searchPlacesByText = async (query, location, radius = 50000) => {
+// Text Search - Giới hạn trong Việt Nam và theo tỉnh thành
+export const searchPlacesByText = async (query, location, radius = 50000, provinceName = '') => {
     return new Promise((resolve, reject) => {
         if (!isPlacesServiceAvailable()) {
             reject(new Error('Google Maps Places API not available. Please check your API key and libraries.'));
@@ -81,16 +81,19 @@ export const searchPlacesByText = async (query, location, radius = 50000) => {
 
             // Thêm location nếu có
             if (location && location.lat && location.lng) {
-                searchOptions.location = location;
+                searchOptions.location = new window.google.maps.LatLng(location.lat, location.lng);
             }
 
-            console.log(`🔍 Text search: "${query}"`, location ? `near ${location.lat},${location.lng}` : '');
+            console.log(`🔍 Text search: "${query}"`, location ? `near ${location.lat},${location.lng}` : '', provinceName ? `in ${provinceName}` : '');
 
             placesService.textSearch(searchOptions, (results, status) => {
                 console.log(`📝 Text search status: ${status}, results: ${results?.length || 0}`);
 
                 if (status === window.google.maps.places.PlacesServiceStatus.OK) {
-                    resolve(results || []);
+                    // Filter kết quả chỉ lấy địa điểm ở Việt Nam và trong tỉnh
+                    const filteredResults = filterResultsByCountryAndProvince(results || [], provinceName);
+                    console.log(`✅ Filtered to ${filteredResults.length} results in Vietnam${provinceName ? ` (${provinceName})` : ''}`);
+                    resolve(filteredResults);
                 } else if (status === window.google.maps.places.PlacesServiceStatus.ZERO_RESULTS) {
                     console.log(`ℹ️ No results for: "${query}"`);
                     resolve([]);
@@ -226,4 +229,85 @@ export const resetPlacesService = () => {
     mapInstance = null;
     placesService = null;
     console.log('🔄 Places Service reset');
+};
+
+// Filter kết quả chỉ lấy địa điểm ở Việt Nam và trong tỉnh
+const filterResultsByCountryAndProvince = (results, provinceName = '') => {
+    if (!results || results.length === 0) return [];
+
+    return results.filter(place => {
+        // Lấy địa chỉ đầy đủ
+        const address = place.formatted_address || place.vicinity || '';
+        const addressLower = address.toLowerCase();
+
+        // 1. Kiểm tra có ở Việt Nam không
+        const isInVietnam = 
+            addressLower.includes('việt nam') || 
+            addressLower.includes('vietnam') || 
+            addressLower.includes('viet nam') ||
+            !addressLower.includes('cambodia') && 
+            !addressLower.includes('campuchia') &&
+            !addressLower.includes('laos') && 
+            !addressLower.includes('lào') &&
+            !addressLower.includes('china') && 
+            !addressLower.includes('trung quốc') &&
+            !addressLower.includes('thailand') &&
+            !addressLower.includes('thái lan');
+
+        if (!isInVietnam) {
+            console.log(`❌ Filtered out (not in Vietnam): ${place.name} - ${address}`);
+            return false;
+        }
+
+        // 2. Nếu có provinceName, kiểm tra địa điểm có trong tỉnh không
+        if (provinceName) {
+            const provinceNameLower = provinceName.toLowerCase();
+            const provinceVariants = getProvinceVariants(provinceName);
+            
+            const isInProvince = provinceVariants.some(variant => 
+                addressLower.includes(variant.toLowerCase())
+            );
+
+            if (!isInProvince) {
+                console.log(`❌ Filtered out (not in ${provinceName}): ${place.name} - ${address}`);
+                return false;
+            }
+        }
+
+        return true;
+    });
+};
+
+// Lấy các biến thể tên tỉnh (có dấu, không dấu, viết tắt)
+const getProvinceVariants = (provinceName) => {
+    const variants = [provinceName];
+    
+    // Map các tên tỉnh với biến thể
+    const provinceMap = {
+        'Vũng Tàu': ['vũng tàu', 'vung tau', 'bà rịa - vũng tàu', 'ba ria - vung tau', 'brvt'],
+        'Hà Nội': ['hà nội', 'ha noi', 'hanoi'],
+        'TP. Hồ Chí Minh': ['hồ chí minh', 'ho chi minh', 'tp.hcm', 'tphcm', 'sài gòn', 'saigon'],
+        'Đà Nẵng': ['đà nẵng', 'da nang', 'danang'],
+        'Đà Lạt': ['đà lạt', 'da lat', 'dalat', 'lâm đồng', 'lam dong'],
+        'Nha Trang': ['nha trang', 'khánh hòa', 'khanh hoa'],
+        'Phú Quốc': ['phú quốc', 'phu quoc', 'kiên giang', 'kien giang'],
+        'Hội An': ['hội an', 'hoi an', 'quảng nam', 'quang nam'],
+        'Huế': ['huế', 'hue', 'thừa thiên huế', 'thua thien hue'],
+        'Sapa': ['sapa', 'sa pa', 'lào cai', 'lao cai'],
+        'Hạ Long': ['hạ long', 'ha long', 'quảng ninh', 'quang ninh'],
+        'Quy Nhơn': ['quy nhơn', 'quy nhon', 'bình định', 'binh dinh'],
+        'Cần Thơ': ['cần thơ', 'can tho'],
+        'Hải Phòng': ['hải phòng', 'hai phong']
+    };
+
+    // Tìm biến thể
+    for (const [key, values] of Object.entries(provinceMap)) {
+        if (key.toLowerCase() === provinceName.toLowerCase() || 
+            values.some(v => v.toLowerCase() === provinceName.toLowerCase())) {
+            variants.push(...values);
+            break;
+        }
+    }
+
+    return [...new Set(variants)]; // Remove duplicates
 };

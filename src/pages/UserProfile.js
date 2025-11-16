@@ -109,8 +109,47 @@ const UserProfile = () => {
         }).format(amount);
     };
 
-    const formatDate = (dateString) => {
-        return new Date(dateString).toLocaleDateString('vi-VN');
+    const formatDate = (dateInput) => {
+        if (!dateInput) return 'N/A';
+        
+        try {
+            let date;
+            
+            // Xử lý Firestore Timestamp
+            if (dateInput.toDate && typeof dateInput.toDate === 'function') {
+                date = dateInput.toDate();
+            }
+            // Xử lý Date object
+            else if (dateInput instanceof Date) {
+                date = dateInput;
+            }
+            // Xử lý string format vi-VN (dd/mm/yyyy)
+            else if (typeof dateInput === 'string' && dateInput.includes('/')) {
+                const parts = dateInput.split('/');
+                if (parts.length === 3) {
+                    // Convert "15/12/2024" to "2024-12-15"
+                    const [day, month, year] = parts;
+                    date = new Date(`${year}-${month}-${day}`);
+                } else {
+                    date = new Date(dateInput);
+                }
+            }
+            // Xử lý string hoặc number
+            else {
+                date = new Date(dateInput);
+            }
+            
+            // Kiểm tra date hợp lệ
+            if (isNaN(date.getTime())) {
+                console.warn('Invalid date:', dateInput);
+                return 'N/A';
+            }
+            
+            return date.toLocaleDateString('vi-VN');
+        } catch (error) {
+            console.error('Error formatting date:', error, dateInput);
+            return 'N/A';
+        }
     };
 
     const interestOptions = [

@@ -613,7 +613,7 @@ const findDestinationsForDay = async (dayNumber, destination, coord, interests) 
             `top attractions in ${destination}` : 
             `hidden gems ${destination}`;
             
-        const results = await searchPlacesByText(searchQuery, coord, 20000);
+        const results = await searchPlacesByText(searchQuery, coord, 20000, destination);
         
         return results
             .filter(place => place.rating >= 4.0)
@@ -1102,12 +1102,15 @@ export const getUserItineraries = async (userId) => {
         querySnapshot.docs.forEach(docSnap => {
             const data = docSnap.data();
             
+            // Debug logging
+            console.log('📅 Trip createdAt:', data.createdAt, 'Type:', typeof data.createdAt, 'Has toDate:', !!data.createdAt?.toDate);
+            
             // Format data để match với MyTrips component
             itineraries.push({
                 id: docSnap.id,
                 tripName: data.header?.tripName || `Chuyến đi ${data.header?.destination?.main}`,
                 destination: data.header?.destination?.main,
-                startDate: data.header?.duration?.startDate,
+                startDate: data.header?.duration?.startDateISO || data.header?.duration?.startDate, // Ưu tiên ISO format
                 duration: data.header?.duration?.days,
                 travelers: typeof data.header?.travelers === 'object' 
                     ? data.header.travelers?.total || data.header.travelers?.adults || 2 
@@ -2102,7 +2105,7 @@ const findRealDestinationsForDay = async (dayNumber, destination, coord, interes
             
             for (const query of queries) {
                 try {
-                    const results = await searchPlacesByText(query, coord, 20000);
+                    const results = await searchPlacesByText(query, coord, 20000, destination);
                     
                     if (results && results.length > 0) {
                         const formattedResults = results
@@ -2499,7 +2502,7 @@ const findRandomDinnerRestaurant = async (realRestaurants, destination, coord, u
         // Tìm thêm từ Google Places
         for (const query of dinnerQueries) {
             try {
-                const results = await searchPlacesByText(query, coord, 15000);
+                const results = await searchPlacesByText(query, coord, 15000, destination);
                 
                 if (results && results.length > 0) {
                     const dinnerRestaurants = results
@@ -2597,7 +2600,7 @@ const findRealStreetFood = async (destination, coord) => {
 
         for (const query of queries) {
             try {
-                const results = await searchPlacesByText(query, coord, 10000);
+                const results = await searchPlacesByText(query, coord, 10000, destination);
                 
                 if (results && results.length > 0) {
                     const streetFoodPlaces = results
@@ -2678,7 +2681,7 @@ const findRealCafes = async (destination, coord) => {
 
         for (const query of queries) {
             try {
-                const results = await searchPlacesByText(query, coord, 10000);
+                const results = await searchPlacesByText(query, coord, 10000, destination);
                 
                 if (results && results.length > 0) {
                     const cafes = results
@@ -2782,7 +2785,7 @@ const findRealRestaurantsForDay = async (destination, coord, travelStyle) => {
             
             for (const query of restaurantQueries) {
                 try {
-                    const results = await searchPlacesByText(query, coord, 10000);
+                    const results = await searchPlacesByText(query, coord, 10000, destination);
                     
                     if (results && results.length > 0) {
                         const restaurants = results
@@ -4117,6 +4120,11 @@ const getDefaultWeatherForDestination = (destination, date) => {
 const sanitizeForFirebase = (obj) => {
     if (obj === null || obj === undefined) {
         return null;
+    }
+    
+    // Giữ nguyên Date object để Firebase tự convert thành Timestamp
+    if (obj instanceof Date) {
+        return obj;
     }
     
     if (Array.isArray(obj)) {
