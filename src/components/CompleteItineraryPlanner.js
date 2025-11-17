@@ -686,21 +686,83 @@ const CompleteItineraryPlanner = () => {
                     <section className="itinerary-section">
                         <h2>🚗 4. Phương tiện di chuyển</h2>
                         <div className="transport-plan">
+                            {/* Lượt đi */}
                             <div className="transport-category">
-                                <h4>✈️ Đi từ {completeItinerary.header.destination.departure} đến {completeItinerary.header.destination.main}</h4>
+                                <h4>🚌 Lượt đi: {completeItinerary.header.destination.departure} → {completeItinerary.header.destination.main}</h4>
+                                <p><strong>Ngày:</strong> {completeItinerary.transport.intercity.departure.date}</p>
                                 <p><strong>Khuyến nghị:</strong> {completeItinerary.transport.intercity.departure.recommended.type}</p>
+                                {completeItinerary.transport.intercity.departure.recommended.company && (
+                                    <p><strong>Nhà xe:</strong> {completeItinerary.transport.intercity.departure.recommended.company}</p>
+                                )}
+                                <p><strong>Thời gian:</strong> {completeItinerary.transport.intercity.departure.recommended.duration}</p>
                                 <p><strong>Chi phí:</strong> {formatMoney(completeItinerary.transport.intercity.departure.recommended.cost)}/người</p>
+                                {completeItinerary.transport.intercity.departure.recommended.note && (
+                                    <p><strong>Loại xe:</strong> {completeItinerary.transport.intercity.departure.recommended.note.split('-')[1]?.trim() || completeItinerary.transport.intercity.departure.recommended.note}</p>
+                                )}
+                                
+                                {completeItinerary.transport.intercity.departure.options && completeItinerary.transport.intercity.departure.options.length > 1 && (() => {
+                                    // Lọc bỏ option đã được recommend
+                                    const recommendedCompany = completeItinerary.transport.intercity.departure.recommended?.company;
+                                    const otherOptions = completeItinerary.transport.intercity.departure.options.filter(
+                                        option => option.company !== recommendedCompany
+                                    );
+                                    
+                                    if (otherOptions.length === 0) return null;
+                                    
+                                    return (
+                                        <details className="transport-options-details">
+                                            <summary>Xem thêm {otherOptions.length} tùy chọn khác</summary>
+                                            <div className="options-grid">
+                                                {otherOptions.map((option, idx) => (
+                                                    <div key={idx} className="option-card">
+                                                        <p><strong>{option.type}</strong></p>
+                                                        {option.company && <p>🚌 {option.company}</p>}
+                                                        <p>⏱️ {option.duration}</p>
+                                                        <p>💰 {formatMoney(option.cost)}</p>
+                                                        {option.note && <p className="option-note">Loại xe: {option.note.split('-')[1]?.trim() || option.note}</p>}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </details>
+                                    );
+                                })()}
                             </div>
                             
+                            {/* Lượt về */}
+                            <div className="transport-category">
+                                <h4>🔙 Lượt về: {completeItinerary.header.destination.main} → {completeItinerary.header.destination.departure}</h4>
+                                <p><strong>Ngày:</strong> {completeItinerary.transport.intercity.return.date}</p>
+                                <p><strong>Khuyến nghị:</strong> {completeItinerary.transport.intercity.return.recommended.type}</p>
+                                {completeItinerary.transport.intercity.return.recommended.company && (
+                                    <p><strong>Nhà xe:</strong> {completeItinerary.transport.intercity.return.recommended.company}</p>
+                                )}
+                                <p><strong>Thời gian:</strong> {completeItinerary.transport.intercity.return.recommended.duration}</p>
+                                <p><strong>Chi phí:</strong> {formatMoney(completeItinerary.transport.intercity.return.recommended.cost)}/người</p>
+                                {completeItinerary.transport.intercity.return.recommended.note && (
+                                    <p><strong>Loại xe:</strong> {completeItinerary.transport.intercity.return.recommended.note.split('-')[1]?.trim() || completeItinerary.transport.intercity.return.recommended.note}</p>
+                                )}
+                            </div>
+                            
+                            {/* Di chuyển địa phương */}
                             <div className="transport-category">
                                 <h4>🚕 Di chuyển tại {completeItinerary.header.destination.main}</h4>
-                                <p><strong>Khuyến nghị:</strong> {completeItinerary.transport.local.recommended.type}</p>
+                                <p><strong>Khuyến nghị:</strong> {completeItinerary.transport.local.recommended.name || completeItinerary.transport.local.recommended.type}</p>
                                 <p><strong>Chi phí:</strong> {formatMoney(completeItinerary.transport.local.recommended.costPerDay)}/ngày</p>
-                                <div className="transport-apps">
-                                    <strong>Apps hữu ích:</strong> {completeItinerary.transport.local.apps?.map(app => 
-                                        typeof app === 'object' ? app.name || app.description || app.type : app
-                                    ).join(', ') || 'Không có thông tin'}
-                                </div>
+                                {completeItinerary.transport.local.apps && completeItinerary.transport.local.apps.length > 0 && (
+                                    <div className="transport-apps">
+                                        <strong>Apps hữu ích:</strong> {completeItinerary.transport.local.apps.join(', ')}
+                                    </div>
+                                )}
+                                {completeItinerary.transport.local.tips && completeItinerary.transport.local.tips.length > 0 && (
+                                    <div className="transport-tips">
+                                        <strong>💡 Lưu ý:</strong>
+                                        <ul>
+                                            {completeItinerary.transport.local.tips.slice(0, 3).map((tip, idx) => (
+                                                <li key={idx}>{tip}</li>
+                                            ))}
+                                        </ul>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </section>
@@ -709,21 +771,48 @@ const CompleteItineraryPlanner = () => {
                     <section className="itinerary-section">
                         <h2>🏨 5. Lưu trú</h2>
                         <div className="accommodation-plan">
-                            <div className="accommodation-info">
-                                <h4>Thông tin lưu trú</h4>
-                                <p><strong>Loại hình:</strong> {completeItinerary.accommodation.recommended.type}</p>
-                                <p><strong>Thời gian:</strong> {completeItinerary.accommodation.duration.nights} đêm ({completeItinerary.accommodation.duration.checkIn} - {completeItinerary.accommodation.duration.checkOut})</p>
-                                <p><strong>Khu vực khuyến nghị:</strong> {completeItinerary.accommodation.recommended.location}</p>
-                                <p><strong>Mức giá:</strong> {completeItinerary.accommodation.recommended.priceRange}/đêm</p>
-                            </div>
+                            {/* Khách sạn đã chọn */}
+                            {completeItinerary.accommodation.selected && (
+                                <div className="accommodation-selected">
+                                    <h4>✅ Khách sạn đã chọn</h4>
+                                    <div className="hotel-card selected">
+                                        <h5>{completeItinerary.accommodation.selected.name}</h5>
+                                        <p><strong>⭐ Rating:</strong> {completeItinerary.accommodation.selected.rating}/5</p>
+                                        <p><strong>📍 Vị trí:</strong> {completeItinerary.accommodation.selected.location}</p>
+                                        <p><strong>💰 Giá:</strong> {formatMoney(completeItinerary.accommodation.selected.pricePerNight)}/đêm</p>
+                                        <p><strong>💵 Tổng:</strong> {formatMoney(completeItinerary.accommodation.selected.totalCost)} ({completeItinerary.accommodation.duration.nights} đêm)</p>
+                                        <p><strong>🏨 Tiện nghi:</strong> {completeItinerary.accommodation.selected.amenities.join(', ')}</p>
+                                    </div>
+                                    <p><strong>⏰ Thời gian:</strong> {completeItinerary.accommodation.duration.checkIn} - {completeItinerary.accommodation.duration.checkOut}</p>
+                                </div>
+                            )}
                             
+                            {/* Các tùy chọn khác */}
+                            {completeItinerary.accommodation.options && completeItinerary.accommodation.options.length > 1 && (
+                                <div className="accommodation-options">
+                                    <h4>📋 Các tùy chọn khác</h4>
+                                    <div className="hotels-grid">
+                                        {completeItinerary.accommodation.options.slice(1).map((hotel, idx) => (
+                                            <div key={idx} className="hotel-card">
+                                                <h5>{hotel.name}</h5>
+                                                <p>⭐ {hotel.rating}/5</p>
+                                                <p>📍 {hotel.location}</p>
+                                                <p>💰 {formatMoney(hotel.pricePerNight)}/đêm</p>
+                                                <p>💵 Tổng: {formatMoney(hotel.totalCost)}</p>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                            
+                            {/* Nền tảng đặt phòng */}
                             <div className="booking-platforms">
-                                <h4>Nền tảng đặt phòng</h4>
+                                <h4>🔗 Đặt phòng qua</h4>
                                 <div className="platforms-list">
                                     {completeItinerary.accommodation.bookingPlatforms.map((platform, idx) => (
-                                        <div key={idx} className="platform-item">
-                                            <strong>{platform.name}:</strong> {platform.commission}
-                                        </div>
+                                        <a key={idx} href={platform.url} target="_blank" rel="noopener noreferrer" className="platform-link">
+                                            {platform.name}
+                                        </a>
                                     ))}
                                 </div>
                             </div>

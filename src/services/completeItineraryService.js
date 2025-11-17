@@ -8,6 +8,7 @@ import { startItineraryMonitoring } from './alertsAndAdjustmentsService';
 import provinceCoords from '../assets/provinceCoord.json';
 import { TRAVEL_STYLES, ACCOMMODATION_TYPES, TRANSPORT_OPTIONS } from '../constants';
 import { formatMoney, getSeason, getClimate } from '../utils/commonUtils';
+import transportDataService from './transportDataService';
 
 /**
  * Service tạo lịch trình du lịch hoàn chỉnh theo cấu trúc chuẩn
@@ -41,14 +42,14 @@ export const createCompleteItinerary = async (preferences, userId) => {
         // 2. LỊCH TRÌNH CHI TIẾT THEO TỪNG NGÀY
         const dailyItinerary = await generateDailyItinerary(preferences);
 
-        // 3. DANH SÁCH CHI PHÍ DỰ KIẾN
-        const costBreakdown = await generateCostBreakdown(preferences, dailyItinerary);
-
-        // 4. PHƯƠNG TIỆN DI CHUYỂN
+        // 3. PHƯƠNG TIỆN DI CHUYỂN
         const transportPlan = await generateTransportPlan(preferences);
 
-        // 5. LƯU TRÚ
+        // 4. LƯU TRÚ (tạo trước để có giá khách sạn)
         const accommodationPlan = await generateAccommodationPlan(preferences);
+
+        // 5. DANH SÁCH CHI PHÍ DỰ KIẾN (tính sau khi có accommodation)
+        const costBreakdown = await generateCostBreakdown(preferences, dailyItinerary, accommodationPlan);
 
         // 6. DANH SÁCH ĐỒ CẦN MANG
         const packingList = generatePackingList(preferences);
@@ -195,7 +196,7 @@ const generateDailyItinerary = async (preferences) => {
         currentDate.setDate(currentDate.getDate() + day);
 
         // Tạo kế hoạch cho từng ngày với ngân sách
-        const dayPlan = await generateSingleDayPlan(day + 1, currentDate, destination, coord, interests, travelStyle, dailyBudget);
+        const dayPlan = await generateSingleDayPlan(day + 1, currentDate, destination, coord, interests, travelStyle, dailyBudget, budget, travelers);
         dailyPlans.push(dayPlan);
     }
 
@@ -205,12 +206,12 @@ const generateDailyItinerary = async (preferences) => {
 /**
  * Tạo kế hoạch cho một ngày cụ thể - CẢI THIỆN ĐA DẠNG
  */
-const generateSingleDayPlan = async (dayNumber, date, destination, coord, interests, travelStyle, dailyBudget = 500000) => {
+const generateSingleDayPlan = async (dayNumber, date, destination, coord, interests, travelStyle, dailyBudget = 500000, budget = 5000000, travelers = 2) => {
     try {
         console.log(`📅 Generating DIVERSE day plan for Day ${dayNumber} in ${destination}...`);
 
-        // Tìm địa điểm tham quan ĐA DẠNG
-        const destinations = await findRealDestinationsForDay(dayNumber, destination, coord, interests);
+        // Tìm địa điểm tham quan ĐA DẠNG (truyền thêm travelStyle và budget)
+        const destinations = await findRealDestinationsForDay(dayNumber, destination, coord, interests, travelStyle, budget, travelers);
         
         // Tìm nhà hàng ĐA DẠNG
         const restaurants = await findRealRestaurantsForDay(destination, coord, travelStyle);
@@ -318,7 +319,7 @@ const generateHourlySchedule = (dayNumber, destinations, restaurants) => {
         });
     }
 
-    // Thêm các hoạt động tham quan
+    // Thêm các hoạt động tham quan với thời gian di chuyển thực tế
     let currentTime = dayNumber === 1 ? '14:00' : '08:00';
     
     destinations.forEach((dest, index) => {
@@ -326,16 +327,49 @@ const generateHourlySchedule = (dayNumber, destinations, restaurants) => {
             time: currentTime,
             activity: `Tham quan ${dest.name}`,
             type: 'sightseeing',
-            duration: dest.recommendedTime || '1-2 giờ',
-            location: createLocationInfo(dest),
+            duration: dest.recommendedTime || dest.estimatedDuration || '1-2 giờ',
             location: dest,
             notes: dest.specialNotes || []
         });
         
-        // Tính thời gian tiếp theo (thêm 2-3 giờ)
+        // Tính thời gian tiếp theo dựa trên thời gian tham quan + di chuyển
         const [hours, minutes] = currentTime.split(':').map(Number);
-        const nextHour = hours + 2 + (index * 0.5);
-        currentTime = `${Math.floor(nextHour).toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+        
+        // Thời gian tham quan (giả sử trung bình 1.5 giờ)
+        let visitDuration = 1.5;
+        if (dest.estimatedDuration) {
+            const match = dest.estimatedDuration.match(/(\d+)/);
+            if (match) visitDuration = parseFloat(match[0]);
+        }
+        
+        // Thời gian di chuyển đến địa điểm tiếp theo
+        let travelDuration = 0.5; // Mặc định 30 phút
+        if (index < destinations.length - 1) {
+            const nextDest = destinations[index + 1];
+            const from = dest.address || dest.name;
+            const to = nextDest.address || nextDest.name;
+            
+            // Thử lấy thời gian từ CSV
+            const travelTime = transportDataService.getTravelTime(from, to);
+            if (travelTime) {
+                travelDuration = travelTime;
+                console.log(`⏱️ Travel time ${from} → ${to}: ${travelTime}h`);
+            } else {
+                // Fallback: tính theo khoảng cách
+                const distance = calculateDistance(
+                    { lat: dest.lat || 0, lng: dest.lng || 0 },
+                    { lat: nextDest.lat || 0, lng: nextDest.lng || 0 }
+                );
+                travelDuration = distance / 30; // 30km/h
+            }
+        }
+        
+        // Tổng thời gian = tham quan + di chuyển
+        const totalHours = visitDuration + travelDuration;
+        const nextHour = hours + totalHours;
+        const nextMinutes = minutes;
+        
+        currentTime = `${Math.floor(nextHour).toString().padStart(2, '0')}:${nextMinutes.toString().padStart(2, '0')}`;
     });
 
     // Thêm bữa ăn
@@ -363,36 +397,22 @@ const generateHourlySchedule = (dayNumber, destinations, restaurants) => {
 /**
  * 3. TẠO DANH SÁCH CHI PHÍ DỰ KIẾN
  */
-const generateCostBreakdown = async (preferences, dailyItinerary) => {
+const generateCostBreakdown = async (preferences, dailyItinerary, accommodationPlan = null) => {
     const { travelers, duration, travelStyle, departureCity, destination, budget } = preferences;
     
-    // Tối ưu chi phí theo ngân sách
-    const budgetPerPerson = budget / travelers;
+    // Tính chi phí THỰC TẾ (không giới hạn theo %)
+    const transportCost = calculateTransportCost(departureCity, destination, travelers, travelStyle);
+    const accommodationCost = calculateAccommodationCost(duration - 1, travelers, travelStyle, accommodationPlan);
+    const foodCost = calculateFoodCost(dailyItinerary, travelers);
+    const sightseeingCost = calculateSightseeingCost(dailyItinerary, travelers);
+    const localTransportCost = calculateLocalTransportCost(duration, travelers, travelStyle);
     
-    // Chi phí vé máy bay/xe/tàu khứ hồi - tối đa 30% ngân sách
-    const maxTransportCost = Math.min(budget * 0.3, calculateTransportCost(departureCity, destination, travelers, travelStyle));
-    const transportCost = maxTransportCost;
+    // Chi phí phát sinh 5%
+    const subtotal = transportCost + accommodationCost + foodCost + sightseeingCost + localTransportCost;
+    const contingencyCost = roundPrice(subtotal * 0.05);
     
-    // Chi phí khách sạn - tối đa 35% ngân sách
-    const maxAccommodationCost = Math.min(budget * 0.35, calculateAccommodationCost(duration - 1, travelers, travelStyle));
-    const accommodationCost = maxAccommodationCost;
-    
-    // Chi phí ăn uống - tối đa 25% ngân sách
-    const maxFoodCost = Math.min(budget * 0.25, calculateFoodCost(dailyItinerary, travelers));
-    const foodCost = maxFoodCost;
-    
-    // Chi phí tham quan - tối đa 15% ngân sách
-    const maxSightseeingCost = Math.min(budget * 0.15, calculateSightseeingCost(dailyItinerary, travelers));
-    const sightseeingCost = maxSightseeingCost;
-    
-    // Chi phí di chuyển tại điểm đến - tối đa 10% ngân sách
-    const maxLocalTransportCost = Math.min(budget * 0.1, calculateLocalTransportCost(duration, travelers, travelStyle));
-    const localTransportCost = maxLocalTransportCost;
-    
-    // Chi phí phát sinh - 5% còn lại
-    const contingencyCost = Math.min(budget * 0.05, budget - (transportCost + accommodationCost + foodCost + sightseeingCost + localTransportCost));
-    
-    const grandTotal = transportCost + accommodationCost + foodCost + sightseeingCost + localTransportCost + contingencyCost;
+    // Tổng cộng (làm tròn)
+    const grandTotal = roundPrice(subtotal + contingencyCost);
 
     return {
         transport: {
@@ -471,33 +491,98 @@ const generateTransportPlan = async (preferences) => {
 };
 
 /**
+ * Lấy danh sách khách sạn phù hợp
+ */
+const getHotelOptions = (destination, travelStyle, budget, travelers, nights) => {
+    // Lấy danh sách khách sạn cho thành phố
+    const cityHotels = HOTEL_OPTIONS[destination];
+    
+    if (!cityHotels || !cityHotels[travelStyle]) {
+        // Fallback nếu không có dữ liệu
+        return getDefaultHotelOptions(travelStyle, nights);
+    }
+    
+    // Lấy khách sạn theo style
+    let hotels = cityHotels[travelStyle];
+    
+    // Tính ngân sạch cho khách sạn (khoảng 30-35% tổng budget)
+    const accommodationBudget = budget * 0.35;
+    const budgetPerNight = accommodationBudget / nights;
+    
+    // Lọc theo ngân sách (lấy khách sạn có giá <= 150% budget)
+    hotels = hotels.filter(hotel => hotel.pricePerNight <= budgetPerNight * 1.5);
+    
+    // Nếu không có khách sạn nào phù hợp, lấy tất cả
+    if (hotels.length === 0) {
+        hotels = cityHotels[travelStyle];
+    }
+    
+    // Sort theo rating
+    hotels.sort((a, b) => b.rating - a.rating);
+    
+    return hotels;
+};
+
+/**
+ * Khách sạn mặc định nếu không có dữ liệu
+ */
+const getDefaultHotelOptions = (travelStyle, nights) => {
+    const prices = {
+        budget: 250000,
+        standard: 500000,
+        comfort: 1000000,
+        luxury: 2000000
+    };
+    
+    return [{
+        name: `Khách sạn ${ACCOMMODATION_TYPES[travelStyle].type}`,
+        rating: 4.0,
+        pricePerNight: prices[travelStyle],
+        location: 'Trung tâm',
+        amenities: getRecommendedAmenities(travelStyle)
+    }];
+};
+
+/**
  * 5. TẠO KẾ HOẠCH LƯU TRÚ
  */
 const generateAccommodationPlan = async (preferences) => {
-    const { destination, duration, travelers, travelStyle, startDate } = preferences;
+    const { destination, duration, travelers, travelStyle, startDate, budget } = preferences;
     
     const checkInDate = new Date(startDate);
     const checkOutDate = new Date(startDate);
     checkOutDate.setDate(checkOutDate.getDate() + duration - 1);
+    const nights = duration - 1;
+    
+    // Lấy danh sách khách sạn thực tế
+    const hotelOptions = getHotelOptions(destination, travelStyle, budget, travelers, nights);
+    
+    // Khách sạn được chọn mặc định (đầu tiên trong danh sách)
+    const selectedHotel = hotelOptions[0];
+    const totalCost = roundPrice(selectedHotel.pricePerNight * nights);
 
     return {
         duration: {
-            nights: duration - 1,
+            nights: nights,
             checkIn: checkInDate.toLocaleDateString('vi-VN'),
             checkOut: checkOutDate.toLocaleDateString('vi-VN')
         },
-        recommended: {
-            type: ACCOMMODATION_TYPES[travelStyle].type,
-            priceRange: `${formatMoney(ACCOMMODATION_TYPES[travelStyle].pricePerNight * 0.8)} - ${formatMoney(ACCOMMODATION_TYPES[travelStyle].pricePerNight * 1.2)}`,
-            amenities: getRecommendedAmenities(travelStyle),
-            location: getRecommendedLocation(destination, travelStyle)
+        // Khách sạn được chọn (mặc định là option đầu tiên)
+        selected: {
+            ...selectedHotel,
+            totalCost: totalCost,
+            costPerNight: selectedHotel.pricePerNight
         },
-        options: await findAccommodationOptions(destination, travelStyle, travelers),
+        // Danh sách tất cả các tùy chọn
+        options: hotelOptions.map(hotel => ({
+            ...hotel,
+            totalCost: roundPrice(hotel.pricePerNight * nights),
+            costPerNight: hotel.pricePerNight
+        })),
         bookingPlatforms: [
-            { name: 'Booking.com', url: `https://booking.com`, commission: 'Miễn phí hủy' },
-            { name: 'Agoda', url: `https://agoda.com`, commission: 'Giá tốt nhất' },
-            { name: 'Airbnb', url: `https://airbnb.com`, commission: 'Trải nghiệm địa phương' },
-            { name: 'Traveloka', url: `https://traveloka.com`, commission: 'Hỗ trợ tiếng Việt' }
+            { name: 'Booking.com', url: `https://booking.com/searchresults.html?ss=${destination}` },
+            { name: 'Agoda', url: `https://agoda.com/search?city=${destination}` },
+            { name: 'Traveloka', url: `https://traveloka.com/hotel/search?location=${destination}` }
         ],
         tips: getAccommodationTips(destination, travelStyle)
     };
@@ -1173,34 +1258,74 @@ export {
 
 // Thêm các helper functions khác...
 const calculateTransportCost = (from, to, travelers, style) => {
-    // Giảm chi phí vận chuyển để phù hợp ngân sách
+    // Sử dụng dữ liệu thực từ CSV
+    const transportInfo = transportDataService.getTransportSuggestion(from, to);
+    
+    if (transportInfo) {
+        // Lấy giá từ dữ liệu thực
+        const pricePerPerson = style === 'luxury' || style === 'comfort' 
+            ? transportInfo.fastest.price 
+            : transportInfo.cheapest.price;
+        
+        // Tính cho cả đi và về
+        const totalCost = pricePerPerson * travelers * 2;
+        console.log(`🚌 Transport cost ${from} ↔ ${to}: ${totalCost.toLocaleString('vi-VN')}đ (${travelers} người)`);
+        return roundPrice(totalCost);
+    }
+    
+    // Fallback nếu không tìm thấy trong CSV
     const baseCost = TRANSPORT_OPTIONS.intercity[style]?.cost || 800000;
-    return Math.min(baseCost * travelers, 1500000); // Tối đa 1.5M cho vận chuyển
+    return roundPrice(Math.min(baseCost * travelers, 1500000));
 };
 
-const calculateAccommodationCost = (nights, travelers, style) => {
+const calculateAccommodationCost = (nights, travelers, style, accommodationPlan = null) => {
+    // Nếu có accommodation plan (khách sạn đã chọn), dùng giá đó
+    if (accommodationPlan && accommodationPlan.selected) {
+        return accommodationPlan.selected.totalCost;
+    }
+    
+    // Fallback: tính theo style
     const rooms = Math.ceil(travelers / 2);
     const baseCost = ACCOMMODATION_TYPES[style]?.pricePerNight || 300000;
-    return Math.min(baseCost * nights * rooms, nights * 400000); // Tối đa 400k/đêm
+    const totalCost = baseCost * nights * rooms;
+    return roundPrice(totalCost);
+};
+
+// Hàm làm tròn giá tiền (làm tròn đến 10,000)
+const roundPrice = (price) => {
+    return Math.round(price / 10000) * 10000;
+};
+
+// Giá ăn uống trung vị thực tế
+const MEAL_COSTS = {
+    breakfast: { min: 30000, avg: 40000, max: 60000 },  // Phở, bánh mì, cơm tấm
+    lunch: { min: 50000, avg: 70000, max: 120000 },     // Cơm bình dân, bún, mì
+    dinner: { min: 80000, avg: 100000, max: 200000 },   // Nhà hàng, đặc sản
+    streetFood: { min: 15000, avg: 25000, max: 50000 }, // Ăn vặt
+    cafe: { min: 20000, avg: 35000, max: 80000 }        // Cà phê, nước uống
 };
 
 const calculateFoodCost = (dailyItinerary, travelers) => {
-    // Giảm chi phí ăn uống xuống 150k/người/ngày
-    return dailyItinerary.length * 150000 * travelers;
+    // Tính chi phí ăn uống dựa trên giá trung vị thực tế
+    const dailyCost = (MEAL_COSTS.breakfast.avg + MEAL_COSTS.lunch.avg + MEAL_COSTS.dinner.avg) * travelers;
+    const totalCost = dailyItinerary.length * dailyCost;
+    return roundPrice(totalCost);
 };
 
 const calculateSightseeingCost = (dailyItinerary, travelers) => {
-    // Giảm phí tham quan xuống 30k/địa điểm
+    // Tính phí tham quan dựa trên giá thực tế
     const totalEntryFees = dailyItinerary.reduce((sum, day) => 
-        sum + day.destinations.reduce((daySum, dest) => daySum + (dest.entryFee || 30000), 0), 0
+        sum + day.destinations.reduce((daySum, dest) => daySum + (dest.entryFee || 0), 0), 0
     );
-    return totalEntryFees * travelers;
+    const totalCost = totalEntryFees * travelers;
+    return roundPrice(totalCost);
 };
 
 const calculateLocalTransportCost = (duration, travelers, style) => {
-    // Giảm chi phí di chuyển địa phương xuống 80k/ngày
+    // Chi phí di chuyển địa phương
     const dailyCost = TRANSPORT_OPTIONS.local[style]?.costPerDay || 80000;
-    return Math.min(dailyCost * duration * travelers, duration * 100000);
+    const totalCost = Math.min(dailyCost * duration * travelers, duration * 100000);
+    return roundPrice(totalCost);
 };
 
 // getClimate and getSeason are imported from commonUtils
@@ -1232,6 +1357,35 @@ export default createCompleteItinerary;
 // ==================== MISSING HELPER FUNCTIONS ====================
 
 const getIntercityTransportOptions = (from, to, style) => {
+    // Sử dụng dữ liệu thực từ CSV
+    const transportInfo = transportDataService.getTransportSuggestion(from, to);
+    
+    if (transportInfo && transportInfo.allOptions.length > 0) {
+        console.log(`🚌 Found ${transportInfo.allOptions.length} transport options from ${from} to ${to}`);
+        
+        return transportInfo.allOptions.map(option => {
+            const hours = option.travelTime || 5;
+            const hoursText = hours < 1 ? `${Math.round(hours * 60)} phút` : `${Math.round(hours * 10) / 10}h`;
+            
+            return {
+                type: `Xe khách ${option.company}`,
+                duration: hoursText,
+                cost: option.price,
+                note: option.note,
+                company: option.company,
+                pros: [
+                    option.note.includes('Giường nằm') ? 'Thoải mái' : 'Tiết kiệm',
+                    option.note.includes('Limousine') ? 'Sang trọng' : 'Phổ biến'
+                ],
+                cons: [
+                    hours > 10 ? 'Thời gian dài' : 'Phụ thuộc giao thông',
+                    'Cần đặt vé trước'
+                ]
+            };
+        });
+    }
+    
+    // Fallback nếu không tìm thấy trong CSV
     const distance = calculateCityDistance(from, to);
     const options = [];
 
@@ -1243,18 +1397,6 @@ const getIntercityTransportOptions = (from, to, style) => {
             cost: style === 'luxury' ? 3000000 : style === 'comfort' ? 1200000 : 800000,
             pros: ['Nhanh nhất', 'Tiện lợi'],
             cons: ['Đắt nhất', 'Phụ thuộc thời tiết']
-        });
-    }
-
-    // Tàu hỏa
-    if (['Hà Nội', 'Hồ Chí Minh', 'Đà Nẵng', 'Huế', 'Nha Trang'].includes(from) && 
-        ['Hà Nội', 'Hồ Chí Minh', 'Đà Nẵng', 'Huế', 'Nha Trang'].includes(to)) {
-        options.push({
-            type: 'Tàu hỏa',
-            duration: `${Math.ceil(distance / 60)} giờ`,
-            cost: style === 'luxury' ? 1500000 : style === 'comfort' ? 800000 : 400000,
-            pros: ['Thoải mái', 'Ngắm cảnh'],
-            cons: ['Chậm hơn máy bay', 'Lịch trình cố định']
         });
     }
 
@@ -1272,16 +1414,31 @@ const getIntercityTransportOptions = (from, to, style) => {
 
 const getRecommendedTransport = (from, to, style) => {
     const options = getIntercityTransportOptions(from, to, style);
+    
+    // Sử dụng dữ liệu thực từ CSV
+    const transportInfo = transportDataService.getTransportSuggestion(from, to);
+    
+    if (transportInfo) {
+        // Chọn theo style
+        if (style === 'luxury' || style === 'comfort') {
+            // Ưu tiên xe nhanh nhất hoặc limousine
+            const limousine = options.find(o => o.note?.includes('Limousine'));
+            if (limousine) return limousine;
+            
+            return options.find(o => o.company === transportInfo.fastest.company) || options[0];
+        } else {
+            // Ưu tiên xe rẻ nhất
+            return options.find(o => o.company === transportInfo.cheapest.company) || options[0];
+        }
+    }
+    
+    // Fallback
     const distance = calculateCityDistance(from, to);
 
     if (distance > 500 && (style === 'comfort' || style === 'luxury')) {
         return options.find(o => o.type === 'Máy bay') || options[0];
     }
     
-    if (distance > 300 && style === 'standard') {
-        return options.find(o => o.type === 'Tàu hỏa') || options[0];
-    }
-
     return options.find(o => o.type.includes('Xe khách')) || options[0];
 };
 
@@ -1832,21 +1989,68 @@ const getRealDestinationsFromFirebase = async (destination, dayNumber) => {
 /**
  * Ước tính phí vào cửa dựa trên tên
  */
+// Giá vé vào cổng chính xác dựa trên dữ liệu thực tế
+const ENTRY_FEES = {
+    // Miễn phí
+    free: ['công viên', 'park', 'chùa', 'đền', 'temple', 'pagoda', 'hồ', 'lake', 'biển', 'beach', 'bãi biển'],
+    
+    // 10-30k
+    cheap: {
+        keywords: ['thác', 'waterfall', 'đài', 'monument', 'tượng', 'statue'],
+        price: 20000
+    },
+    
+    // 30-50k
+    moderate: {
+        keywords: ['bảo tàng', 'museum', 'di tích', 'heritage', 'lăng', 'tomb', 'văn miếu'],
+        price: 40000
+    },
+    
+    // 50-100k
+    expensive: {
+        keywords: ['núi', 'mountain', 'động', 'cave', 'vườn quốc gia', 'national park'],
+        price: 70000
+    },
+    
+    // 100k+
+    premium: {
+        keywords: ['cáp treo', 'cable', 'khu vui chơi', 'amusement', 'vinpearl', 'bà nà', 'sun world'],
+        price: 200000
+    }
+};
+
 const estimateEntryFeeFromName = (name) => {
-    if (!name) return 20000;
+    if (!name) return 30000;
     
     const lowerName = name.toLowerCase();
     
-    if (lowerName.includes('bảo tàng') || lowerName.includes('museum')) return 30000;
-    if (lowerName.includes('công viên') || lowerName.includes('park')) return 0;
-    if (lowerName.includes('chùa') || lowerName.includes('đền') || lowerName.includes('temple')) return 0;
-    if (lowerName.includes('cáp treo') || lowerName.includes('cable')) return 150000;
-    if (lowerName.includes('thác') || lowerName.includes('waterfall')) return 20000;
-    if (lowerName.includes('hồ') || lowerName.includes('lake')) return 0;
-    if (lowerName.includes('núi') || lowerName.includes('mountain')) return 50000;
-    if (lowerName.includes('biển') || lowerName.includes('beach')) return 0;
+    // Kiểm tra miễn phí
+    if (ENTRY_FEES.free.some(keyword => lowerName.includes(keyword))) {
+        return 0;
+    }
     
-    return 20000; // Default
+    // Kiểm tra premium
+    if (ENTRY_FEES.premium.keywords.some(keyword => lowerName.includes(keyword))) {
+        return ENTRY_FEES.premium.price;
+    }
+    
+    // Kiểm tra expensive
+    if (ENTRY_FEES.expensive.keywords.some(keyword => lowerName.includes(keyword))) {
+        return ENTRY_FEES.expensive.price;
+    }
+    
+    // Kiểm tra moderate
+    if (ENTRY_FEES.moderate.keywords.some(keyword => lowerName.includes(keyword))) {
+        return ENTRY_FEES.moderate.price;
+    }
+    
+    // Kiểm tra cheap
+    if (ENTRY_FEES.cheap.keywords.some(keyword => lowerName.includes(keyword))) {
+        return ENTRY_FEES.cheap.price;
+    }
+    
+    // Default - địa điểm tham quan thông thường
+    return 30000;
 };
 
 const getFallbackDestinations = (destination, dayNumber) => {
@@ -1962,22 +2166,63 @@ const calculateDayDistance = (destinations) => {
 };
 
 const calculateDayTravelTime = (destinations) => {
-    const distance = calculateDayDistance(destinations);
-    return Math.round(distance / 30 * 60); // Assume 30km/h average speed, return minutes
+    // Nếu chỉ có 1 địa điểm, không cần di chuyển
+    if (destinations.length <= 1) return 0;
+    
+    let totalMinutes = 0;
+    
+    // Tính thời gian di chuyển giữa các địa điểm liên tiếp
+    for (let i = 0; i < destinations.length - 1; i++) {
+        const from = destinations[i].address || destinations[i].name;
+        const to = destinations[i + 1].address || destinations[i + 1].name;
+        
+        // Thử lấy thời gian từ CSV
+        const travelTime = transportDataService.getTravelTime(from, to);
+        
+        if (travelTime) {
+            // Chuyển từ giờ sang phút
+            totalMinutes += Math.round(travelTime * 60);
+            console.log(`⏱️ Travel time ${from} → ${to}: ${travelTime}h (${Math.round(travelTime * 60)} phút)`);
+        } else {
+            // Fallback: tính theo khoảng cách
+            const distance = calculateDistance(
+                { lat: destinations[i].lat || 0, lng: destinations[i].lng || 0 },
+                { lat: destinations[i + 1].lat || 0, lng: destinations[i + 1].lng || 0 }
+            );
+            // Giả sử tốc độ trung bình 30km/h trong thành phố
+            const minutes = Math.round(distance / 30 * 60);
+            totalMinutes += minutes;
+        }
+    }
+    
+    return totalMinutes;
 };
 
 const getTransportDetails = (from, to, style) => {
     const recommended = getRecommendedTransport(from, to, style);
-    return {
+    const transportInfo = transportDataService.getTransportSuggestion(from, to);
+    
+    const details = {
         type: recommended.type,
         duration: recommended.duration,
         cost: recommended.cost,
+        company: recommended.company,
+        note: recommended.note,
         bookingTips: [
             'Đặt vé trước 1-2 tuần để có giá tốt',
             'Kiểm tra chính sách hủy/đổi vé',
             'Mang theo giấy tờ tùy thân khi đi'
         ]
     };
+    
+    // Thêm thông tin chi tiết từ CSV
+    if (transportInfo) {
+        details.allOptions = transportInfo.allOptions.length;
+        details.priceRange = `${transportInfo.cheapest.price.toLocaleString('vi-VN')}đ - ${transportInfo.fastest.price.toLocaleString('vi-VN')}đ`;
+        details.bookingTips.push(`Có ${transportInfo.allOptions.length} nhà xe khác nhau`);
+    }
+    
+    return details;
 };
 
 const generateBookingLinks = (destination, style) => {
@@ -2040,11 +2285,333 @@ const determineDayCategories = (dayNumber, interests) => {
 };
 
 /**
+ * Danh sách địa điểm MUST-SEE cho mỗi thành phố
+ */
+const MUST_SEE_ATTRACTIONS = {
+    'Nha Trang': [
+        { name: 'Vinpearl Land Nha Trang', entryFee: 800000, category: 'amusement_park', rating: 4.5, isPremium: true },
+        { name: 'VinWonders Nha Trang', entryFee: 600000, category: 'amusement_park', rating: 4.4, isPremium: true },
+        { name: 'Biển Nha Trang', entryFee: 0, category: 'beach', rating: 4.6 },
+        { name: 'Tháp Bà Ponagar', entryFee: 22000, category: 'historical', rating: 4.3 },
+        { name: 'Hòn Mun', entryFee: 100000, category: 'island', rating: 4.5 },
+        { name: 'Chợ Đầm', entryFee: 0, category: 'market', rating: 4.2 }
+    ],
+    'Đà Nẵng': [
+        { name: 'Bà Nà Hills', entryFee: 750000, category: 'amusement_park', rating: 4.5, isPremium: true },
+        { name: 'Cầu Vàng (Golden Bridge)', entryFee: 750000, category: 'landmark', rating: 4.7, isPremium: true },
+        { name: 'Biển Mỹ Khê', entryFee: 0, category: 'beach', rating: 4.6 },
+        { name: 'Cầu Rồng', entryFee: 0, category: 'landmark', rating: 4.5 },
+        { name: 'Ngũ Hành Sơn', entryFee: 40000, category: 'mountain', rating: 4.4 },
+        { name: 'Bán đảo Sơn Trà', entryFee: 0, category: 'nature', rating: 4.5 }
+    ],
+    'Phú Quốc': [
+        { name: 'Vinpearl Safari Phú Quốc', entryFee: 600000, category: 'zoo', rating: 4.6, isPremium: true },
+        { name: 'VinWonders Phú Quốc', entryFee: 700000, category: 'amusement_park', rating: 4.5, isPremium: true },
+        { name: 'Grand World Phú Quốc', entryFee: 0, category: 'entertainment', rating: 4.4, isPremium: true },
+        { name: 'Bãi Sao', entryFee: 0, category: 'beach', rating: 4.7 },
+        { name: 'Dinh Cậu', entryFee: 0, category: 'temple', rating: 4.3 },
+        { name: 'Chợ Đêm Phú Quốc', entryFee: 0, category: 'market', rating: 4.4 }
+    ],
+    'Đà Lạt': [
+        { name: 'Thác Datanla', entryFee: 50000, category: 'waterfall', rating: 4.4 },
+        { name: 'Hồ Xuân Hương', entryFee: 0, category: 'lake', rating: 4.5 },
+        { name: 'Crazy House', entryFee: 60000, category: 'attraction', rating: 4.3 },
+        { name: 'Vườn Hoa Đà Lạt', entryFee: 20000, category: 'garden', rating: 4.4 },
+        { name: 'Chợ Đà Lạt', entryFee: 0, category: 'market', rating: 4.2 },
+        { name: 'Đồi Chè Cầu Đất', entryFee: 0, category: 'nature', rating: 4.6 }
+    ],
+    'Vũng Tàu': [
+        { name: 'Tượng Chúa Kitô Vua', entryFee: 0, category: 'landmark', rating: 4.6 },
+        { name: 'Ngọn Hải Đăng', entryFee: 20000, category: 'lighthouse', rating: 4.4 },
+        { name: 'Bãi Trước', entryFee: 0, category: 'beach', rating: 4.3 },
+        { name: 'Bãi Sau', entryFee: 0, category: 'beach', rating: 4.2 },
+        { name: 'Bạch Dinh', entryFee: 15000, category: 'historical', rating: 4.3 },
+        { name: 'Chùa Niet Ban Tinh Xa', entryFee: 0, category: 'temple', rating: 4.5 }
+    ],
+    'Hội An': [
+        { name: 'Phố Cổ Hội An', entryFee: 120000, category: 'historical', rating: 4.7 },
+        { name: 'Chùa Cầu', entryFee: 0, category: 'landmark', rating: 4.6 },
+        { name: 'Rừng Dừa Bảy Mẫu', entryFee: 50000, category: 'nature', rating: 4.5 },
+        { name: 'Bãi Biển An Bàng', entryFee: 0, category: 'beach', rating: 4.6 },
+        { name: 'Làng Gốm Thanh Hà', entryFee: 30000, category: 'cultural', rating: 4.3 }
+    ],
+    'Hạ Long': [
+        { name: 'Vịnh Hạ Long', entryFee: 200000, category: 'nature', rating: 4.8 },
+        { name: 'Đảo Titop', entryFee: 0, category: 'island', rating: 4.5 },
+        { name: 'Hang Sửng Sốt', entryFee: 0, category: 'cave', rating: 4.6 },
+        { name: 'Sun World Hạ Long Park', entryFee: 500000, category: 'amusement_park', rating: 4.4, isPremium: true }
+    ],
+    'Sapa': [
+        { name: 'Fansipan', entryFee: 700000, category: 'mountain', rating: 4.6, isPremium: true },
+        { name: 'Thung Lũng Mường Hoa', entryFee: 0, category: 'nature', rating: 4.5 },
+        { name: 'Bản Cát Cát', entryFee: 70000, category: 'village', rating: 4.4 },
+        { name: 'Thác Bạc', entryFee: 30000, category: 'waterfall', rating: 4.3 }
+    ]
+};
+
+/**
+ * Danh sách khách sạn thực tế theo thành phố và phong cách
+ */
+const HOTEL_OPTIONS = {
+    'Nha Trang': {
+        budget: [
+            { name: 'Khách sạn Hải Yến', rating: 3.5, pricePerNight: 250000, location: 'Gần biển', amenities: ['WiFi', 'Điều hòa', 'Bữa sáng'] },
+            { name: 'Nha Trang Lodge', rating: 3.8, pricePerNight: 300000, location: 'Trung tâm', amenities: ['WiFi', 'Điều hòa', 'Bữa sáng', 'Hồ bơi'] },
+            { name: 'Backpacker Hostel', rating: 3.6, pricePerNight: 200000, location: 'Gần biển', amenities: ['WiFi', 'Điều hòa'] }
+        ],
+        standard: [
+            { name: 'Khách sạn Mường Thanh', rating: 4.0, pricePerNight: 500000, location: 'Trung tâm', amenities: ['WiFi', 'Điều hòa', 'Bữa sáng', 'Hồ bơi', 'Gym'] },
+            { name: 'Liberty Central Nha Trang', rating: 4.2, pricePerNight: 600000, location: 'Gần biển', amenities: ['WiFi', 'Điều hòa', 'Bữa sáng', 'Hồ bơi', 'Spa'] },
+            { name: 'Galina Hotel', rating: 4.1, pricePerNight: 550000, location: 'Trung tâm', amenities: ['WiFi', 'Điều hòa', 'Bữa sáng', 'Hồ bơi'] }
+        ],
+        comfort: [
+            { name: 'Sheraton Nha Trang', rating: 4.5, pricePerNight: 1200000, location: 'Bãi biển', amenities: ['WiFi', 'Điều hòa', 'Bữa sáng buffet', 'Hồ bơi', 'Spa', 'Gym', 'Nhà hàng'] },
+            { name: 'InterContinental Nha Trang', rating: 4.6, pricePerNight: 1500000, location: 'Bãi biển', amenities: ['WiFi', 'Điều hòa', 'Bữa sáng buffet', 'Hồ bơi', 'Spa', 'Gym', 'Bar'] },
+            { name: 'Novotel Nha Trang', rating: 4.4, pricePerNight: 1000000, location: 'Gần biển', amenities: ['WiFi', 'Điều hòa', 'Bữa sáng', 'Hồ bơi', 'Spa', 'Gym'] }
+        ],
+        luxury: [
+            { name: 'Vinpearl Resort Nha Trang', rating: 4.8, pricePerNight: 3000000, location: 'Hòn Tre', amenities: ['WiFi', 'Điều hòa', 'Bữa sáng buffet', 'Hồ bơi vô cực', 'Spa', 'Gym', 'Nhà hàng', 'Bar', 'Bãi biển riêng'] },
+            { name: 'Mia Resort Nha Trang', rating: 4.7, pricePerNight: 2500000, location: 'Bãi Đông', amenities: ['WiFi', 'Điều hòa', 'Bữa sáng', 'Hồ bơi', 'Spa', 'Nhà hàng', 'Bãi biển riêng'] },
+            { name: 'Amiana Resort Nha Trang', rating: 4.6, pricePerNight: 2000000, location: 'Bãi Đông', amenities: ['WiFi', 'Điều hòa', 'Bữa sáng', 'Hồ bơi', 'Spa', 'Gym', 'Nhà hàng'] }
+        ]
+    },
+    'Đà Nẵng': {
+        budget: [
+            { name: 'Khách sạn Hải Châu', rating: 3.6, pricePerNight: 280000, location: 'Trung tâm', amenities: ['WiFi', 'Điều hòa', 'Bữa sáng'] },
+            { name: 'Memory Hotel', rating: 3.8, pricePerNight: 320000, location: 'Gần biển', amenities: ['WiFi', 'Điều hòa', 'Bữa sáng'] },
+            { name: 'Danang Backpackers', rating: 3.5, pricePerNight: 220000, location: 'Trung tâm', amenities: ['WiFi', 'Điều hòa'] }
+        ],
+        standard: [
+            { name: 'Khách sạn Mường Thanh', rating: 4.0, pricePerNight: 550000, location: 'Gần biển', amenities: ['WiFi', 'Điều hòa', 'Bữa sáng', 'Hồ bơi', 'Gym'] },
+            { name: 'Brilliant Hotel', rating: 4.1, pricePerNight: 600000, location: 'Mỹ Khê', amenities: ['WiFi', 'Điều hòa', 'Bữa sáng', 'Hồ bơi'] },
+            { name: 'Nesta Hotel', rating: 4.2, pricePerNight: 650000, location: 'Gần biển', amenities: ['WiFi', 'Điều hòa', 'Bữa sáng', 'Hồ bơi', 'Spa'] }
+        ],
+        comfort: [
+            { name: 'Novotel Danang', rating: 4.4, pricePerNight: 1100000, location: 'Bãi biển Mỹ Khê', amenities: ['WiFi', 'Điều hòa', 'Bữa sáng buffet', 'Hồ bơi', 'Spa', 'Gym'] },
+            { name: 'Pullman Danang', rating: 4.5, pricePerNight: 1300000, location: 'Bãi biển', amenities: ['WiFi', 'Điều hòa', 'Bữa sáng', 'Hồ bơi', 'Spa', 'Gym', 'Nhà hàng'] },
+            { name: 'Hyatt Regency Danang', rating: 4.6, pricePerNight: 1500000, location: 'Bãi biển', amenities: ['WiFi', 'Điều hòa', 'Bữa sáng', 'Hồ bơi', 'Spa', 'Gym', 'Bar'] }
+        ],
+        luxury: [
+            { name: 'InterContinental Danang Sun Peninsula', rating: 4.9, pricePerNight: 4000000, location: 'Bán đảo Sơn Trà', amenities: ['WiFi', 'Điều hòa', 'Bữa sáng buffet', 'Hồ bơi vô cực', 'Spa', 'Gym', 'Nhà hàng', 'Bar', 'Bãi biển riêng', 'Butler'] },
+            { name: 'Premier Village Danang', rating: 4.7, pricePerNight: 3000000, location: 'Bãi biển', amenities: ['WiFi', 'Điều hòa', 'Bữa sáng', 'Hồ bơi', 'Spa', 'Nhà hàng', 'Bãi biển riêng'] },
+            { name: 'Fusion Maia Danang', rating: 4.8, pricePerNight: 3500000, location: 'Bãi biển', amenities: ['WiFi', 'Điều hòa', 'Bữa sáng', 'Hồ bơi', 'Spa miễn phí', 'Gym', 'Nhà hàng'] }
+        ]
+    }
+};
+
+/**
+ * Danh sách địa điểm liên quan (nếu có A thì không nên có B vì trùng lặp)
+ * Ví dụ: Vinpearl Land đã bao gồm Cable Car rồi
+ */
+const RELATED_ATTRACTIONS = {
+    // Nha Trang - Vinpearl group
+    'Vinpearl Land Nha Trang': ['Vinpearl Cable Car', 'VinWonders Nha Trang'],
+    'VinWonders Nha Trang': ['Vinpearl Cable Car', 'Vinpearl Land Nha Trang'],
+    'Vinpearl Cable Car': ['Vinpearl Land Nha Trang', 'VinWonders Nha Trang'],
+    
+    // Đà Nẵng - Bà Nà group
+    'Bà Nà Hills': ['Cầu Vàng (Golden Bridge)', 'Sun World Ba Na Hills'],
+    'Cầu Vàng (Golden Bridge)': ['Bà Nà Hills', 'Sun World Ba Na Hills'],
+    'Sun World Ba Na Hills': ['Bà Nà Hills', 'Cầu Vàng (Golden Bridge)'],
+    
+    // Phú Quốc - Vinpearl group
+    'Vinpearl Safari Phú Quốc': ['VinWonders Phú Quốc', 'Grand World Phú Quốc'],
+    'VinWonders Phú Quốc': ['Vinpearl Safari Phú Quốc', 'Grand World Phú Quốc'],
+    'Grand World Phú Quốc': ['Vinpearl Safari Phú Quốc', 'VinWonders Phú Quốc']
+};
+
+/**
+ * Lấy địa điểm MUST-SEE cho thành phố (KHÔNG TRÙNG giữa các ngày)
+ */
+const getMustSeeAttractions = (destination, canAffordPremium, dayNumber, budget, travelers, duration) => {
+    const attractions = MUST_SEE_ATTRACTIONS[destination];
+    if (!attractions || attractions.length === 0) return [];
+    
+    // Tính ngân sách thực tế cho tham quan (khoảng 15-20% tổng budget)
+    const sightseeingBudget = budget * 0.2; // 20% cho tham quan
+    const budgetPerPerson = sightseeingBudget / travelers;
+    const budgetPerDay = budgetPerPerson / duration;
+    
+    console.log(`💰 Sightseeing budget: ${sightseeingBudget.toLocaleString()}đ total, ${budgetPerDay.toLocaleString()}đ/người/ngày`);
+    
+    // Lọc theo ngân sách THỰC TẾ
+    let filtered = attractions.filter(attr => {
+        // Nếu địa điểm premium (>500k), cần ngân sách cao
+        if (attr.isPremium && attr.entryFee > 500000) {
+            // Cần ít nhất 1.5M/người cho tham quan mới đi được Vinpearl
+            const canAfford = budgetPerPerson >= 1500000;
+            if (!canAfford) {
+                console.log(`⚠️ Cannot afford ${attr.name} (${attr.entryFee.toLocaleString()}đ) - budget: ${budgetPerPerson.toLocaleString()}đ/người`);
+            }
+            return canAfford;
+        }
+        
+        // Địa điểm thường, kiểm tra có đủ tiền không
+        const canAfford = attr.entryFee <= budgetPerDay * 2; // Cho phép vượt 2x budget 1 ngày
+        if (!canAfford) {
+            console.log(`⚠️ ${attr.name} (${attr.entryFee.toLocaleString()}đ) exceeds daily budget (${budgetPerDay.toLocaleString()}đ/ngày)`);
+        }
+        return canAfford;
+    });
+    
+    // Lọc bỏ địa điểm đã dùng VÀ địa điểm liên quan (QUAN TRỌNG!)
+    filtered = filtered.filter(attr => {
+        // Kiểm tra tên đã dùng
+        const nameUsed = usedDestinations.has(attr.name);
+        
+        // Kiểm tra tên tương tự
+        const similarUsed = Array.from(usedDestinations).some(used => {
+            if (typeof used === 'string') {
+                const attrLower = attr.name.toLowerCase();
+                const usedLower = used.toLowerCase();
+                
+                // Kiểm tra chứa nhau
+                if (usedLower.includes(attrLower) || attrLower.includes(usedLower)) {
+                    return true;
+                }
+                
+                // Kiểm tra các từ khóa chung (Vinpearl, Bà Nà, etc.)
+                const keywords = ['vinpearl', 'vinwonders', 'bà nà', 'ba na', 'sun world'];
+                for (const keyword of keywords) {
+                    if (attrLower.includes(keyword) && usedLower.includes(keyword)) {
+                        return true; // Cùng nhóm Vinpearl hoặc Bà Nà
+                    }
+                }
+            }
+            return false;
+        });
+        
+        // Kiểm tra địa điểm liên quan
+        const relatedUsed = Array.from(usedDestinations).some(used => {
+            if (typeof used === 'string') {
+                // Nếu đã dùng địa điểm A, kiểm tra xem attr có phải là địa điểm liên quan không
+                const relatedList = RELATED_ATTRACTIONS[used];
+                if (relatedList && relatedList.includes(attr.name)) {
+                    console.log(`⚠️ Skipping ${attr.name} because ${used} is already used (related)`);
+                    return true;
+                }
+            }
+            return false;
+        });
+        
+        return !nameUsed && !similarUsed && !relatedUsed;
+    });
+    
+    if (filtered.length === 0) {
+        console.log(`⚠️ All MUST-SEE attractions already used for ${destination}`);
+        return [];
+    }
+    
+    // Shuffle để tăng tính ngẫu nhiên (không bị giống nhau mỗi lần)
+    const shuffled = [...filtered].sort(() => Math.random() - 0.5);
+    
+    // Chọn địa điểm theo ngày
+    const count = Math.min(dayNumber === 1 ? 3 : 4, shuffled.length);
+    const selected = shuffled.slice(0, count);
+    
+    // Đánh dấu đã dùng
+    selected.forEach(attr => {
+        usedDestinations.add(attr.name);
+        usedDestinations.add(attr.name.toLowerCase());
+    });
+    
+    console.log(`✅ Selected ${selected.length} MUST-SEE for day ${dayNumber}:`, selected.map(s => s.name));
+    
+    // Format theo cấu trúc chuẩn
+    return selected.map(attr => ({
+        name: attr.name,
+        address: `${attr.name}, ${destination}`,
+        rating: attr.rating,
+        entryFee: attr.entryFee,
+        category: attr.category,
+        types: [attr.category],
+        estimatedDuration: estimateVisitDuration({ types: [attr.category] }),
+        specialNotes: attr.isPremium ? ['Địa điểm cao cấp', 'Nên đặt vé trước'] : [],
+        dataSource: 'must_see',
+        isPremium: attr.isPremium || false
+    }));
+};
+
+/**
+ * Kiểm tra xem địa điểm có phải là premium không
+ */
+const isPremiumAttraction = (name) => {
+    if (!name) return false;
+    
+    const lowerName = name.toLowerCase();
+    const premiumKeywords = [
+        'vinpearl', 'vinwonders', 'sun world', 'bà nà', 'ba na',
+        'cable car', 'cáp treo', 'fansipan', 'safari'
+    ];
+    
+    return premiumKeywords.some(keyword => lowerName.includes(keyword));
+};
+
+/**
+ * Lấy queries cho địa điểm cao cấp theo từng thành phố
+ */
+const getPremiumQueriesForDestination = (destination) => {
+    const premiumAttractions = {
+        'Nha Trang': [
+            'Vinpearl Land Nha Trang',
+            'VinWonders Nha Trang',
+            'Vinpearl Resort Nha Trang',
+            'Hon Tam Island Resort',
+            'Luxury resorts Nha Trang'
+        ],
+        'Đà Nẵng': [
+            'Bà Nà Hills',
+            'Sun World Ba Na Hills',
+            'Golden Bridge Da Nang',
+            'Asia Park Da Nang',
+            'Luxury resorts Da Nang'
+        ],
+        'Phú Quốc': [
+            'Vinpearl Safari Phu Quoc',
+            'VinWonders Phu Quoc',
+            'Grand World Phu Quoc',
+            'Sun World Hon Thom',
+            'Luxury resorts Phu Quoc'
+        ],
+        'Vũng Tàu': [
+            'Ho Tram Strip',
+            'The Grand Ho Tram',
+            'Luxury beach resorts Vung Tau'
+        ],
+        'Đà Lạt': [
+            'Datanla Waterfall cable car',
+            'Dalat Cable Car',
+            'Luxury resorts Dalat'
+        ],
+        'Hạ Long': [
+            'Halong Bay cruise luxury',
+            'Sun World Halong Park',
+            'Luxury cruises Halong'
+        ]
+    };
+    
+    return premiumAttractions[destination] || [];
+};
+
+/**
  * Tìm địa điểm thực tế cho từng ngày - SỬ DỤNG GOOGLE PLACES API
  */
-const findRealDestinationsForDay = async (dayNumber, destination, coord, interests) => {
+const findRealDestinationsForDay = async (dayNumber, destination, coord, interests, travelStyle = 'standard', budget = 5000000, travelers = 2) => {
     try {
-        console.log(`🔍 Finding REAL destinations for Day ${dayNumber} in ${destination}...`);
+        console.log(`🔍 Finding REAL destinations for Day ${dayNumber} in ${destination} (${travelStyle}, budget: ${budget})...`);
+        
+        // Tính ngân sách cho địa điểm cao cấp
+        const budgetPerPerson = budget / travelers;
+        const canAffordPremium = budgetPerPerson > 3000000 || travelStyle === 'luxury' || travelStyle === 'comfort';
+        console.log(`💰 Budget per person: ${budgetPerPerson}, Can afford premium: ${canAffordPremium}`);
+        
+        // BƯỚC 1: Lấy địa điểm MUST-SEE trước (không cần call API)
+        const duration = 3; // Giả sử 3 ngày, sẽ được truyền từ preferences
+        const mustSeeAttractions = getMustSeeAttractions(destination, canAffordPremium, dayNumber, budget, travelers, duration);
+        if (mustSeeAttractions.length > 0) {
+            console.log(`✨ Using ${mustSeeAttractions.length} MUST-SEE attractions for ${destination}`);
+            return mustSeeAttractions;
+        }
 
         // Bước 1: Thử lấy từ Google Places API (như personalItineraryService)
         let googlePlacesDestinations = [];
@@ -2069,38 +2636,31 @@ const findRealDestinationsForDay = async (dayNumber, destination, coord, interes
                 initPlacesService(window.hiddenMapForPlaces);
             }
             
-            // Tạo queries dựa trên interests của user
+            // Tạo queries dựa trên interests của user VÀ BUDGET
             const interestBasedQueries = generateInterestBasedQueries(destination, interests, dayNumber);
             
+            // Thêm queries cho địa điểm cao cấp nếu có ngân sách
+            const premiumQueries = canAffordPremium ? getPremiumQueriesForDestination(destination) : [];
+            console.log(`✨ Premium queries for ${destination}:`, premiumQueries);
+            
+            // Giảm số queries để tránh call API quá nhiều
             const daySpecificQueries = {
-                1: interestBasedQueries.primary || [
-                    `tourist attractions ${destination}`,
-                    `famous landmarks ${destination}`,
-                    `must visit places ${destination}`,
-                    `top sightseeing ${destination}`,
-                    `popular destinations ${destination}`
+                1: [
+                    `top attractions ${destination}`,
+                    `must visit ${destination}`
                 ],
-                2: interestBasedQueries.secondary || [
-                    `museums ${destination}`,
-                    `temples ${destination}`,
+                2: [
                     `cultural sites ${destination}`,
-                    `historical places ${destination}`,
-                    `art galleries ${destination}`
+                    `museums ${destination}`
                 ],
-                3: interestBasedQueries.tertiary || [
+                3: [
                     `beaches ${destination}`,
-                    `parks ${destination}`,
-                    `nature spots ${destination}`,
-                    `scenic viewpoints ${destination}`,
-                    `outdoor activities ${destination}`
+                    `nature ${destination}`
                 ]
             };
             
             const queries = daySpecificQueries[dayNumber] || [
-                `attractions ${destination}`,
-                `places to visit ${destination}`,
-                `tourist spots ${destination}`,
-                `things to do ${destination}`
+                `tourist attractions ${destination}`
             ];
             
             for (const query of queries) {
@@ -2110,9 +2670,9 @@ const findRealDestinationsForDay = async (dayNumber, destination, coord, interes
                     if (results && results.length > 0) {
                         const formattedResults = results
                             .filter(place => {
-                                // Lọc địa điểm chất lượng cao
-                                const hasGoodRating = place.rating >= 3.8;
-                                const hasReviews = place.user_ratings_total > 10;
+                                // Giảm yêu cầu để không loại bỏ địa điểm nổi tiếng
+                                const hasGoodRating = place.rating >= 3.5; // Giảm từ 3.8 → 3.5
+                                const hasReviews = place.user_ratings_total > 5; // Giảm từ 10 → 5
                                 
                                 // Lọc chỉ lấy địa điểm du lịch
                                 const isTourismRelated = isTourismPlace(place);
@@ -2143,6 +2703,17 @@ const findRealDestinationsForDay = async (dayNumber, destination, coord, interes
                                 
                                 const notUsed = !nameUsed && !idUsed && !similarUsed;
                                 return hasGoodRating && hasReviews && notUsed && isTourismRelated;
+                            })
+                            .sort((a, b) => {
+                                // Ưu tiên địa điểm cao cấp nếu có ngân sách
+                                if (canAffordPremium) {
+                                    const aIsPremium = isPremiumAttraction(a.name);
+                                    const bIsPremium = isPremiumAttraction(b.name);
+                                    if (aIsPremium && !bIsPremium) return -1;
+                                    if (!aIsPremium && bIsPremium) return 1;
+                                }
+                                // Sort by rating
+                                return (b.rating || 0) - (a.rating || 0);
                             })
                             .slice(0, 5) // Lấy nhiều hơn để có lựa chọn
                             .map(place => ({
@@ -2256,8 +2827,10 @@ const diversifyDestinations = (destinations, dayNumber) => {
     });
 
     if (availableDestinations.length === 0) {
-        console.warn(`⚠️ No new destinations available for day ${dayNumber}, using fallback`);
-        return destinations.slice(0, dayNumber === 1 ? 2 : 3);
+        console.warn(`⚠️ No new destinations available for day ${dayNumber}, using original destinations`);
+        // Nếu không còn địa điểm mới, trả về một số địa điểm gốc (có thể trùng)
+        const fallbackCount = dayNumber === 1 ? 2 : 3;
+        return destinations.slice(0, Math.min(fallbackCount, destinations.length));
     }
 
     // Phân loại theo category
@@ -3939,38 +4512,50 @@ const generateWeatherRecommendations = (weather, destination) => {
  * Tính chi phí ngày nâng cao
  */
 const calculateEnhancedDayCost = (destinations, restaurants, travelStyle, dayNumber, dailyBudget = 500000) => {
-    const multiplier = Math.min(TRAVEL_STYLES[travelStyle]?.multiplier || 1, 1.2); // Giới hạn multiplier
+    const multiplier = Math.min(TRAVEL_STYLES[travelStyle]?.multiplier || 1, 1.2);
     
-    // Chi phí tham quan - giảm xuống
-    const sightseeingCost = Math.min(
-        destinations.reduce((sum, dest) => sum + (dest.entryFee || 25000), 0),
-        dailyBudget * 0.3
-    );
+    // 1. Chi phí vé vào cổng (sử dụng giá chính xác)
+    const sightseeingCost = destinations.reduce((sum, dest) => sum + (dest.entryFee || 0), 0);
     
-    // Chi phí ăn uống đa dạng - tối ưu
+    // 2. Chi phí ăn uống (sử dụng giá trung vị)
     let foodCost = 0;
-    if (restaurants.breakfast) foodCost += Math.min(restaurants.breakfast.estimatedCost || 30000, 30000);
-    if (restaurants.lunch) foodCost += Math.min(restaurants.lunch.estimatedCost || 60000, 60000);
-    if (restaurants.dinner) foodCost += Math.min(restaurants.dinner.estimatedCost || 80000, 80000);
-    if (restaurants.streetFood) foodCost += 20000; // Giảm street food
-    if (restaurants.cafes) foodCost += 25000; // Giảm cafe
-    foodCost = Math.min(foodCost, dailyBudget * 0.5);
+    if (restaurants.breakfast) foodCost += MEAL_COSTS.breakfast.avg;
+    if (restaurants.lunch) foodCost += MEAL_COSTS.lunch.avg;
+    if (restaurants.dinner) foodCost += MEAL_COSTS.dinner.avg;
+    if (restaurants.streetFood && restaurants.streetFood.length > 0) foodCost += MEAL_COSTS.streetFood.avg;
+    if (restaurants.cafes && restaurants.cafes.length > 0) foodCost += MEAL_COSTS.cafe.avg;
     
-    // Chi phí di chuyển trong ngày - giảm
-    const transportCost = Math.min(
-        TRANSPORT_OPTIONS.local[travelStyle]?.costPerDay || 60000,
-        dailyBudget * 0.15
-    );
+    // 3. Chi phí di chuyển giữa các địa điểm trong ngày
+    let localTransportCost = 0;
     
-    // Chi phí mua sắm/phát sinh - giảm đáng kể
-    const miscCost = Math.min(30000 + (dayNumber * 10000), dailyBudget * 0.1);
+    // Tính chi phí di chuyển giữa các địa điểm
+    for (let i = 0; i < destinations.length - 1; i++) {
+        const from = destinations[i].address || destinations[i].name;
+        const to = destinations[i + 1].address || destinations[i + 1].name;
+        
+        // Thử lấy thời gian từ CSV (nếu có)
+        const travelTime = transportDataService.getTravelTime(from, to);
+        
+        if (travelTime && travelTime > 0.5) {
+            // Nếu > 30 phút, có thể cần xe
+            localTransportCost += 50000; // Grab/taxi giữa các địa điểm
+        } else {
+            // Ngắn, có thể đi bộ hoặc xe ngắn
+            localTransportCost += 20000;
+        }
+    }
     
-    const totalCost = Math.min(
-        (sightseeingCost + foodCost + transportCost + miscCost) * multiplier,
-        dailyBudget
-    );
+    // Thêm chi phí di chuyển cơ bản trong ngày
+    const baseTransportCost = TRANSPORT_OPTIONS.local[travelStyle]?.costPerDay || 80000;
+    localTransportCost += baseTransportCost;
     
-    return Math.round(totalCost);
+    // 4. Chi phí mua sắm/phát sinh
+    const miscCost = 50000; // Nước uống, tip, mua sắm nhỏ
+    
+    const totalCost = (sightseeingCost + foodCost + localTransportCost + miscCost) * multiplier;
+    
+    // Làm tròn đến 10,000
+    return roundPrice(totalCost);
 };
 
 /**

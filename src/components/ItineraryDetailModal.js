@@ -261,28 +261,119 @@ const ItineraryDetailModal = ({ itinerary, onClose }) => {
                     {itinerary.transport && (
                         <div className="transport-section">
                             <h3>🚗 Phương tiện di chuyển</h3>
-                            <div className="transport-cards">
-                                {itinerary.transport.intercity && (
-                                    <div className="transport-card">
-                                        <h4>✈️ Di chuyển liên tỉnh</h4>
-                                        <p><strong>Phương tiện:</strong> {itinerary.transport.intercity.method}</p>
-                                        <p><strong>Chi phí:</strong> {formatMoney(itinerary.transport.intercity.cost)}</p>
-                                        {itinerary.transport.intercity.details && (
-                                            <p><strong>Chi tiết:</strong> {itinerary.transport.intercity.details}</p>
-                                        )}
-                                    </div>
-                                )}
-                                {itinerary.transport.local && (
-                                    <div className="transport-card">
-                                        <h4>🚕 Di chuyển địa phương</h4>
-                                        <p><strong>Phương tiện:</strong> {itinerary.transport.local.method}</p>
-                                        <p><strong>Chi phí:</strong> {formatMoney(itinerary.transport.local.cost)}</p>
-                                        {itinerary.transport.local.details && (
-                                            <p><strong>Chi tiết:</strong> {itinerary.transport.local.details}</p>
-                                        )}
-                                    </div>
-                                )}
-                            </div>
+                            
+                            {/* Intercity Transport */}
+                            {itinerary.transport.intercity && (
+                                <div className="transport-card">
+                                    <h4>✈️ Di chuyển liên tỉnh</h4>
+                                    
+                                    {/* Departure */}
+                                    {itinerary.transport.intercity.departure && (
+                                        <div className="transport-route">
+                                            <h5>🚌 Lượt đi: {itinerary.transport.intercity.departure.from} → {itinerary.transport.intercity.departure.to}</h5>
+                                            <p><strong>Ngày:</strong> {itinerary.transport.intercity.departure.date}</p>
+                                            
+                                            {itinerary.transport.intercity.departure.recommended && (
+                                                <div className="recommended-transport">
+                                                    <p><strong>Khuyến nghị:</strong> {itinerary.transport.intercity.departure.recommended.type}</p>
+                                                    <p><strong>Thời gian:</strong> {itinerary.transport.intercity.departure.recommended.duration}</p>
+                                                    <p><strong>Chi phí:</strong> {formatMoney(itinerary.transport.intercity.departure.recommended.cost)}</p>
+                                                    {itinerary.transport.intercity.departure.recommended.company && (
+                                                        <p><strong>Nhà xe:</strong> {itinerary.transport.intercity.departure.recommended.company}</p>
+                                                    )}
+                                                    {itinerary.transport.intercity.departure.recommended.note && (
+                                                        <p><strong>Loại xe:</strong> {itinerary.transport.intercity.departure.recommended.note.split('-')[1]?.trim() || itinerary.transport.intercity.departure.recommended.note}</p>
+                                                    )}
+                                                </div>
+                                            )}
+                                            
+                                            {itinerary.transport.intercity.departure.options && itinerary.transport.intercity.departure.options.length > 1 && (() => {
+                                                // Lọc bỏ option đã được recommend
+                                                const recommendedCompany = itinerary.transport.intercity.departure.recommended?.company;
+                                                const otherOptions = itinerary.transport.intercity.departure.options.filter(
+                                                    option => option.company !== recommendedCompany
+                                                );
+                                                
+                                                if (otherOptions.length === 0) return null;
+                                                
+                                                return (
+                                                    <details className="transport-options">
+                                                        <summary>Xem thêm {otherOptions.length} tùy chọn khác</summary>
+                                                        <div className="options-list">
+                                                            {otherOptions.map((option, idx) => (
+                                                                <div key={idx} className="option-item">
+                                                                    <p><strong>{option.type}</strong></p>
+                                                                    <p>⏱️ {option.duration} | 💰 {formatMoney(option.cost)}</p>
+                                                                    {option.company && <p>🚌 {option.company}</p>}
+                                                                    {option.note && <p>📝 Loại xe: {option.note.split('-')[1]?.trim() || option.note}</p>}
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    </details>
+                                                );
+                                            })()}
+                                        </div>
+                                    )}
+                                    
+                                    {/* Return */}
+                                    {itinerary.transport.intercity.return && (
+                                        <div className="transport-route">
+                                            <h5>🔙 Lượt về: {itinerary.transport.intercity.return.from} → {itinerary.transport.intercity.return.to}</h5>
+                                            <p><strong>Ngày:</strong> {itinerary.transport.intercity.return.date}</p>
+                                            
+                                            {itinerary.transport.intercity.return.recommended && (
+                                                <div className="recommended-transport">
+                                                    <p><strong>Khuyến nghị:</strong> {itinerary.transport.intercity.return.recommended.type}</p>
+                                                    <p><strong>Thời gian:</strong> {itinerary.transport.intercity.return.recommended.duration}</p>
+                                                    <p><strong>Chi phí:</strong> {formatMoney(itinerary.transport.intercity.return.recommended.cost)}</p>
+                                                    {itinerary.transport.intercity.return.recommended.company && (
+                                                        <p><strong>Nhà xe:</strong> {itinerary.transport.intercity.return.recommended.company}</p>
+                                                    )}
+                                                    {itinerary.transport.intercity.return.recommended.note && (
+                                                        <p><strong>Loại xe:</strong> {itinerary.transport.intercity.return.recommended.note.split('-')[1]?.trim() || itinerary.transport.intercity.return.recommended.note}</p>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                            
+                            {/* Local Transport */}
+                            {itinerary.transport.local && (
+                                <div className="transport-card">
+                                    <h4>🚕 Di chuyển tại địa phương</h4>
+                                    {itinerary.transport.local.recommended && (
+                                        <div className="local-transport">
+                                            <p><strong>Khuyến nghị:</strong> {
+                                                typeof itinerary.transport.local.recommended === 'object' 
+                                                    ? (itinerary.transport.local.recommended.name || itinerary.transport.local.recommended.type || 'Xe địa phương')
+                                                    : itinerary.transport.local.recommended
+                                            }</p>
+                                            {itinerary.transport.local.recommended.costPerDay && (
+                                                <p><strong>Chi phí/ngày:</strong> {formatMoney(itinerary.transport.local.recommended.costPerDay)}</p>
+                                            )}
+                                        </div>
+                                    )}
+                                    
+                                    {itinerary.transport.local.tips && itinerary.transport.local.tips.length > 0 && (
+                                        <div className="transport-tips">
+                                            <h5>💡 Lưu ý:</h5>
+                                            <ul>
+                                                {itinerary.transport.local.tips.map((tip, idx) => (
+                                                    <li key={idx}>{tip}</li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                    )}
+                                    
+                                    {itinerary.transport.local.apps && itinerary.transport.local.apps.length > 0 && (
+                                        <div className="transport-apps">
+                                            <p><strong>Ứng dụng đặt xe:</strong> {itinerary.transport.local.apps.join(', ')}</p>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                         </div>
                     )}
 

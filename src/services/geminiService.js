@@ -4,6 +4,8 @@
  * Sử dụng Gemini API để tạo nội dung, gợi ý, và phân tích
  */
 
+import transportDataService from './transportDataService';
+
 // ⚠️ CẢNH BÁO: Để API key ở đây (client-side) là RẤT NGUY HIỂM.
 // Bất kỳ ai cũng có thể đánh cắp key của bạn.
 // Bạn PHẢI chuyển logic này về một server (backend).
@@ -394,22 +396,32 @@ CHỈ JSON, không text khác.`;
 };
 
 /**
- * Tối ưu hóa lịch trình bằng AI
+ * Tối ưu hóa lịch trình bằng AI với dữ liệu giao thông thực tế
  */
 export const optimizeItinerary = async (dailyItinerary, preferences) => {
     const itineraryText = dailyItinerary.map(day => 
         `Ngày ${day.day}: ${day.destinations?.map(d => d.name).join(', ')}`
     ).join('\n');
+    
+    // Thêm thông tin giao thông thực tế
+    let transportInfo = '';
+    if (preferences.departureCity && preferences.destination) {
+        const info = transportDataService.formatForAI(preferences.departureCity, preferences.destination);
+        if (info) {
+            transportInfo = `\n\nThông tin giao thông:\n${info}`;
+        }
+    }
 
     const prompt = `Phân tích lịch trình du lịch sau và đưa ra 3 gợi ý cải thiện:
     
     ${itineraryText}
+    ${transportInfo}
     
     Sở thích: ${preferences.interests?.join(', ')}
     Phong cách: ${preferences.travelStyle}
     
     Tập trung vào:
-    1. Tối ưu thời gian di chuyển
+    1. Tối ưu thời gian di chuyển dựa trên dữ liệu thực tế
     2. Cân bằng hoạt động và nghỉ ngơi
     3. Thêm trải nghiệm độc đáo
     
@@ -430,6 +442,56 @@ export const optimizeItinerary = async (dailyItinerary, preferences) => {
     }
 };
 
+/**
+ * Gợi ý phương tiện và giá xe dựa trên dữ liệu thực tế
+ */
+export const suggestTransportWithPrice = async (from, to, travelers, budget) => {
+    const transportInfo = transportDataService.getTransportSuggestion(from, to);
+    
+    if (!transportInfo) {
+        return {
+            suggestion: `Không tìm thấy thông tin xe từ ${from} đến ${to}. Vui lòng kiểm tra lại tên địa điểm.`,
+            options: []
+        };
+    }
+    
+    const budgetPerPerson = budget / travelers;
+    const formattedInfo = transportDataService.formatForAI(from, to);
+    
+    const prompt = `Dựa trên thông tin sau, gợi ý phương tiện phù hợp:
+
+${formattedInfo}
+
+Số người: ${travelers}
+Ngân sách/người: ${budgetPerPerson.toLocaleString('vi-VN')}đ
+
+Đưa ra gợi ý NGẮN GỌN (2-3 câu) về:
+1. Nhà xe nào phù hợp nhất
+2. Loại xe nên chọn (giường nằm/ghế ngồi/limousine)
+3. Lưu ý khi đặt vé`;
+
+    try {
+        const suggestion = await callGeminiAPI(prompt, { temperature: 0.7, maxOutputTokens: 300 });
+        
+        return {
+            suggestion: suggestion.trim(),
+            options: transportInfo.allOptions,
+            cheapest: transportInfo.cheapest,
+            fastest: transportInfo.fastest,
+            from: transportInfo.from,
+            to: transportInfo.to
+        };
+    } catch (error) {
+        console.error('Error suggesting transport:', error);
+        return {
+            suggestion: formattedInfo,
+            options: transportInfo.allOptions,
+            cheapest: transportInfo.cheapest,
+            fastest: transportInfo.fastest
+        };
+    }
+};
+
 // SỬA: Gán vào biến trước khi export default để fix cảnh báo ESLint
 const geminiService = {
     generateDestinationDescription,
@@ -441,7 +503,8 @@ const geminiService = {
     generateDestinationFAQ,
     optimizeItinerary,
     askTravelQuestion,
-    suggestDestinationFromDescription
+    suggestDestinationFromDescription,
+    suggestTransportWithPrice
 };
 
 export default geminiService;
