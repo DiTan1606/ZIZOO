@@ -20,6 +20,8 @@ import MyTrips from './pages/MyTrips';
 import PersonalizedRecommendations from './components/PersonalizedRecommendations';
 import CompleteItineraryPlanner from './components/CompleteItineraryPlanner';
 import ItineraryDemo from './pages/ItineraryDemo';
+import ChatbotTest from './pages/ChatbotTest';
+import TravelChatbot from './components/TravelChatbot';
 
 // IMPORT ML trainer và AI training service
 import { retrainAllModels } from './ml/trainer';
@@ -88,6 +90,7 @@ function App() {
                                 }
                             />
                             <Route path="/demo" element={<ItineraryDemo />} />
+                            <Route path="/chatbot-test" element={<ChatbotTest />} />
                         </Routes>
                     </main>
                     <ToastContainer
@@ -96,6 +99,9 @@ function App() {
                         pauseOnHover={false}
                         theme="light"
                     />
+                    
+                    {/* AI Chatbot - Hiển thị ở mọi trang */}
+                    <TravelChatbot />
                 </div>
             </Router>
         </AuthProvider>
