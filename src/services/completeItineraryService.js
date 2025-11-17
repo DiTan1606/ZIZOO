@@ -3883,14 +3883,15 @@ const generateRealHourlySchedule = (dayNumber, destinations, restaurants) => {
         if (restaurants.breakfast) {
             schedule.push({
                 time: '07:30',
-                activity: `Ăn sáng tại ${restaurants.breakfast.name}`,
+                activity: `Ăn sáng tại ${restaurants.breakfast.name}${restaurants.breakfast.address ? ' - ' + restaurants.breakfast.address : ''}`,
                 type: 'meal',
                 duration: '45 phút',
                 location: restaurants.breakfast,
                 specialty: restaurants.breakfast.specialty,
                 estimatedCost: restaurants.breakfast.estimatedCost,
                 notes: restaurants.breakfast.isOpen === false ? ['Kiểm tra giờ mở cửa'] : [],
-                realData: true
+                realData: true,
+                address: restaurants.breakfast.address
             });
         }
     }
@@ -3927,7 +3928,7 @@ const generateRealHourlySchedule = (dayNumber, destinations, restaurants) => {
     if (restaurants.lunch) {
         schedule.push({
             time: '12:00',
-            activity: `Ăn trưa tại ${restaurants.lunch.name}`,
+            activity: `Ăn trưa tại ${restaurants.lunch.name}${restaurants.lunch.address ? ' - ' + restaurants.lunch.address : ''}`,
             type: 'meal',
             duration: '1 giờ',
             location: restaurants.lunch,
@@ -3935,7 +3936,8 @@ const generateRealHourlySchedule = (dayNumber, destinations, restaurants) => {
             estimatedCost: restaurants.lunch.estimatedCost,
             cuisine: restaurants.lunch.cuisine,
             notes: restaurants.lunch.isOpen === false ? ['Kiểm tra giờ mở cửa'] : [],
-            realData: true
+            realData: true,
+            address: restaurants.lunch.address
         });
     }
 
@@ -3943,7 +3945,7 @@ const generateRealHourlySchedule = (dayNumber, destinations, restaurants) => {
     if (restaurants.dinner) {
         schedule.push({
             time: '18:30',
-            activity: `Ăn tối tại ${restaurants.dinner.name}`,
+            activity: `Ăn tối tại ${restaurants.dinner.name}${restaurants.dinner.address ? ' - ' + restaurants.dinner.address : ''}`,
             type: 'meal',
             duration: '1.5 giờ',
             location: restaurants.dinner,
@@ -3952,7 +3954,8 @@ const generateRealHourlySchedule = (dayNumber, destinations, restaurants) => {
             cuisine: restaurants.dinner.cuisine,
             phoneNumber: restaurants.dinner.phoneNumber,
             notes: restaurants.dinner.isOpen === false ? ['Đặt bàn trước'] : ['Đặt bàn để đảm bảo chỗ'],
-            realData: true
+            realData: true,
+            address: restaurants.dinner.address
         });
     }
 
