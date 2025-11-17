@@ -169,7 +169,12 @@ class TransportDataService {
   }
 
   // Lấy thông tin gợi ý cho AI
-  getTransportSuggestion(from, to) {
+  getTransportSuggestion(from, to, depth = 0) {
+    // Prevent infinite recursion
+    if (depth > 2) {
+      return null;
+    }
+    
     const routes = this.getAllRoutes(from, to);
     
     if (routes.length === 0) {
@@ -177,8 +182,8 @@ class TransportDataService {
       const similarFrom = this.findSimilarLocation(from);
       const similarTo = this.findSimilarLocation(to);
       
-      if (similarFrom && similarTo) {
-        return this.getTransportSuggestion(similarFrom, similarTo);
+      if (similarFrom && similarTo && (similarFrom !== from || similarTo !== to)) {
+        return this.getTransportSuggestion(similarFrom, similarTo, depth + 1);
       }
       
       return null;

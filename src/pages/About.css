@@ -167,11 +167,6 @@
 .tech-category li {
     padding: 8px 0;
     color: #555;
-    border-bottom: 1px solid #eee;
-}
-
-.tech-category li:last-child {
-    border-bottom: none;
 }
 
 .team-section {
@@ -311,3 +306,6 @@
         align-items: center;
     }
 }
+
+
+

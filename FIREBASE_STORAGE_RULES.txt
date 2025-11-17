@@ -1,0 +1,73 @@
+// Firebase Storage Rules - Copy và paste vào Firebase Console
+// Vào: Firebase Console > Storage > Rules
+
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Avatar uploads - cho phép user upload và đọc avatar của mình
+    match /avatars/{userId}/{filename} {
+      // Cho phép đọc nếu đã đăng nhập
+      allow read: if request.auth != null;
+      
+      // Cho phép upload/update nếu:
+      // 1. User đã đăng nhập
+      // 2. userId khớp với auth.uid
+      // 3. File size < 5MB
+      // 4. File là ảnh
+      allow write: if request.auth != null 
+                   && request.auth.uid == userId
+                   && request.resource.size < 5 * 1024 * 1024
+                   && request.resource.contentType.matches('image/.*');
+      
+      // Cho phép xóa nếu user đã đăng nhập và là chủ sở hữu
+      allow delete: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Cho phép đọc public files (nếu có)
+    match /public/{allPaths=**} {
+      allow read: if true;
+      allow write: if false;
+    }
+  }
+}
+
+// ============================================
+// HƯỚNG DẪN CẤU HÌNH:
+// ============================================
+
+1. Vào Firebase Console: https://console.firebase.google.com
+2. Chọn project: zizoo-23525310
+3. Vào Storage > Rules
+4. Copy toàn bộ rules ở trên
+5. Paste vào editor
+6. Click "Publish"
+
+// ============================================
+// FIRESTORE RULES (nếu chưa có):
+// ============================================
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // User profiles
+    match /users/{userId} {
+      // Cho phép đọc nếu đã đăng nhập
+      allow read: if request.auth != null;
+      
+      // Cho phép write nếu là chủ sở hữu
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // User itineraries
+    match /userItineraries/{userId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Public data (read-only)
+    match /places/{placeId} {
+      allow read: if true;
+      allow write: if false;
+    }
+  }
+}

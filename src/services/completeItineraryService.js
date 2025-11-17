@@ -27,7 +27,9 @@ export const createCompleteItinerary = async (preferences, userId) => {
         budget,
         travelStyle = 'standard',
         interests = [],
-        departureCity = 'Hà Nội'
+        departureCity = 'Hà Nội',
+        departureTime = '06:30',
+        specialActivities = {}
     } = preferences;
 
     console.log('🗺️ Bắt đầu tạo lịch trình hoàn chỉnh...');
@@ -183,7 +185,17 @@ const generateTripHeader = async (preferences) => {
  * 2. TẠO LỊCH TRÌNH CHI TIẾT THEO TỪNG NGÀY
  */
 const generateDailyItinerary = async (preferences) => {
-    const { destination, startDate, duration, interests, travelStyle, budget, travelers } = preferences;
+    const { 
+        destination, 
+        startDate, 
+        duration, 
+        interests, 
+        travelStyle, 
+        budget, 
+        travelers,
+        departureTime = '06:30',
+        specialActivities = {}
+    } = preferences;
     const coord = provinceCoords[destination] || { lat: 16.047, lng: 108.220 };
     
     // Tính ngân sách hàng ngày
@@ -196,7 +208,19 @@ const generateDailyItinerary = async (preferences) => {
         currentDate.setDate(currentDate.getDate() + day);
 
         // Tạo kế hoạch cho từng ngày với ngân sách
-        const dayPlan = await generateSingleDayPlan(day + 1, currentDate, destination, coord, interests, travelStyle, dailyBudget, budget, travelers);
+        const dayPlan = await generateSingleDayPlan(
+            day + 1, 
+            currentDate, 
+            destination, 
+            coord, 
+            interests, 
+            travelStyle, 
+            dailyBudget, 
+            budget, 
+            travelers,
+            departureTime,
+            specialActivities
+        );
         dailyPlans.push(dayPlan);
     }
 
@@ -206,7 +230,19 @@ const generateDailyItinerary = async (preferences) => {
 /**
  * Tạo kế hoạch cho một ngày cụ thể - CẢI THIỆN ĐA DẠNG
  */
-const generateSingleDayPlan = async (dayNumber, date, destination, coord, interests, travelStyle, dailyBudget = 500000, budget = 5000000, travelers = 2) => {
+const generateSingleDayPlan = async (
+    dayNumber, 
+    date, 
+    destination, 
+    coord, 
+    interests, 
+    travelStyle, 
+    dailyBudget = 500000, 
+    budget = 5000000, 
+    travelers = 2,
+    departureTime = '06:30',
+    specialActivities = {}
+) => {
     try {
         console.log(`📅 Generating DIVERSE day plan for Day ${dayNumber} in ${destination}...`);
 
@@ -217,7 +253,14 @@ const generateSingleDayPlan = async (dayNumber, date, destination, coord, intere
         const restaurants = await findRealRestaurantsForDay(destination, coord, travelStyle);
         
         // Tạo lịch trình theo giờ phong phú
-        const hourlySchedule = generateEnhancedHourlySchedule(dayNumber, destinations, restaurants, interests);
+        const hourlySchedule = generateEnhancedHourlySchedule(
+            dayNumber, 
+            destinations, 
+            restaurants, 
+            interests,
+            departureTime,
+            specialActivities
+        );
 
         // Lấy thời tiết thực tế với dự báo rủi ro (fallback nếu API key không có)
         const realWeather = await getRealWeatherForDay(destination, coord, date).catch(error => {
@@ -4074,21 +4117,161 @@ const generateEnhancedDayTheme = (dayNumber, destinations, interests, destinatio
 };
 
 /**
- * Tạo lịch trình theo giờ phong phú
+ * Helper: Gộp các địa điểm liên quan (cùng khu vực/tên tương tự)
  */
-const generateEnhancedHourlySchedule = (dayNumber, destinations, restaurants, interests) => {
-    const schedule = [];
+const groupRelatedDestinations = (destinations) => {
+    const grouped = [];
+    const used = new Set();
     
+    destinations.forEach((dest, index) => {
+        if (used.has(index)) return;
+        
+        const group = {
+            main: dest,
+            related: []
+        };
+        
+        // Tìm các địa điểm liên quan
+        destinations.forEach((other, otherIndex) => {
+            if (index === otherIndex || used.has(otherIndex)) return;
+            
+            // Check if related by name similarity or same location
+            const isSimilarName = areSimilarNames(dest.name, other.name);
+            const isSameLocation = dest.address && other.address && 
+                                   areSimilarAddresses(dest.address, other.address);
+            
+            if (isSimilarName || isSameLocation) {
+                group.related.push(other);
+                used.add(otherIndex);
+            }
+        });
+        
+        used.add(index);
+        grouped.push(group);
+    });
+    
+    return grouped;
+};
+
+/**
+ * Helper: Kiểm tra 2 tên có tương tự không
+ */
+const areSimilarNames = (name1, name2) => {
+    const normalize = (str) => str.toLowerCase()
+        .replace(/[àáạảãâầấậẩẫăằắặẳẵ]/g, 'a')
+        .replace(/[èéẹẻẽêềếệểễ]/g, 'e')
+        .replace(/[ìíịỉĩ]/g, 'i')
+        .replace(/[òóọỏõôồốộổỗơờớợởỡ]/g, 'o')
+        .replace(/[ùúụủũưừứựửữ]/g, 'u')
+        .replace(/[ỳýỵỷỹ]/g, 'y')
+        .replace(/đ/g, 'd')
+        .replace(/[^a-z0-9\s]/g, '');
+    
+    const n1 = normalize(name1);
+    const n2 = normalize(name2);
+    
+    // Check if one contains the other
+    if (n1.includes(n2) || n2.includes(n1)) return true;
+    
+    // Check common keywords
+    const keywords1 = n1.split(/\s+/);
+    const keywords2 = n2.split(/\s+/);
+    const commonKeywords = keywords1.filter(k => keywords2.includes(k) && k.length > 3);
+    
+    return commonKeywords.length >= 2;
+};
+
+/**
+ * Helper: Kiểm tra 2 địa chỉ có gần nhau không
+ */
+const areSimilarAddresses = (addr1, addr2) => {
+    const normalize = (str) => str.toLowerCase().replace(/[^a-z0-9]/g, '');
+    
+    // Check if addresses share significant parts
+    const parts1 = addr1.split(',').map(p => p.trim());
+    const parts2 = addr2.split(',').map(p => p.trim());
+    
+    let matches = 0;
+    parts1.forEach(p1 => {
+        if (parts2.some(p2 => normalize(p1) === normalize(p2))) {
+            matches++;
+        }
+    });
+    
+    return matches >= 2;
+};
+
+/**
+ * Helper: Tính thời gian tiếp theo dựa trên thời gian hiện tại + duration
+ */
+const calculateNextTime = (currentTime, durationStr) => {
+    const [hours, minutes] = currentTime.split(':').map(Number);
+    
+    // Parse duration (ví dụ: "45 phút", "1-2 giờ", "1.5 giờ")
+    let durationMinutes = 60; // default
+    
+    if (durationStr.includes('phút')) {
+        const match = durationStr.match(/(\d+)\s*phút/);
+        if (match) durationMinutes = parseInt(match[1]);
+    } else if (durationStr.includes('giờ')) {
+        const match = durationStr.match(/([\d.]+)(?:-[\d.]+)?\s*giờ/);
+        if (match) {
+            const hourValue = parseFloat(match[1]);
+            durationMinutes = hourValue * 60;
+        }
+    }
+    
+    // Add travel time buffer (15 minutes)
+    durationMinutes += 15;
+    
+    const totalMinutes = hours * 60 + minutes + durationMinutes;
+    const newHours = Math.floor(totalMinutes / 60) % 24;
+    const newMinutes = totalMinutes % 60;
+    
+    return `${newHours.toString().padStart(2, '0')}:${newMinutes.toString().padStart(2, '0')}`;
+};
+
+/**
+ * Tạo lịch trình theo giờ phong phú - LOGIC MỚI
+ * Theo guideline: Không có "Nghỉ ngơi, di chuyển", gộp địa điểm liên quan, thời gian logic
+ */
+const generateEnhancedHourlySchedule = (
+    dayNumber, 
+    destinations, 
+    restaurants, 
+    interests,
+    departureTime = '06:30',
+    specialActivities = {}
+) => {
+    const schedule = [];
+    const usedRestaurants = new Set();
+    
+    // Ngày 1: Khởi hành và check-in
     if (dayNumber === 1) {
-        // Ngày đầu - có di chuyển
         schedule.push({
-            time: '06:30',
+            time: departureTime,
             activity: 'Khởi hành từ điểm xuất phát',
             type: 'transport',
             duration: '30 phút',
             notes: ['Chuẩn bị hành lý', 'Kiểm tra giấy tờ', 'Mang theo đồ ăn nhẹ'],
             realData: true
         });
+        
+        // Lunch trên đường hoặc khi đến
+        if (restaurants.lunch) {
+            schedule.push({
+                time: '12:00',
+                activity: `Ăn trưa tại ${restaurants.lunch.name}`,
+                type: 'meal',
+                duration: '1 giờ',
+                location: restaurants.lunch,
+                specialty: restaurants.lunch.specialty,
+                estimatedCost: restaurants.lunch.estimatedCost,
+                notes: ['Thử món đặc sản', 'Nghỉ ngơi sau buổi sáng'],
+                realData: true
+            });
+            usedRestaurants.add(restaurants.lunch.name);
+        }
         
         schedule.push({
             time: '12:30',
@@ -4098,115 +4281,207 @@ const generateEnhancedHourlySchedule = (dayNumber, destinations, restaurants, in
             notes: ['Check-in khách sạn', 'Nghỉ ngơi', 'Ăn trưa nhẹ'],
             realData: true
         });
-    } else {
-        // Breakfast đa dạng
-        if (restaurants.breakfast) {
-            schedule.push({
-                time: '07:30',
-                activity: `Ăn sáng tại ${restaurants.breakfast.name}`,
-                type: 'meal',
-                duration: '45 phút',
-                location: restaurants.breakfast,
-                specialty: restaurants.breakfast.specialty,
-                estimatedCost: restaurants.breakfast.estimatedCost,
-                notes: restaurants.breakfast.isOpen === false ? ['Kiểm tra giờ mở cửa'] : ['Thử món đặc sản địa phương'],
-                realData: true
-            });
-        }
     }
-
-    // Thêm các hoạt động tham quan đa dạng
-    let currentTime = dayNumber === 1 ? '14:00' : '09:00';
     
-    destinations.forEach((dest, index) => {
-        const openingNote = dest.isOpen === false ? 'Hiện tại đóng cửa - kiểm tra giờ mở' : '';
-        const crowdNote = dest.currentCrowdLevel === 'high' ? 'Dự báo đông đúc - đến sớm' : '';
-        const photoNote = interests.includes('photography') ? 'Điểm chụp ảnh đẹp' : '';
+    // Xác định thời gian bắt đầu
+    let currentTime = dayNumber === 1 ? '14:00' : '07:00';
+    
+    // Sunrise activity (chỉ ngày 2+)
+    if (dayNumber > 1 && specialActivities.sunrise) {
+        currentTime = '05:30';
+        schedule.push({
+            time: currentTime,
+            activity: '🌅 Ngắm bình minh',
+            type: 'special',
+            duration: '1 giờ',
+            notes: ['Tản bộ ven biển/hồ', 'Chụp ảnh bình minh', 'Uống cà phê sáng'],
+            realData: false
+        });
+        currentTime = calculateNextTime(currentTime, '1 giờ');
+    }
+    
+    // Breakfast (chỉ ngày 2+)
+    if (dayNumber > 1 && restaurants.breakfast) {
+        schedule.push({
+            time: currentTime,
+            activity: `Ăn sáng tại ${restaurants.breakfast.name}`,
+            type: 'meal',
+            duration: '45 phút',
+            location: restaurants.breakfast,
+            specialty: restaurants.breakfast.specialty,
+            estimatedCost: restaurants.breakfast.estimatedCost,
+            notes: ['Thử món đặc sản địa phương'],
+            realData: true
+        });
+        usedRestaurants.add(restaurants.breakfast.name);
+        currentTime = calculateNextTime(currentTime, '45 phút');
+    }
+    
+    // Gộp các địa điểm liên quan
+    const groupedDestinations = groupRelatedDestinations(destinations);
+    
+    // Thêm các hoạt động tham quan (8:00-11:00 sáng)
+    groupedDestinations.forEach((group, index) => {
+        const mainDest = group.main;
+        
+        // Tạo activity name
+        let activityName = `Tham quan ${mainDest.name}`;
+        if (group.related.length > 0) {
+            activityName = `Tham quan khu vực ${mainDest.name}`;
+        }
+        
+        // Tính duration
+        const baseDuration = 2;
+        const additionalTime = group.related.length * 0.5;
+        const totalDuration = baseDuration + additionalTime;
+        const durationStr = `${Math.floor(totalDuration)}-${Math.ceil(totalDuration)} giờ`;
+        
+        // Tạo notes
+        const notes = ['Điểm chụp ảnh đẹp'];
+        if (group.related.length > 0) {
+            notes.push(`Bao gồm: ${group.related.map(r => r.name).join(', ')}`);
+        }
         
         schedule.push({
             time: currentTime,
-            activity: `Tham quan ${dest.name}`,
+            activity: activityName,
             type: 'sightseeing',
-            duration: dest.estimatedDuration || '1-2 giờ',
-            location: dest,
-            entryFee: dest.entryFee,
-            crowdLevel: dest.currentCrowdLevel,
-            bestTime: dest.bestTimeToVisit,
-            notes: [openingNote, crowdNote, photoNote, ...(dest.notes || [])].filter(Boolean),
+            duration: durationStr,
+            location: mainDest,
+            relatedLocations: group.related,
+            entryFee: mainDest.entryFee,
+            notes: notes,
             realData: true,
-            apiSource: dest.dataSource,
-            category: dest.category
+            apiSource: mainDest.dataSource
         });
         
-        // Thêm break time giữa các điểm
-        if (index < destinations.length - 1) {
-            const [hours, minutes] = currentTime.split(':').map(Number);
-            const breakTime = `${(hours + 1).toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+        currentTime = calculateNextTime(currentTime, durationStr);
+        
+        // Thêm lunch nếu đã qua 11:30
+        const [hours] = currentTime.split(':').map(Number);
+        if (hours >= 11 && hours < 14 && restaurants.lunch && !usedRestaurants.has(restaurants.lunch.name)) {
+            const lunchTime = hours >= 12 ? currentTime : '11:30';
+            const lunchDuration = '1 giờ';
             
             schedule.push({
-                time: breakTime,
-                activity: 'Nghỉ ngơi, di chuyển',
-                type: 'break',
-                duration: '15-30 phút',
-                notes: ['Uống nước', 'Chụp ảnh', 'Mua đồ lưu niệm nhỏ'],
-                realData: false
+                time: lunchTime,
+                activity: `Ăn trưa tại ${restaurants.lunch.name}`,
+                type: 'meal',
+                duration: lunchDuration,
+                location: restaurants.lunch,
+                specialty: restaurants.lunch.specialty,
+                estimatedCost: restaurants.lunch.estimatedCost,
+                notes: ['Thử món đặc sản', 'Nghỉ ngơi sau buổi sáng'],
+                realData: true
             });
+            usedRestaurants.add(restaurants.lunch.name);
+            currentTime = calculateNextTime(lunchTime, lunchDuration);
         }
-        
-        // Tính thời gian tiếp theo
-        const [hours, minutes] = currentTime.split(':').map(Number);
-        const nextHour = hours + 2 + (index * 0.5);
-        currentTime = `${Math.floor(nextHour).toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
     });
-
-    // Lunch đa dạng
-    if (restaurants.lunch) {
-        schedule.push({
-            time: '12:00',
-            activity: `Ăn trưa tại ${restaurants.lunch.name}`,
-            type: 'meal',
-            duration: '1 giờ',
-            location: restaurants.lunch,
-            specialty: restaurants.lunch.specialty,
-            estimatedCost: restaurants.lunch.estimatedCost,
-            notes: ['Thử món đặc sản', 'Nghỉ ngơi sau buổi sáng'],
-            realData: true
-        });
-    }
-
-    // Thêm street food nếu có
+    
+    // Hoạt động chiều (13:00-15:00) - nhóm 2
+    // Đã được xử lý trong loop trên
+    
+    // Trải nghiệm - giải trí (15:00-17:00)
     if (restaurants.streetFood && restaurants.streetFood.length > 0) {
-        schedule.push({
-            time: '15:30',
-            activity: `Thử street food: ${restaurants.streetFood[0].name}`,
-            type: 'street_food',
-            duration: '30 phút',
-            location: restaurants.streetFood[0],
-            specialty: restaurants.streetFood[0].specialty,
-            estimatedCost: restaurants.streetFood[0].estimatedCost,
-            notes: ['Trải nghiệm ẩm thực đường phố', 'Giá rẻ, ngon'],
-            realData: true
-        });
+        const [hours] = currentTime.split(':').map(Number);
+        if (hours >= 15 && hours < 17) {
+            const streetFood = restaurants.streetFood[0];
+            if (!usedRestaurants.has(streetFood.name)) {
+                const snackDuration = '30 phút';
+                
+                schedule.push({
+                    time: currentTime,
+                    activity: `Thử street food: ${streetFood.name}`,
+                    type: 'food',
+                    duration: snackDuration,
+                    location: streetFood,
+                    estimatedCost: streetFood.estimatedCost,
+                    notes: ['Trải nghiệm ẩm thực đường phố', 'Giá rẻ, ngon'],
+                    realData: true
+                });
+                usedRestaurants.add(streetFood.name);
+                currentTime = calculateNextTime(currentTime, snackDuration);
+            }
+        }
     }
-
-    // Dinner đa dạng
-    if (restaurants.dinner) {
+    
+    // Ngắm hoàng hôn (17:00-18:30)
+    if (specialActivities.sunset) {
+        const [hours] = currentTime.split(':').map(Number);
+        const sunsetTime = hours >= 17 ? currentTime : '17:00';
+        
         schedule.push({
-            time: '18:30',
+            time: sunsetTime,
+            activity: '🌇 Ngắm hoàng hôn',
+            type: 'special',
+            duration: '1 giờ',
+            notes: ['Bờ biển/đồi cao/bến thuyền', 'Chụp ảnh hoàng hôn', 'Khoảnh khắc chill nhất'],
+            realData: false
+        });
+        currentTime = calculateNextTime(sunsetTime, '1 giờ');
+    }
+    
+    // Dinner (18:30-20:00)
+    if (restaurants.dinner && !usedRestaurants.has(restaurants.dinner.name)) {
+        const [hours] = currentTime.split(':').map(Number);
+        const dinnerTime = hours >= 18 ? currentTime : '19:00';
+        const dinnerDuration = '1.5 giờ';
+        
+        schedule.push({
+            time: dinnerTime,
             activity: `Ăn tối tại ${restaurants.dinner.name}`,
             type: 'meal',
-            duration: '1.5 giờ',
+            duration: dinnerDuration,
             location: restaurants.dinner,
             specialty: restaurants.dinner.specialty,
             estimatedCost: restaurants.dinner.estimatedCost,
             notes: ['Bữa tối thịnh soạn', 'Thưởng thức đặc sản địa phương'],
             realData: true
         });
+        usedRestaurants.add(restaurants.dinner.name);
+        currentTime = calculateNextTime(dinnerTime, dinnerDuration);
     }
-
-    // Hoạt động tối đa dạng
-    const eveningActivities = generateEveningActivities(interests, restaurants);
-    schedule.push(...eveningActivities);
+    
+    // Hoạt động buổi tối (20:00-22:00)
+    if (specialActivities.nightMarket) {
+        schedule.push({
+            time: currentTime,
+            activity: '🏮 Khám phá chợ đêm',
+            type: 'special',
+            duration: '2 giờ',
+            notes: ['Mua sắm đồ lưu niệm', 'Thử đồ ăn vặt', 'Trải nghiệm văn hóa địa phương'],
+            realData: false
+        });
+        currentTime = calculateNextTime(currentTime, '2 giờ');
+    } else if (specialActivities.nightlife) {
+        schedule.push({
+            time: currentTime,
+            activity: '🎉 Nightlife',
+            type: 'special',
+            duration: '2-3 giờ',
+            notes: ['Bar/pub nhẹ nhàng', 'Nghe nhạc acoustic', 'Rooftop view đẹp'],
+            realData: false
+        });
+    } else if (restaurants.cafes && restaurants.cafes.length > 0) {
+        const cafe = restaurants.cafes[0];
+        if (!usedRestaurants.has(cafe.name)) {
+            schedule.push({
+                time: currentTime,
+                activity: `Thư giãn tại ${cafe.name}`,
+                type: 'leisure',
+                duration: '1-2 giờ',
+                location: cafe,
+                estimatedCost: cafe.estimatedCost,
+                notes: ['Thưởng thức cà phê địa phương', 'Ngắm cảnh đêm'],
+                realData: true
+            });
+        }
+    } else {
+        // Hoạt động tối đa dạng
+        const eveningActivities = generateEveningActivities(interests, restaurants);
+        schedule.push(...eveningActivities);
+    }
 
     return schedule.sort((a, b) => a.time.localeCompare(b.time));
 };

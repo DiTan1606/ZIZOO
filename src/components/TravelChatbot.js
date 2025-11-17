@@ -3,6 +3,11 @@ import React, { useState, useRef, useEffect } from 'react';
 import { askTravelQuestion, suggestDestinationFromDescription } from '../services/geminiService';
 import './TravelChatbot.css';
 
+// Import icons
+import livechatIcon from '../icon/livechat.png';
+import aiIcon from '../icon/AIgoiy.png';
+import sendIcon from '../icon/guitinnhan.png';
+
 const TravelChatbot = () => {
     const [messages, setMessages] = useState([
         {
@@ -109,7 +114,7 @@ const TravelChatbot = () => {
                 className={`chatbot-toggle ${isOpen ? 'open' : ''}`}
                 onClick={() => setIsOpen(!isOpen)}
             >
-                {isOpen ? '✕' : '💬'}
+                {isOpen ? '✕' : <img src={livechatIcon} alt="Chat" className="toggle-icon" />}
             </button>
 
             {/* Chatbot Window */}
@@ -117,7 +122,9 @@ const TravelChatbot = () => {
                 <div className="chatbot-window">
                     <div className="chatbot-header">
                         <div className="chatbot-header-content">
-                            <div className="chatbot-avatar">🤖</div>
+                            <div className="chatbot-avatar">
+                                <img src={aiIcon} alt="AI" className="avatar-icon" />
+                            </div>
                             <div>
                                 <h3>Trợ lý Du lịch AI</h3>
                                 <p>Powered by Gemini</p>

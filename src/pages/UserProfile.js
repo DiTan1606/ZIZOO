@@ -1,12 +1,31 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { toast } from 'react-toastify';
 import './UserProfile.css';
+import {
+    getUserProfile,
+    saveUserProfile,
+    uploadAvatar,
+    deleteAvatar,
+    updateUserPreferences,
+    getUserStats,
+    changePassword,
+    ensureProfileFields
+} from '../services/userProfileService';
+
+// Import icons
+import profileIcon from '../icon/thongtincanhan.png';
+import saveIcon from '../icon/luuthaydoi.png';
+import securityIcon from '../icon/baomat.png';
+import optionsIcon from '../icon/tuychon.png';
 
 const UserProfile = () => {
-    const { currentUser, updateUserProfile } = useAuth();
+    const { currentUser } = useAuth();
     const [loading, setLoading] = useState(false);
     const [activeTab, setActiveTab] = useState('profile');
+    const [avatarFile, setAvatarFile] = useState(null);
+    const [avatarPreview, setAvatarPreview] = useState(null);
+    const fileInputRef = useRef(null);
     
     const [profileData, setProfileData] = useState({
         displayName: '',
@@ -16,48 +35,231 @@ const UserProfile = () => {
         gender: '',
         location: '',
         bio: '',
-        interests: [],
-        travelStyle: 'standard',
-        budget: 'medium',
-        language: 'vi'
+        avatarURL: null
     });
 
     const [preferences, setPreferences] = useState({
-        emailNotifications: true,
-        pushNotifications: true,
-        weatherAlerts: true,
-        priceAlerts: true,
-        newsletter: true,
-        dataSharing: false
+        interests: [],
+        travelStyle: 'standard',
+        notifications: {
+            email: true,
+            push: true,
+            sms: false
+        },
+        privacy: {
+            profileVisible: true,
+            showEmail: false,
+            showPhone: false
+        }
+    });
+
+    const [passwordData, setPasswordData] = useState({
+        currentPassword: '',
+        newPassword: '',
+        confirmPassword: ''
     });
 
     const [stats, setStats] = useState({
         totalTrips: 0,
         totalDestinations: 0,
-        totalSpent: 0,
-        favoriteDestination: '',
-        joinDate: ''
+        memberSince: null
     });
 
+    // Load user profile on mount
     useEffect(() => {
         if (currentUser) {
-            setProfileData(prev => ({
-                ...prev,
-                displayName: currentUser.displayName || '',
-                email: currentUser.email || '',
-                // Load other data from localStorage or API
-            }));
-            
-            // Simulate loading user stats
-            setStats({
-                totalTrips: 12,
-                totalDestinations: 8,
-                totalSpent: 45000000,
-                favoriteDestination: 'Đà Nẵng',
-                joinDate: currentUser.metadata?.creationTime || new Date().toISOString()
+            // Ensure profile has all required fields
+            ensureProfileFields(currentUser.uid).then(() => {
+                loadUserProfile();
+                loadUserStats();
             });
         }
     }, [currentUser]);
+
+    const loadUserProfile = async () => {
+        try {
+            const result = await getUserProfile(currentUser.uid);
+            if (result.success) {
+                setProfileData(prev => ({
+                    ...prev,
+                    ...result.data,
+                    email: currentUser.email
+                }));
+                setPreferences({
+                    interests: result.data.interests || [],
+                    travelStyle: result.data.travelStyle || 'standard',
+                    notifications: result.data.notifications || {
+                        email: true,
+                        push: true,
+                        sms: false
+                    },
+                    privacy: result.data.privacy || {
+                        profileVisible: true,
+                        showEmail: false,
+                        showPhone: false
+                    }
+                });
+                setAvatarPreview(result.data.avatarURL);
+            }
+        } catch (error) {
+            console.error('Error loading profile:', error);
+        }
+    };
+
+    const loadUserStats = async () => {
+        try {
+            const result = await getUserStats(currentUser.uid);
+            if (result.success) {
+                setStats(result.stats);
+            }
+        } catch (error) {
+            console.error('Error loading stats:', error);
+        }
+    };
+
+    // Handle avatar file selection
+    const handleAvatarChange = (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            setAvatarFile(file);
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                setAvatarPreview(reader.result);
+            };
+            reader.readAsDataURL(file);
+        }
+    };
+
+    // Upload avatar
+    const handleAvatarUpload = async () => {
+        if (!avatarFile) {
+            toast.warning('Vui lòng chọn ảnh trước');
+            return;
+        }
+
+        setLoading(true);
+        try {
+            const result = await uploadAvatar(currentUser.uid, avatarFile);
+            if (result.success) {
+                toast.success('Cập nhật ảnh đại diện thành công!');
+                setAvatarPreview(result.avatarURL);
+                setAvatarFile(null);
+                await loadUserProfile();
+            } else {
+                toast.error(result.error || 'Lỗi khi upload ảnh');
+            }
+        } catch (error) {
+            toast.error('Lỗi khi upload ảnh');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    // Delete avatar
+    const handleAvatarDelete = async () => {
+        if (!window.confirm('Bạn có chắc muốn xóa ảnh đại diện?')) return;
+
+        setLoading(true);
+        try {
+            const result = await deleteAvatar(currentUser.uid);
+            if (result.success) {
+                toast.success('Đã xóa ảnh đại diện');
+                setAvatarPreview(null);
+                await loadUserProfile();
+            } else {
+                toast.error(result.error || 'Lỗi khi xóa ảnh');
+            }
+        } catch (error) {
+            toast.error('Lỗi khi xóa ảnh');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    // Save profile
+    const handleSaveProfile = async (e) => {
+        e.preventDefault();
+        setLoading(true);
+
+        try {
+            const result = await saveUserProfile(currentUser.uid, {
+                displayName: profileData.displayName,
+                phone: profileData.phone,
+                dateOfBirth: profileData.dateOfBirth,
+                gender: profileData.gender,
+                location: profileData.location,
+                bio: profileData.bio
+            });
+
+            if (result.success) {
+                toast.success('Lưu thông tin thành công!');
+            } else {
+                toast.error(result.error || 'Lỗi khi lưu thông tin');
+            }
+        } catch (error) {
+            toast.error('Lỗi khi lưu thông tin');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    // Save preferences
+    const handleSavePreferences = async (e) => {
+        e.preventDefault();
+        setLoading(true);
+
+        try {
+            const result = await updateUserPreferences(currentUser.uid, preferences);
+            if (result.success) {
+                toast.success('Lưu tùy chọn thành công!');
+            } else {
+                toast.error(result.error || 'Lỗi khi lưu tùy chọn');
+            }
+        } catch (error) {
+            toast.error('Lỗi khi lưu tùy chọn');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    // Change password
+    const handleChangePassword = async (e) => {
+        e.preventDefault();
+
+        if (passwordData.newPassword !== passwordData.confirmPassword) {
+            toast.error('Mật khẩu mới không khớp');
+            return;
+        }
+
+        if (passwordData.newPassword.length < 6) {
+            toast.error('Mật khẩu phải có ít nhất 6 ký tự');
+            return;
+        }
+
+        setLoading(true);
+        try {
+            const result = await changePassword(
+                currentUser,
+                passwordData.currentPassword,
+                passwordData.newPassword
+            );
+
+            if (result.success) {
+                toast.success('Đổi mật khẩu thành công!');
+                setPasswordData({
+                    currentPassword: '',
+                    newPassword: '',
+                    confirmPassword: ''
+                });
+            } else {
+                toast.error(result.error || 'Lỗi khi đổi mật khẩu');
+            }
+        } catch (error) {
+            toast.error('Lỗi khi đổi mật khẩu');
+        } finally {
+            setLoading(false);
+        }
+    };
 
     const handleInputChange = (field, value) => {
         setProfileData(prev => ({
@@ -73,8 +275,8 @@ const UserProfile = () => {
         }));
     };
 
-    const handleInterestToggle = (interest) => {
-        setProfileData(prev => ({
+    const toggleInterest = (interest) => {
+        setPreferences(prev => ({
             ...prev,
             interests: prev.interests.includes(interest)
                 ? prev.interests.filter(i => i !== interest)
@@ -82,25 +284,18 @@ const UserProfile = () => {
         }));
     };
 
-    const handleSaveProfile = async () => {
-        setLoading(true);
-        try {
-            // Simulate API call
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            
-            if (updateUserProfile) {
-                await updateUserProfile({
-                    displayName: profileData.displayName
-                });
-            }
-            
-            toast.success('Cập nhật thông tin thành công!');
-        } catch (error) {
-            toast.error('Có lỗi xảy ra khi cập nhật thông tin.');
-        } finally {
-            setLoading(false);
-        }
-    };
+    // Alias for compatibility
+    const handleInterestToggle = toggleInterest;
+
+    if (!currentUser) {
+        return (
+            <div className="profile-page">
+                <div className="container">
+                    <p>Vui lòng đăng nhập để xem trang cá nhân.</p>
+                </div>
+            </div>
+        );
+    }
 
     const formatMoney = (amount) => {
         return new Intl.NumberFormat('vi-VN', {
@@ -153,14 +348,14 @@ const UserProfile = () => {
     };
 
     const interestOptions = [
-        { id: 'food', name: 'Ẩm thực', icon: '🍜' },
-        { id: 'photography', name: 'Chụp ảnh', icon: '📸' },
-        { id: 'adventure', name: 'Phiêu lưu', icon: '🏔️' },
-        { id: 'relaxation', name: 'Thư giãn', icon: '🧘' },
-        { id: 'culture', name: 'Văn hóa', icon: '🏛️' },
-        { id: 'nature', name: 'Thiên nhiên', icon: '🌿' },
-        { id: 'shopping', name: 'Mua sắm', icon: '🛍️' },
-        { id: 'nightlife', name: 'Cuộc sống đêm', icon: '🌃' }
+        { value: 'food', name: 'Ẩm thực', icon: '🍜' },
+        { value: 'photography', name: 'Chụp ảnh', icon: '📸' },
+        { value: 'adventure', name: 'Phiêu lưu', icon: '🏔️' },
+        { value: 'relaxation', name: 'Thư giãn', icon: '🧘' },
+        { value: 'culture', name: 'Văn hóa', icon: '🏛️' },
+        { value: 'nature', name: 'Thiên nhiên', icon: '🌿' },
+        { value: 'shopping', name: 'Mua sắm', icon: '🛍️' },
+        { value: 'nightlife', name: 'Cuộc sống đêm', icon: '🌃' }
     ];
 
     if (!currentUser) {
@@ -179,17 +374,59 @@ const UserProfile = () => {
                 <div className="profile-header">
                     <div className="profile-avatar">
                         <div className="avatar-circle">
-                            {currentUser.photoURL ? (
-                                <img src={currentUser.photoURL} alt="Avatar" />
+                            {avatarPreview ? (
+                                <img src={avatarPreview} alt="Avatar" />
                             ) : (
                                 <span>{(profileData.displayName || currentUser.email || 'U')[0].toUpperCase()}</span>
                             )}
                         </div>
-                        <button className="change-avatar-btn">📷</button>
+                        <input
+                            ref={fileInputRef}
+                            type="file"
+                            accept="image/*"
+                            onChange={handleAvatarChange}
+                            style={{ display: 'none' }}
+                        />
+                        <button 
+                            className="change-avatar-btn"
+                            onClick={() => fileInputRef.current?.click()}
+                            title="Thay đổi ảnh đại diện"
+                        >
+                            📷
+                        </button>
+                        {avatarFile && (
+                            <div className="avatar-actions">
+                                <button 
+                                    className="btn-upload-avatar"
+                                    onClick={handleAvatarUpload}
+                                    disabled={loading}
+                                >
+                                    {loading ? '⏳ Đang upload...' : '✓ Upload ảnh'}
+                                </button>
+                                <button 
+                                    className="btn-cancel-avatar"
+                                    onClick={() => {
+                                        setAvatarFile(null);
+                                        setAvatarPreview(profileData.avatarURL);
+                                    }}
+                                >
+                                    ✗ Hủy
+                                </button>
+                            </div>
+                        )}
+                        {avatarPreview && !avatarFile && (
+                            <button 
+                                className="btn-delete-avatar"
+                                onClick={handleAvatarDelete}
+                                disabled={loading}
+                            >
+                                🗑️ Xóa ảnh
+                            </button>
+                        )}
                     </div>
                     <div className="profile-info">
                         <h1>{profileData.displayName || 'Người dùng ZIZOO'}</h1>
-                        <p className="user-email">{currentUser.email}</p>
+                        <p className="user-email">Thành viên</p>
                         <p className="join-date">Tham gia từ {formatDate(stats.joinDate)}</p>
                     </div>
                     <div className="profile-stats">
@@ -233,7 +470,10 @@ const UserProfile = () => {
                     <div className="tab-content">
                         {activeTab === 'profile' && (
                             <div className="profile-form">
-                                <h2>Thông tin cá nhân</h2>
+                                <h2>
+                                    <img src={profileIcon} alt="" className="section-icon" />
+                                    Thông tin cá nhân
+                                </h2>
                                 
                                 <div className="form-section">
                                     <h3>Thông tin cơ bản</h3>
@@ -307,10 +547,10 @@ const UserProfile = () => {
                                     <div className="interests-grid">
                                         {interestOptions.map(interest => (
                                             <button
-                                                key={interest.id}
+                                                key={interest.value}
                                                 type="button"
-                                                className={`interest-btn ${profileData.interests.includes(interest.id) ? 'selected' : ''}`}
-                                                onClick={() => handleInterestToggle(interest.id)}
+                                                className={`interest-btn ${(preferences.interests || []).includes(interest.value) ? 'selected' : ''}`}
+                                                onClick={() => handleInterestToggle(interest.value)}
                                             >
                                                 <span className="interest-icon">{interest.icon}</span>
                                                 <span className="interest-name">{interest.name}</span>
@@ -354,14 +594,24 @@ const UserProfile = () => {
                                     onClick={handleSaveProfile}
                                     disabled={loading}
                                 >
-                                    {loading ? '⏳ Đang lưu...' : '💾 Lưu thay đổi'}
+                                    {loading ? (
+                                        <>⏳ Đang lưu...</>
+                                    ) : (
+                                        <>
+                                            <img src={saveIcon} alt="" className="btn-icon" />
+                                            Lưu thay đổi
+                                        </>
+                                    )}
                                 </button>
                             </div>
                         )}
 
                         {activeTab === 'preferences' && (
                             <div className="preferences-form">
-                                <h2>Tùy chọn & Thông báo</h2>
+                                <h2>
+                                    <img src={optionsIcon} alt="" className="section-icon" />
+                                    Tùy chọn & Thông báo
+                                </h2>
                                 
                                 <div className="form-section">
                                     <h3>Thông báo</h3>
@@ -433,7 +683,10 @@ const UserProfile = () => {
 
                         {activeTab === 'security' && (
                             <div className="security-form">
-                                <h2>Bảo mật tài khoản</h2>
+                                <h2>
+                                    <img src={securityIcon} alt="" className="section-icon" />
+                                    Bảo mật tài khoản
+                                </h2>
                                 
                                 <div className="form-section">
                                     <h3>Đổi mật khẩu</h3>
