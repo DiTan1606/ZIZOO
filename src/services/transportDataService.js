@@ -169,16 +169,27 @@ class TransportDataService {
   }
 
   // Lấy thông tin gợi ý cho AI
-  getTransportSuggestion(from, to) {
+  getTransportSuggestion(from, to, depth = 0) {
+    // Ngăn đệ quy vô hạn
+    if (depth > 2) {
+      console.warn(`⚠️ Max recursion depth reached for ${from} → ${to}`);
+      return null;
+    }
+    
     const routes = this.getAllRoutes(from, to);
     
     if (routes.length === 0) {
-      // Thử tìm địa điểm tương tự
-      const similarFrom = this.findSimilarLocation(from);
-      const similarTo = this.findSimilarLocation(to);
-      
-      if (similarFrom && similarTo) {
-        return this.getTransportSuggestion(similarFrom, similarTo);
+      // Thử tìm địa điểm tương tự (chỉ 1 lần)
+      if (depth === 0) {
+        const similarFrom = this.findSimilarLocation(from);
+        const similarTo = this.findSimilarLocation(to);
+        
+        // Kiểm tra xem có khác với input không (tránh vòng lặp)
+        if (similarFrom && similarTo && 
+            (similarFrom !== from || similarTo !== to)) {
+          console.log(`🔄 Trying similar: ${similarFrom} → ${similarTo}`);
+          return this.getTransportSuggestion(similarFrom, similarTo, depth + 1);
+        }
       }
       
       return null;
