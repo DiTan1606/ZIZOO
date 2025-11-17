@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import { createCompleteItinerary } from '../services/completeItineraryService';
 import ItineraryAlertsPanel from './ItineraryAlertsPanel';
+import DestinationSelector from './DestinationSelector';
 import './CompleteItineraryPlanner.css';
 
 const CompleteItineraryPlanner = () => {
@@ -12,6 +13,7 @@ const CompleteItineraryPlanner = () => {
     const navigate = useNavigate();
     const [step, setStep] = useState(1);
     const [loading, setLoading] = useState(false);
+    const [selectedDestinations, setSelectedDestinations] = useState([]);
     // Get tomorrow's date for default
     const getTomorrowDate = () => {
         const tomorrow = new Date();
@@ -34,7 +36,8 @@ const CompleteItineraryPlanner = () => {
             sunset: false,       // Ngắm hoàng hôn
             nightMarket: false,  // Chợ đêm
             nightlife: false     // Bar/pub/nightlife
-        }
+        },
+        customDestinations: [] // Địa điểm do người dùng chọn
     });
     const [completeItinerary, setCompleteItinerary] = useState(null);
 
@@ -112,6 +115,15 @@ const CompleteItineraryPlanner = () => {
         }
     };
 
+    const handleDestinationsConfirm = (destinations) => {
+        setSelectedDestinations(destinations);
+        setPreferences(prev => ({
+            ...prev,
+            customDestinations: destinations
+        }));
+        setStep(3); // Chuyển sang bước xác nhận
+    };
+
     const generateItinerary = async () => {
         if (!currentUser) {
             toast.error('Vui lòng đăng nhập để tạo lịch trình!');
@@ -127,7 +139,7 @@ const CompleteItineraryPlanner = () => {
         try {
             const itinerary = await createCompleteItinerary(preferences, currentUser.uid);
             setCompleteItinerary(itinerary);
-            setStep(3);
+            setStep(4); // Chuyển sang bước hiển thị kết quả
             toast.success('🎉 Lịch trình hoàn chỉnh đã được tạo và lưu thành công!');
         } catch (error) {
             console.error('Lỗi tạo lịch trình:', error);
@@ -444,7 +456,7 @@ const CompleteItineraryPlanner = () => {
                             onClick={() => setStep(2)}
                             disabled={!preferences.destination || !preferences.startDate}
                         >
-                            Tiếp theo: Xem trước lịch trình
+                            Tiếp theo: Chọn địa điểm
                         </button>
                     </div>
                 </div>
@@ -453,6 +465,16 @@ const CompleteItineraryPlanner = () => {
     }
 
     if (step === 2) {
+        return (
+            <DestinationSelector
+                preferences={preferences}
+                onConfirm={handleDestinationsConfirm}
+                onBack={() => setStep(1)}
+            />
+        );
+    }
+
+    if (step === 3) {
         return (
             <div className="complete-itinerary-planner">
                 <div className="header">
@@ -484,8 +506,33 @@ const CompleteItineraryPlanner = () => {
                                     interestOptions.find(opt => opt.value === i)?.name || i
                                 ).filter(Boolean).join(', ') || 'Không có'}
                             </div>
+                            <div className="info-item">
+                                <strong>Địa điểm đã chọn:</strong> {selectedDestinations.length} địa điểm
+                            </div>
                         </div>
                     </div>
+
+                    {selectedDestinations.length > 0 && (
+                        <div className="preview-section">
+                            <h3>📍 Địa điểm bạn đã chọn</h3>
+                            <div className="selected-destinations-preview">
+                                {selectedDestinations.map((dest, index) => (
+                                    <div key={dest.id} className="preview-destination-item">
+                                        <span className="preview-number">{index + 1}</span>
+                                        <div className="preview-info">
+                                            <strong>{dest.name}</strong>
+                                            {dest.preferredTime && (
+                                                <span className="preview-time">⏰ {dest.preferredTime}</span>
+                                            )}
+                                            {dest.duration && (
+                                                <span className="preview-duration">⏱️ {dest.duration}h</span>
+                                            )}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
 
                     <div className="preview-section">
                         <h3>📝 Lịch trình sẽ bao gồm</h3>
@@ -552,9 +599,9 @@ const CompleteItineraryPlanner = () => {
                     <div className="preview-actions">
                         <button 
                             className="back-btn"
-                            onClick={() => setStep(1)}
+                            onClick={() => setStep(2)}
                         >
-                            ← Quay lại chỉnh sửa
+                            ← Quay lại chọn địa điểm
                         </button>
                         <button 
                             className="generate-btn"
@@ -576,7 +623,7 @@ const CompleteItineraryPlanner = () => {
         );
     }
 
-    if (step === 3 && completeItinerary) {
+    if (step === 4 && completeItinerary) {
         return (
             <div className="complete-itinerary-result">
                 <div className="result-header no-print">

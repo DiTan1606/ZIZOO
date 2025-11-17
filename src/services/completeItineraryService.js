@@ -194,7 +194,8 @@ const generateDailyItinerary = async (preferences) => {
         budget, 
         travelers,
         departureTime = '06:30',
-        specialActivities = {}
+        specialActivities = {},
+        customDestinations = []
     } = preferences;
     const coord = provinceCoords[destination] || { lat: 16.047, lng: 108.220 };
     
@@ -203,28 +204,124 @@ const generateDailyItinerary = async (preferences) => {
     
     const dailyPlans = [];
 
-    for (let day = 0; day < duration; day++) {
-        const currentDate = new Date(startDate);
-        currentDate.setDate(currentDate.getDate() + day);
+    // Nếu có địa điểm tùy chỉnh, sử dụng logic mới
+    if (customDestinations && customDestinations.length > 0) {
+        console.log(`📍 Tạo lịch trình với ${customDestinations.length} địa điểm tùy chỉnh`);
+        
+        // Import dynamic để tránh circular dependency
+        const { organizeDestinationsByTime, generateScheduleFromDestinations, generateDayNotes } = 
+            await import('./customItineraryBuilder.js');
+        
+        const organizedPlans = organizeDestinationsByTime(customDestinations, preferences);
+        
+        for (let day = 0; day < duration; day++) {
+            const currentDate = new Date(startDate);
+            currentDate.setDate(currentDate.getDate() + day);
+            
+            const dayPlan = organizedPlans[day] || { destinations: [] };
+            
+            // Tạo lịch trình theo giờ (với kiểm tra giờ mở cửa)
+            const scheduleResult = generateScheduleFromDestinations(dayPlan, preferences, day + 1);
+            const schedule = scheduleResult.schedule || scheduleResult; // Backward compatibility
+            const warnings = scheduleResult.warnings || [];
+            
+            // Lấy thời tiết
+            const weather = await getRealWeatherForDay(destination, coord, currentDate).catch(() => 
+                getDefaultWeatherForDestination(destination, currentDate)
+            );
+            
+            // Tạo ghi chú đặc biệt bao gồm cả warnings
+            const specialNotes = generateDayNotes(dayPlan, day + 1);
+            if (warnings.length > 0) {
+                specialNotes.push('⚠️ Đã điều chỉnh giờ tham quan để phù hợp với giờ mở cửa');
+                warnings.forEach(w => {
+                    if (w.reason) {
+                        specialNotes.push(`  • ${w.destination}: ${w.reason}`);
+                    }
+                });
+            }
+            
+            dailyPlans.push({
+                day: day + 1,
+                date: currentDate.toLocaleDateString('vi-VN'),
+                dayOfWeek: currentDate.toLocaleDateString('vi-VN', { weekday: 'long' }),
+                dateISO: currentDate.toISOString(),
+                theme: day === 0 ? 'Khám phá & Làm quen' : `Ngày ${day + 1}`,
+                schedule: schedule,
+                destinations: dayPlan.destinations || [],
+                meals: {
+                    breakfast: { name: 'Ăn sáng tại khách sạn', specialty: 'Buffet sáng' },
+                    lunch: { name: 'Nhà hàng địa phương', specialty: 'Đặc sản' },
+                    dinner: { name: 'Nhà hàng địa phương', specialty: 'Đặc sản' }
+                },
+                freeTime: ['Dạo phố', 'Chụp ảnh', 'Mua sắm'],
+                specialNotes: specialNotes,
+                warnings: warnings, // Lưu warnings riêng để hiển thị
+                weather: weather,
+                estimatedCost: calculateDayCostFromDestinations(dayPlan.destinations, travelStyle, travelers),
+                dataQuality: 'user_selected',
+                lastUpdated: new Date()
+            });
+        }
+    } else {
+        // Logic cũ - tự động tìm địa điểm
+        for (let day = 0; day < duration; day++) {
+            const currentDate = new Date(startDate);
+            currentDate.setDate(currentDate.getDate() + day);
 
-        // Tạo kế hoạch cho từng ngày với ngân sách
-        const dayPlan = await generateSingleDayPlan(
-            day + 1, 
-            currentDate, 
-            destination, 
-            coord, 
-            interests, 
-            travelStyle, 
-            dailyBudget, 
-            budget, 
-            travelers,
-            departureTime,
-            specialActivities
-        );
-        dailyPlans.push(dayPlan);
+            const dayPlan = await generateSingleDayPlan(
+                day + 1, 
+                currentDate, 
+                destination, 
+                coord, 
+                interests, 
+                travelStyle, 
+                dailyBudget, 
+                budget, 
+                travelers,
+                departureTime,
+                specialActivities
+            );
+            dailyPlans.push(dayPlan);
+        }
     }
 
     return dailyPlans;
+};
+
+/**
+ * Tính chi phí ngày từ danh sách địa điểm
+ */
+const calculateDayCostFromDestinations = (destinations, travelStyle, travelers) => {
+    const multiplier = TRAVEL_STYLES[travelStyle]?.multiplier || 1;
+    
+    let sightseeingCost = 0;
+    destinations.forEach(dest => {
+        const fee = dest.entryFee || estimateEntryFeeByCategory(dest.category);
+        sightseeingCost += fee * travelers;
+    });
+    
+    const foodCost = 200000 * travelers; // 3 bữa
+    const transportCost = 150000; // Di chuyển trong ngày
+    
+    return Math.round((sightseeingCost + foodCost + transportCost) * multiplier);
+};
+
+/**
+ * Ước tính phí vào cửa theo danh mục
+ */
+const estimateEntryFeeByCategory = (category) => {
+    const fees = {
+        'tourist_attraction': 50000,
+        'museum': 30000,
+        'park': 20000,
+        'restaurant': 150000,
+        'cafe': 50000,
+        'shopping_mall': 0,
+        'night_club': 200000,
+        'custom': 50000
+    };
+    return fees[category] || 50000;
 };
 
 /**
