@@ -23,12 +23,12 @@ const Feedback = () => {
     const [attachments, setAttachments] = useState([]);
 
     const feedbackTypes = [
-        { value: 'bug', label: '🐛 Báo lỗi', description: 'Báo cáo lỗi hoặc sự cố' },
-        { value: 'feature', label: '💡 Đề xuất tính năng', description: 'Gợi ý tính năng mới' },
-        { value: 'improvement', label: '⚡ Cải thiện', description: 'Đề xuất cải thiện tính năng hiện có' },
-        { value: 'compliment', label: '👏 Khen ngợi', description: 'Chia sẻ trải nghiệm tích cực' },
-        { value: 'complaint', label: '😞 Khiếu nại', description: 'Phản ánh vấn đề dịch vụ' },
-        { value: 'other', label: '📝 Khác', description: 'Phản hồi khác' }
+        { value: 'bug', label: '⚠ Báo lỗi', description: 'Báo cáo lỗi hoặc sự cố' },
+        { value: 'feature', label: '+ Đề xuất tính năng', description: 'Gợi ý tính năng mới' },
+        { value: 'improvement', label: '↑ Cải thiện', description: 'Đề xuất cải thiện tính năng hiện có' },
+        { value: 'compliment', label: '✓ Khen ngợi', description: 'Chia sẻ trải nghiệm tích cực' },
+        { value: 'complaint', label: '✗ Khiếu nại', description: 'Phản ánh vấn đề dịch vụ' },
+        { value: 'other', label: '• Khác', description: 'Phản hồi khác' }
     ];
 
     const severityLevels = [
@@ -115,7 +115,7 @@ const Feedback = () => {
                         className={`star ${star <= feedbackData.rating ? 'active' : ''}`}
                         onClick={() => handleInputChange('rating', star)}
                     >
-                        ⭐
+                        ★
                     </button>
                 ))}
                 <span className="rating-text">
@@ -134,7 +134,7 @@ const Feedback = () => {
         <div className="feedback-page">
             <div className="hero-section">
                 <div className="container">
-                    <h1>📝 Phản hồi & Báo lỗi</h1>
+                    <h1>Phản hồi & Báo lỗi</h1>
                     <p>Ý kiến của bạn giúp chúng tôi cải thiện ZIZOO mỗi ngày</p>
                 </div>
             </div>
@@ -142,27 +142,27 @@ const Feedback = () => {
             <div className="container">
                 <div className="feedback-content">
                     <div className="feedback-info">
-                        <h2>🎯 Tại sao phản hồi quan trọng?</h2>
+                        <h2>• Tại sao phản hồi quan trọng?</h2>
                         <div className="info-cards">
                             <div className="info-card">
-                                <div className="card-icon">🚀</div>
+                                <div className="card-icon">+</div>
                                 <h3>Cải thiện sản phẩm</h3>
                                 <p>Phản hồi của bạn giúp chúng tôi phát triển tính năng mới và cải thiện trải nghiệm người dùng.</p>
                             </div>
                             <div className="info-card">
-                                <div className="card-icon">🐛</div>
+                                <div className="card-icon">⚠</div>
                                 <h3>Sửa lỗi nhanh chóng</h3>
                                 <p>Báo cáo lỗi giúp chúng tôi phát hiện và khắc phục sự cố một cách nhanh chóng.</p>
                             </div>
                             <div className="info-card">
-                                <div className="card-icon">💡</div>
+                                <div className="card-icon">★</div>
                                 <h3>Ý tưởng mới</h3>
                                 <p>Đề xuất tính năng mới từ bạn có thể trở thành reality trong phiên bản tiếp theo.</p>
                             </div>
                         </div>
 
                         <div className="feedback-stats">
-                            <h3>📊 Thống kê phản hồi</h3>
+                            <h3>• Thống kê phản hồi</h3>
                             <div className="stats-grid">
                                 <div className="stat-item">
                                     <span className="stat-number">1,247</span>
@@ -322,7 +322,7 @@ const Feedback = () => {
                                         id="file-upload"
                                     />
                                     <label htmlFor="file-upload" className="file-upload-btn">
-                                        📎 Chọn file
+                                        + Chọn file
                                     </label>
                                     <small>Hỗ trợ: ảnh, PDF, Word (tối đa 10MB)</small>
                                 </div>
@@ -337,7 +337,7 @@ const Feedback = () => {
                                                     onClick={() => removeAttachment(index)}
                                                     className="remove-btn"
                                                 >
-                                                    ❌
+                                                    ×
                                                 </button>
                                             </div>
                                         ))}
@@ -350,7 +350,7 @@ const Feedback = () => {
                                 className="submit-btn"
                                 disabled={loading}
                             >
-                                {loading ? '⏳ Đang gửi...' : '🚀 Gửi phản hồi'}
+                                {loading ? '⟳ Đang gửi...' : '→ Gửi phản hồi'}
                             </button>
                         </form>
                     </div>

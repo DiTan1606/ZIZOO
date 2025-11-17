@@ -166,7 +166,7 @@ export default function MyTrips() {
                                                 {trip.tripName}
                                             </h3>
                                             <p className="text-lg text-gray-600 mt-1">
-                                                📍 {trip.destination}
+                                                {trip.destination}
                                             </p>
                                             <p className="text-sm text-gray-600 mt-1">
                                                 {trip.duration === 1 
@@ -215,13 +215,13 @@ export default function MyTrips() {
                                                 onClick={() => setSelectedItinerary(trip.fullItinerary || trip)}
                                                 className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
                                             >
-                                                📋 Xem chi tiết
+                                                Xem chi tiết
                                             </button>
                                             <button
                                                 onClick={refreshTrips}
                                                 className="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
                                             >
-                                                🔄 Làm mới
+                                                Làm mới
                                             </button>
                                         </div>
                                         <div className="text-right text-sm text-gray-500">

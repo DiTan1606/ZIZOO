@@ -1,5 +1,8 @@
 // src/pages/ChatbotTest.js
 import React from 'react';
+import aiIcon from '../icon/AIgoiy.png';
+import chatIcon from '../icon/livechat.png';
+import sendIcon from '../icon/guitinnhan.png';
 
 const ChatbotTest = () => {
     return (
@@ -11,16 +14,25 @@ const ChatbotTest = () => {
             borderRadius: '20px',
             boxShadow: '0 10px 30px rgba(0,0,0,0.1)'
         }}>
-            <h1 style={{ 
-                fontSize: '48px', 
-                textAlign: 'center', 
-                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                WebkitBackgroundClip: 'text',
-                WebkitTextFillColor: 'transparent',
+            <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '20px',
                 marginBottom: '20px'
             }}>
-                🤖 AI Chatbot Test
-            </h1>
+                <img src={aiIcon} alt="AI" style={{ width: '60px', height: '60px' }} />
+                <h1 style={{ 
+                    fontSize: '48px', 
+                    textAlign: 'center', 
+                    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                    WebkitBackgroundClip: 'text',
+                    WebkitTextFillColor: 'transparent',
+                    margin: 0
+                }}>
+                    AI Chatbot Test
+                </h1>
+            </div>
             
             <div style={{ 
                 background: '#f5f7fa', 
@@ -28,8 +40,9 @@ const ChatbotTest = () => {
                 borderRadius: '15px',
                 marginBottom: '30px'
             }}>
-                <h2 style={{ color: '#667eea', marginBottom: '15px' }}>
-                    📍 Tìm nút chatbot:
+                <h2 style={{ color: '#667eea', marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <img src={chatIcon} alt="" style={{ width: '32px', height: '32px' }} />
+                    Tìm nút chatbot:
                 </h2>
                 <ol style={{ fontSize: '18px', lineHeight: '2' }}>
                     <li>Nhìn xuống <strong>góc dưới bên phải</strong> màn hình</li>
@@ -46,8 +59,9 @@ const ChatbotTest = () => {
                 borderRadius: '15px',
                 marginBottom: '30px'
             }}>
-                <h2 style={{ color: '#4caf50', marginBottom: '15px' }}>
-                    ✅ Ví dụ câu hỏi:
+                <h2 style={{ color: '#4caf50', marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <img src={sendIcon} alt="" style={{ width: '32px', height: '32px' }} />
+                    Ví dụ câu hỏi:
                 </h2>
                 <ul style={{ fontSize: '18px', lineHeight: '2', listStyle: 'none', paddingLeft: 0 }}>
                     <li>🏖️ "Gợi ý điểm đến biển đẹp"</li>

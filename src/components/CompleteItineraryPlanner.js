@@ -23,11 +23,18 @@ const CompleteItineraryPlanner = () => {
         destination: 'Vũng Tàu',
         departureCity: 'Hồ Chí Minh',
         startDate: getTomorrowDate(),
+        departureTime: '06:30', // Giờ khởi hành
         duration: 3,
         travelers: 2,
         budget: 3000000,
         travelStyle: 'standard',
-        interests: ['food', 'photography', 'relaxation']
+        interests: ['food', 'photography', 'relaxation'],
+        specialActivities: {
+            sunrise: false,      // Ngắm bình minh
+            sunset: false,       // Ngắm hoàng hôn
+            nightMarket: false,  // Chợ đêm
+            nightlife: false     // Bar/pub/nightlife
+        }
     });
     const [completeItinerary, setCompleteItinerary] = useState(null);
 
@@ -85,6 +92,24 @@ const CompleteItineraryPlanner = () => {
                 ? prev.interests.filter(i => i !== interest)
                 : [...prev.interests, interest]
         }));
+    };
+
+    const handleSpecialActivityToggle = (activity) => {
+        setPreferences(prev => ({
+            ...prev,
+            specialActivities: {
+                ...prev.specialActivities,
+                [activity]: !prev.specialActivities[activity]
+            }
+        }));
+        
+        // Auto-adjust departure time if sunrise is selected
+        if (activity === 'sunrise' && !preferences.specialActivities.sunrise) {
+            setPreferences(prev => ({
+                ...prev,
+                departureTime: '05:30'
+            }));
+        }
     };
 
     const generateItinerary = async () => {
@@ -163,7 +188,7 @@ const CompleteItineraryPlanner = () => {
                                 marginTop: '8px'
                             }}
                         >
-                            ⚡ Tạo ngay với thông tin mặc định
+                            Tạo ngay với thông tin mặc định
                         </button>
                     </div>
                 </div>
@@ -171,7 +196,6 @@ const CompleteItineraryPlanner = () => {
                 <div className="form-container">
                     <div className="form-section">
                         <h3>📍 Thông tin cơ bản</h3>
-                        
                         <div className="form-row">
                             <div className="form-group">
                                 <label>Điểm khởi hành</label>
@@ -346,6 +370,71 @@ const CompleteItineraryPlanner = () => {
                                     <span className="name">{interest.name}</span>
                                 </div>
                             ))}
+                        </div>
+                    </div>
+
+                    <div className="form-section">
+                        <h3>⏰ Giờ khởi hành</h3>
+                        <div className="input-group">
+                            <label>Thời gian bắt đầu chuyến đi</label>
+                            <input 
+                                type="time"
+                                value={preferences.departureTime}
+                                onChange={(e) => handleInputChange('departureTime', e.target.value)}
+                                className="time-input"
+                            />
+                            <small className="hint">
+                                {preferences.departureTime < '06:00' ? '🌙 Khởi hành rất sớm - phù hợp ngắm bình minh' :
+                                 preferences.departureTime < '08:00' ? '🌅 Khởi hành sớm - tận dụng tối đa thời gian' :
+                                 preferences.departureTime < '10:00' ? '☀️ Khởi hành bình thường' :
+                                 '⚠️ Khởi hành muộn - thời gian tham quan bị giới hạn'}
+                            </small>
+                        </div>
+                    </div>
+
+                    <div className="form-section">
+                        <h3>✨ Hoạt động đặc biệt</h3>
+                        <div className="special-activities-grid">
+                            <div 
+                                className={`activity-card ${preferences.specialActivities.sunrise ? 'selected' : ''}`}
+                                onClick={() => handleSpecialActivityToggle('sunrise')}
+                            >
+                                <span className="activity-icon">🌅</span>
+                                <div className="activity-info">
+                                    <h4>Ngắm bình minh</h4>
+                                    <p>Khởi hành 05:30 - 06:00</p>
+                                </div>
+                            </div>
+                            <div 
+                                className={`activity-card ${preferences.specialActivities.sunset ? 'selected' : ''}`}
+                                onClick={() => handleSpecialActivityToggle('sunset')}
+                            >
+                                <span className="activity-icon">🌇</span>
+                                <div className="activity-info">
+                                    <h4>Ngắm hoàng hôn</h4>
+                                    <p>17:00 - 18:30</p>
+                                </div>
+                            </div>
+                            <div 
+                                className={`activity-card ${preferences.specialActivities.nightMarket ? 'selected' : ''}`}
+                                onClick={() => handleSpecialActivityToggle('nightMarket')}
+                            >
+                                <span className="activity-icon">🏮</span>
+                                <div className="activity-info">
+                                    <h4>Chợ đêm</h4>
+                                    <p>19:00 - 22:00</p>
+                                </div>
+                            </div>
+                            <div 
+                                className={`activity-card ${preferences.specialActivities.nightlife ? 'selected' : ''}`}
+                                onClick={() => handleSpecialActivityToggle('nightlife')}
+                            >
+                                <span className="activity-icon">🎉</span>
+                                <div className="activity-info">
+                                    <h4>Nightlife</h4>
+                                    <p>Bar, pub, rooftop</p>
+                                </div>
+                            </div>
                         </div>
                     </div>
 
@@ -655,7 +744,7 @@ const CompleteItineraryPlanner = () => {
                             </div>
 
                             <div className="cost-category">
-                                <h4>💼 Chi phí phát sinh</h4>
+                                <h4>Chi phí phát sinh</h4>
                                 <div className="cost-details">
                                     <div className="cost-item">
                                         <span>Dự phòng ({completeItinerary.costBreakdown.contingency.percentage}%)</span>
@@ -670,12 +759,12 @@ const CompleteItineraryPlanner = () => {
                                     <span><strong>{formatMoney(completeItinerary.costBreakdown.grandTotal)}</strong></span>
                                 </div>
                                 <div className="per-person">
-                                    <span>💰 Chi phí/người: {formatMoney(completeItinerary.costBreakdown.perPerson)}</span>
+                                    <span>Chi phí/người: {formatMoney(completeItinerary.costBreakdown.perPerson)}</span>
                                 </div>
                                 <div className={`budget-status ${completeItinerary.costBreakdown.budgetStatus.withinBudget ? 'within' : 'over'}`}>
                                     {completeItinerary.costBreakdown.budgetStatus.withinBudget ? 
-                                        `✅ Trong ngân sách (còn lại ${formatMoney(completeItinerary.costBreakdown.budgetStatus.difference)})` :
-                                        `⚠️ Vượt ngân sách ${formatMoney(Math.abs(completeItinerary.costBreakdown.budgetStatus.difference))}`
+                                        `Trong ngân sách (còn lại ${formatMoney(completeItinerary.costBreakdown.budgetStatus.difference)})` :
+                                        `Vượt ngân sách ${formatMoney(Math.abs(completeItinerary.costBreakdown.budgetStatus.difference))}`
                                     }
                                 </div>
                             </div>
@@ -684,11 +773,11 @@ const CompleteItineraryPlanner = () => {
 
                     {/* 4. PHƯƠNG TIỆN DI CHUYỂN */}
                     <section className="itinerary-section">
-                        <h2>🚗 4. Phương tiện di chuyển</h2>
+                        <h2>4. Phương tiện di chuyển</h2>
                         <div className="transport-plan">
                             {/* Lượt đi */}
                             <div className="transport-category">
-                                <h4>🚌 Lượt đi: {completeItinerary.header.destination.departure} → {completeItinerary.header.destination.main}</h4>
+                                <h4>Lượt đi: {completeItinerary.header.destination.departure} → {completeItinerary.header.destination.main}</h4>
                                 <p><strong>Ngày:</strong> {completeItinerary.transport.intercity.departure.date}</p>
                                 <p><strong>Khuyến nghị:</strong> {completeItinerary.transport.intercity.departure.recommended.type}</p>
                                 {completeItinerary.transport.intercity.departure.recommended.company && (
@@ -716,9 +805,9 @@ const CompleteItineraryPlanner = () => {
                                                 {otherOptions.map((option, idx) => (
                                                     <div key={idx} className="option-card">
                                                         <p><strong>{option.type}</strong></p>
-                                                        {option.company && <p>🚌 {option.company}</p>}
-                                                        <p>⏱️ {option.duration}</p>
-                                                        <p>💰 {formatMoney(option.cost)}</p>
+                                                        {option.company && <p>{option.company}</p>}
+                                                        <p>Thời gian: {option.duration}</p>
+                                                        <p>Chi phí: {formatMoney(option.cost)}</p>
                                                         {option.note && <p className="option-note">Loại xe: {option.note.split('-')[1]?.trim() || option.note}</p>}
                                                     </div>
                                                 ))}
@@ -730,7 +819,7 @@ const CompleteItineraryPlanner = () => {
                             
                             {/* Lượt về */}
                             <div className="transport-category">
-                                <h4>🔙 Lượt về: {completeItinerary.header.destination.main} → {completeItinerary.header.destination.departure}</h4>
+                                <h4>Lượt về: {completeItinerary.header.destination.main} → {completeItinerary.header.destination.departure}</h4>
                                 <p><strong>Ngày:</strong> {completeItinerary.transport.intercity.return.date}</p>
                                 <p><strong>Khuyến nghị:</strong> {completeItinerary.transport.intercity.return.recommended.type}</p>
                                 {completeItinerary.transport.intercity.return.recommended.company && (
@@ -745,7 +834,7 @@ const CompleteItineraryPlanner = () => {
                             
                             {/* Di chuyển địa phương */}
                             <div className="transport-category">
-                                <h4>🚕 Di chuyển tại {completeItinerary.header.destination.main}</h4>
+                                <h4>Di chuyển tại {completeItinerary.header.destination.main}</h4>
                                 <p><strong>Khuyến nghị:</strong> {completeItinerary.transport.local.recommended.name || completeItinerary.transport.local.recommended.type}</p>
                                 <p><strong>Chi phí:</strong> {formatMoney(completeItinerary.transport.local.recommended.costPerDay)}/ngày</p>
                                 {completeItinerary.transport.local.apps && completeItinerary.transport.local.apps.length > 0 && (
@@ -755,7 +844,7 @@ const CompleteItineraryPlanner = () => {
                                 )}
                                 {completeItinerary.transport.local.tips && completeItinerary.transport.local.tips.length > 0 && (
                                     <div className="transport-tips">
-                                        <strong>💡 Lưu ý:</strong>
+                                        <strong>Lưu ý:</strong>
                                         <ul>
                                             {completeItinerary.transport.local.tips.slice(0, 3).map((tip, idx) => (
                                                 <li key={idx}>{tip}</li>
@@ -769,28 +858,28 @@ const CompleteItineraryPlanner = () => {
 
                     {/* 5. LƯU TRÚ */}
                     <section className="itinerary-section">
-                        <h2>🏨 5. Lưu trú</h2>
+                        <h2>5. Lưu trú</h2>
                         <div className="accommodation-plan">
                             {/* Khách sạn đã chọn */}
                             {completeItinerary.accommodation.selected && (
                                 <div className="accommodation-selected">
-                                    <h4>✅ Khách sạn đã chọn</h4>
+                                    <h4>Khách sạn đã chọn</h4>
                                     <div className="hotel-card selected">
                                         <h5>{completeItinerary.accommodation.selected.name}</h5>
-                                        <p><strong>⭐ Rating:</strong> {completeItinerary.accommodation.selected.rating}/5</p>
-                                        <p><strong>📍 Vị trí:</strong> {completeItinerary.accommodation.selected.location}</p>
-                                        <p><strong>💰 Giá:</strong> {formatMoney(completeItinerary.accommodation.selected.pricePerNight)}/đêm</p>
-                                        <p><strong>💵 Tổng:</strong> {formatMoney(completeItinerary.accommodation.selected.totalCost)} ({completeItinerary.accommodation.duration.nights} đêm)</p>
-                                        <p><strong>🏨 Tiện nghi:</strong> {completeItinerary.accommodation.selected.amenities.join(', ')}</p>
+                                        <p><strong>Rating:</strong> {completeItinerary.accommodation.selected.rating}/5</p>
+                                        <p><strong>Vị trí:</strong> {completeItinerary.accommodation.selected.location}</p>
+                                        <p><strong>Giá:</strong> {formatMoney(completeItinerary.accommodation.selected.pricePerNight)}/đêm</p>
+                                        <p><strong>Tổng:</strong> {formatMoney(completeItinerary.accommodation.selected.totalCost)} ({completeItinerary.accommodation.duration.nights} đêm)</p>
+                                        <p><strong>Tiện nghi:</strong> {completeItinerary.accommodation.selected.amenities.join(', ')}</p>
                                     </div>
-                                    <p><strong>⏰ Thời gian:</strong> {completeItinerary.accommodation.duration.checkIn} - {completeItinerary.accommodation.duration.checkOut}</p>
+                                    <p><strong>Thời gian:</strong> {completeItinerary.accommodation.duration.checkIn} - {completeItinerary.accommodation.duration.checkOut}</p>
                                 </div>
                             )}
                             
                             {/* Các tùy chọn khác */}
                             {completeItinerary.accommodation.options && completeItinerary.accommodation.options.length > 1 && (
                                 <div className="accommodation-options">
-                                    <h4>📋 Các tùy chọn khác</h4>
+                                    <h4>Các tùy chọn khác</h4>
                                     <div className="hotels-grid">
                                         {completeItinerary.accommodation.options.slice(1).map((hotel, idx) => (
                                             <div key={idx} className="hotel-card">
@@ -807,7 +896,7 @@ const CompleteItineraryPlanner = () => {
                             
                             {/* Nền tảng đặt phòng */}
                             <div className="booking-platforms">
-                                <h4>🔗 Đặt phòng qua</h4>
+                                <h4>Đặt phòng qua</h4>
                                 <div className="platforms-list">
                                     {completeItinerary.accommodation.bookingPlatforms.map((platform, idx) => (
                                         <a key={idx} href={platform.url} target="_blank" rel="noopener noreferrer" className="platform-link">
@@ -821,10 +910,10 @@ const CompleteItineraryPlanner = () => {
 
                     {/* 6. DANH SÁCH ĐỒ CẦN MANG */}
                     <section className="itinerary-section">
-                        <h2>🎒 6. Danh sách đồ cần mang</h2>
+                        <h2>6. Danh sách đồ cần mang</h2>
                         <div className="packing-list">
                             <div className="packing-category">
-                                <h4>📋 Đồ cần thiết</h4>
+                                <h4>Đồ cần thiết</h4>
                                 <ul>
                                     {completeItinerary.packingList.essential.map((item, idx) => (
                                         <li key={idx}>{item}</li>
@@ -833,7 +922,7 @@ const CompleteItineraryPlanner = () => {
                             </div>
 
                             <div className="packing-category">
-                                <h4>👕 Quần áo</h4>
+                                <h4>Quần áo</h4>
                                 <ul>
                                     {completeItinerary.packingList.clothing.map((item, idx) => (
                                         <li key={idx}>{item}</li>
@@ -842,7 +931,7 @@ const CompleteItineraryPlanner = () => {
                             </div>
 
                             <div className="packing-category">
-                                <h4>🔌 Đồ điện tử</h4>
+                                <h4>Đồ điện tử</h4>
                                 <ul>
                                     {completeItinerary.packingList.electronics.map((item, idx) => (
                                         <li key={idx}>{item}</li>
@@ -851,7 +940,7 @@ const CompleteItineraryPlanner = () => {
                             </div>
 
                             <div className="packing-category">
-                                <h4>🧴 Đồ vệ sinh</h4>
+                                <h4>Đồ vệ sinh</h4>
                                 <ul>
                                     {completeItinerary.packingList.toiletries.map((item, idx) => (
                                         <li key={idx}>{item}</li>
@@ -861,7 +950,7 @@ const CompleteItineraryPlanner = () => {
 
                             {completeItinerary.packingList.optional.length > 0 && (
                                 <div className="packing-category">
-                                    <h4>➕ Đồ tùy chọn</h4>
+                                    <h4>Đồ tùy chọn</h4>
                                     <ul>
                                         {completeItinerary.packingList.optional.map((item, idx) => (
                                             <li key={idx}>{item}</li>
@@ -871,7 +960,7 @@ const CompleteItineraryPlanner = () => {
                             )}
 
                             <div className="packing-category prohibited">
-                                <h4>🚫 Đồ không được mang</h4>
+                                <h4>Đồ không được mang</h4>
                                 <ul>
                                     {completeItinerary.packingList.prohibited.map((item, idx) => (
                                         <li key={idx}>{item}</li>
@@ -883,7 +972,7 @@ const CompleteItineraryPlanner = () => {
 
                     {/* 7. LƯU Ý QUAN TRỌNG */}
                     <section className="itinerary-section">
-                        <h2>⚠️ 7. Lưu ý quan trọng</h2>
+                        <h2>7. Lưu ý quan trọng</h2>
                         <div className="important-notes">
                             {Object.entries(completeItinerary.importantNotes).map(([category, notes]) => (
                                 <div key={category} className="notes-category">
@@ -910,7 +999,7 @@ const CompleteItineraryPlanner = () => {
 
                     {/* 8. BẢN ĐỒ VÀ LỘ TRÌNH */}
                     <section className="itinerary-section">
-                        <h2>🗺️ 8. Bản đồ và tối ưu lộ trình</h2>
+                        <h2>8. Bản đồ và tối ưu lộ trình</h2>
                         <div className="route-optimization">
                             <div className="route-overview">
                                 <h4>Tổng quan lộ trình</h4>
@@ -919,7 +1008,7 @@ const CompleteItineraryPlanner = () => {
                             </div>
 
                             <div className="route-tips">
-                                <h4>💡 Mẹo di chuyển</h4>
+                                <h4>Mẹo di chuyển</h4>
                                 <ul>
                                     {completeItinerary.routeOptimization.tips.map((tip, idx) => (
                                         <li key={idx}>{tip}</li>

@@ -17,7 +17,7 @@ const About = () => {
                 <section className="mission-section">
                     <div className="row">
                         <div className="col-md-6">
-                            <h2>🎯 Sứ mệnh của chúng tôi</h2>
+                            <h2>• Sứ mệnh của chúng tôi</h2>
                             <p>
                                 ZIZOO Travel AI được tạo ra với sứ mệnh democratize việc lập kế hoạch du lịch, 
                                 giúp mọi người có thể tạo ra những chuyến đi hoàn hảo mà không cần phải là 
@@ -52,10 +52,10 @@ const About = () => {
                 </section>
 
                 <section className="features-section">
-                    <h2>🚀 Tính năng nổi bật</h2>
+                    <h2>• Tính năng nổi bật</h2>
                     <div className="features-grid">
                         <div className="feature-card">
-                            <div className="feature-icon">🤖</div>
+                            <div className="feature-icon">•</div>
                             <h3>AI Cá nhân hóa</h3>
                             <p>
                                 Sử dụng Collaborative Filtering và Content-based Filtering để 
@@ -63,7 +63,7 @@ const About = () => {
                             </p>
                         </div>
                         <div className="feature-card">
-                            <div className="feature-icon">🌍</div>
+                            <div className="feature-icon">◎</div>
                             <h3>Dữ liệu thời gian thực</h3>
                             <p>
                                 Tích hợp Google Maps, OpenWeatherMap, và các nguồn dữ liệu 
@@ -71,7 +71,7 @@ const About = () => {
                             </p>
                         </div>
                         <div className="feature-card">
-                            <div className="feature-icon">🛣️</div>
+                            <div className="feature-icon">⊕</div>
                             <h3>Tối ưu lộ trình</h3>
                             <p>
                                 Thuật toán thông minh tối ưu thời gian, chi phí và trải nghiệm 
@@ -79,7 +79,7 @@ const About = () => {
                             </p>
                         </div>
                         <div className="feature-card">
-                            <div className="feature-icon">⚡</div>
+                            <div className="feature-icon">⚠</div>
                             <h3>Cảnh báo thông minh</h3>
                             <p>
                                 Tự động điều chỉnh lịch trình khi có thay đổi thời tiết, 
@@ -87,7 +87,7 @@ const About = () => {
                             </p>
                         </div>
                         <div className="feature-card">
-                            <div className="feature-icon">🌱</div>
+                            <div className="feature-icon">♻</div>
                             <h3>Du lịch bền vững</h3>
                             <p>
                                 Tính toán dấu chân carbon và ưu tiên các phương tiện 
@@ -95,7 +95,7 @@ const About = () => {
                             </p>
                         </div>
                         <div className="feature-card">
-                            <div className="feature-icon">💰</div>
+                            <div className="feature-icon">$</div>
                             <h3>Tối ưu ngân sách</h3>
                             <p>
                                 Phân bổ ngân sách thông minh và đề xuất các lựa chọn 
@@ -106,10 +106,10 @@ const About = () => {
                 </section>
 
                 <section className="technology-section">
-                    <h2>🔬 Công nghệ đằng sau ZIZOO</h2>
+                    <h2>• Công nghệ đằng sau ZIZOO</h2>
                     <div className="tech-grid">
                         <div className="tech-category">
-                            <h3>🧠 Machine Learning</h3>
+                            <h3>• Machine Learning</h3>
                             <ul>
                                 <li>Collaborative Filtering</li>
                                 <li>Content-based Filtering</li>
@@ -118,7 +118,7 @@ const About = () => {
                             </ul>
                         </div>
                         <div className="tech-category">
-                            <h3>🗺️ Tối ưu hóa</h3>
+                            <h3>▣ Tối ưu hóa</h3>
                             <ul>
                                 <li>Traveling Salesman Problem (TSP)</li>
                                 <li>Genetic Algorithms</li>
@@ -127,7 +127,7 @@ const About = () => {
                             </ul>
                         </div>
                         <div className="tech-category">
-                            <h3>📡 Tích hợp API</h3>
+                            <h3>⊕ Tích hợp API</h3>
                             <ul>
                                 <li>Google Maps Platform</li>
                                 <li>OpenWeatherMap</li>
@@ -136,7 +136,7 @@ const About = () => {
                             </ul>
                         </div>
                         <div className="tech-category">
-                            <h3>☁️ Infrastructure</h3>
+                            <h3>◎ Infrastructure</h3>
                             <ul>
                                 <li>Firebase Realtime Database</li>
                                 <li>Cloud Functions</li>
@@ -148,26 +148,26 @@ const About = () => {
                 </section>
 
                 <section className="team-section">
-                    <h2>👥 Đội ngũ phát triển</h2>
+                    <h2>• Đội ngũ phát triển</h2>
                     <p className="team-intro">
                         ZIZOO được phát triển bởi đội ngũ kỹ sư và chuyên gia du lịch đam mê 
                         công nghệ và khám phá thế giới.
                     </p>
                     <div className="values-grid">
                         <div className="value-item">
-                            <h4>🎯 Tập trung vào người dùng</h4>
+                            <h4>→ Tập trung vào người dùng</h4>
                             <p>Mọi tính năng đều được thiết kế với người dùng làm trung tâm</p>
                         </div>
                         <div className="value-item">
-                            <h4>🔬 Đổi mới liên tục</h4>
+                            <h4>★ Đổi mới liên tục</h4>
                             <p>Luôn cập nhật công nghệ mới nhất và cải thiện trải nghiệm</p>
                         </div>
                         <div className="value-item">
-                            <h4>🌍 Trách nhiệm xã hội</h4>
+                            <h4>◎ Trách nhiệm xã hội</h4>
                             <p>Khuyến khích du lịch có trách nhiệm và bền vững</p>
                         </div>
                         <div className="value-item">
-                            <h4>🤝 Cộng đồng</h4>
+                            <h4>◈ Cộng đồng</h4>
                             <p>Xây dựng cộng đồng du lịch thông minh và chia sẻ</p>
                         </div>
                     </div>

@@ -1,13 +1,45 @@
-import React, { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { getUserProfile } from '../services/userProfileService';
 import './Navbar.css';
+
+// Import icons
+import logoIcon from '../icon/logo.png';
+import homeIcon from '../icon/trangchu.png';
+import planIcon from '../icon/lapkehoach.png';
+import aiIcon from '../icon/AIgoiy.png';
+import tripIcon from '../icon/chuyendi.png';
+import aboutIcon from '../icon/vechungtoi.png';
+import contactIcon from '../icon/phone-call.png';
+import feedbackIcon from '../icon/phanhoi.png';
+import profileIcon from '../icon/thongtincanhan.png';
+import logoutIcon from '../icon/dangxuat.png';
 
 export default function Navbar() {
     const { currentUser, logout } = useAuth();
     const navigate = useNavigate();
     const location = useLocation();
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+    const [userAvatar, setUserAvatar] = useState(null);
+
+    // Load user avatar from Firestore
+    useEffect(() => {
+        if (currentUser) {
+            loadUserAvatar();
+        }
+    }, [currentUser]);
+
+    const loadUserAvatar = async () => {
+        try {
+            const result = await getUserProfile(currentUser.uid);
+            if (result.success && result.data.avatarURL) {
+                setUserAvatar(result.data.avatarURL);
+            }
+        } catch (error) {
+            console.error('Error loading avatar:', error);
+        }
+    };
 
     const handleLogout = async () => {
         try {
@@ -21,13 +53,13 @@ export default function Navbar() {
     const isActive = (path) => location.pathname === path;
 
     const navLinks = [
-        { path: '/', label: 'Trang chủ', icon: '🏠' },
-        { path: '/complete-planner', label: 'Lập kế hoạch', icon: '📋', protected: true },
-        { path: '/ai-recommendations', label: 'AI Gợi ý', icon: '🤖', protected: true },
-        { path: '/mytrips', label: 'Chuyến đi', icon: '✈️', protected: true },
-        { path: '/about', label: 'Về chúng tôi', icon: 'ℹ️' },
-        { path: '/contact', label: 'Liên hệ', icon: '📞' },
-        { path: '/feedback', label: 'Phản hồi', icon: '💬' }
+        { path: '/', label: 'Trang chủ', iconImg: homeIcon },
+        { path: '/complete-planner', label: 'Lập kế hoạch', iconImg: planIcon, protected: true },
+        { path: '/ai-recommendations', label: 'AI Gợi ý', iconImg: aiIcon, protected: true },
+        { path: '/mytrips', label: 'Chuyến đi', iconImg: tripIcon, protected: true },
+        { path: '/about', label: 'Về chúng tôi', iconImg: aboutIcon },
+        { path: '/contact', label: 'Liên hệ', iconImg: contactIcon },
+        { path: '/feedback', label: 'Phản hồi', iconImg: feedbackIcon }
     ];
 
     return (
@@ -35,9 +67,11 @@ export default function Navbar() {
             <div className="navbar-container">
                 {/* Logo */}
                 <Link to="/" className="navbar-logo">
-                    <div className="logo-icon">🌍</div>
-                    <span className="logo-text">ZIZOO</span>
-                    <span className="logo-subtitle">Travel AI</span>
+                    <img src={logoIcon} alt="ZIZOO" className="logo-icon-img" />
+                    <div className="logo-text-container">
+                        <span className="logo-text">ZIZOO</span>
+                        <span className="logo-subtitle">Travel AI</span>
+                    </div>
                 </Link>
 
                 {/* Desktop Navigation */}
@@ -50,7 +84,11 @@ export default function Navbar() {
                                 to={link.path}
                                 className={`nav-link ${isActive(link.path) ? 'active' : ''}`}
                             >
-                                <span className="nav-icon">{link.icon}</span>
+                                {link.iconImg ? (
+                                    <img src={link.iconImg} alt="" className="nav-icon-img" />
+                                ) : (
+                                    <span className="nav-icon">{link.icon}</span>
+                                )}
                                 <span className="nav-text">{link.label}</span>
                             </Link>
                         );
@@ -63,21 +101,15 @@ export default function Navbar() {
                         <div className="user-menu">
                             <Link to="/profile" className="user-profile">
                                 <div className="user-avatar">
-                                    {currentUser.photoURL ? (
-                                        <img src={currentUser.photoURL} alt="Avatar" />
+                                    {userAvatar || currentUser.photoURL ? (
+                                        <img src={userAvatar || currentUser.photoURL} alt="Avatar" />
                                     ) : (
                                         <span>{(currentUser.displayName || currentUser.email || 'U')[0].toUpperCase()}</span>
                                     )}
                                 </div>
-                                <div className="user-info">
-                                    <span className="user-name">
-                                        {currentUser.displayName || currentUser.email?.split('@')[0]}
-                                    </span>
-                                    <span className="user-status">Thành viên</span>
-                                </div>
                             </Link>
                             <button onClick={handleLogout} className="logout-btn">
-                                <span className="logout-icon">🚪</span>
+                                <img src={logoutIcon} alt="" className="nav-icon-img" />
                                 <span className="logout-text">Đăng xuất</span>
                             </button>
                         </div>
@@ -120,7 +152,11 @@ export default function Navbar() {
                                 className={`mobile-nav-link ${isActive(link.path) ? 'active' : ''}`}
                                 onClick={() => setIsMobileMenuOpen(false)}
                             >
-                                <span className="nav-icon">{link.icon}</span>
+                                {link.iconImg ? (
+                                    <img src={link.iconImg} alt="" className="nav-icon-img" />
+                                ) : (
+                                    <span className="nav-icon">{link.icon}</span>
+                                )}
                                 <span className="nav-text">{link.label}</span>
                             </Link>
                         );
@@ -135,11 +171,11 @@ export default function Navbar() {
                                     className="mobile-profile-link"
                                     onClick={() => setIsMobileMenuOpen(false)}
                                 >
-                                    <span className="nav-icon">👤</span>
+                                    <img src={profileIcon} alt="" className="nav-icon-img" />
                                     <span>Thông tin cá nhân</span>
                                 </Link>
                                 <button onClick={handleLogout} className="mobile-logout-btn">
-                                    <span className="nav-icon">🚪</span>
+                                    <img src={logoutIcon} alt="" className="nav-icon-img" />
                                     <span>Đăng xuất</span>
                                 </button>
                             </>

@@ -14,7 +14,7 @@ export default function Login() {
         try {
             await login(email, password);
             toast.success("Đăng nhập thành công!");
-            navigate('/planner');
+            navigate('/');
         } catch (err) {
             toast.error("Sai email hoặc mật khẩu!");
         }

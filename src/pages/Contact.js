@@ -55,7 +55,7 @@ const Contact = () => {
             <div className="container">
                 <div className="contact-content">
                     <div className="contact-info">
-                        <h2>🤝 Kết nối với ZIZOO</h2>
+                        <h2>• Kết nối với ZIZOO</h2>
                         <p>
                             Có câu hỏi, góp ý hoặc cần hỗ trợ? Đội ngũ ZIZOO luôn sẵn sàng 
                             lắng nghe và hỗ trợ bạn tạo ra những chuyến đi tuyệt vời.
@@ -63,7 +63,7 @@ const Contact = () => {
 
                         <div className="contact-methods">
                             <div className="contact-method">
-                                <div className="method-icon">📧</div>
+                                <div className="method-icon">✉</div>
                                 <div className="method-info">
                                     <h3>Email</h3>
                                     <p>support@zizoo.travel</p>
@@ -72,7 +72,7 @@ const Contact = () => {
                             </div>
 
                             <div className="contact-method">
-                                <div className="method-icon">💬</div>
+                                <div className="method-icon">◐</div>
                                 <div className="method-info">
                                     <h3>Live Chat</h3>
                                     <p>Chat trực tiếp với AI Assistant</p>
@@ -81,7 +81,7 @@ const Contact = () => {
                             </div>
 
                             <div className="contact-method">
-                                <div className="method-icon">📱</div>
+                                <div className="method-icon">☎</div>
                                 <div className="method-info">
                                     <h3>Hotline</h3>
                                     <p>1900 1234 (miễn phí)</p>
@@ -90,7 +90,7 @@ const Contact = () => {
                             </div>
 
                             <div className="contact-method">
-                                <div className="method-icon">🌐</div>
+                                <div className="method-icon">◎</div>
                                 <div className="method-info">
                                     <h3>Social Media</h3>
                                     <p>Facebook, Instagram, Twitter</p>
@@ -100,7 +100,7 @@ const Contact = () => {
                         </div>
 
                         <div className="faq-section">
-                            <h3>❓ Câu hỏi thường gặp</h3>
+                            <h3>? Câu hỏi thường gặp</h3>
                             <div className="faq-list">
                                 <div className="faq-item">
                                     <strong>ZIZOO có miễn phí không?</strong>
@@ -120,7 +120,7 @@ const Contact = () => {
 
                     <div className="contact-form-section">
                         <div className="form-container">
-                            <h2>📝 Gửi tin nhắn</h2>
+                            <h2>✎ Gửi tin nhắn</h2>
                             <form onSubmit={handleSubmit} className="contact-form">
                                 <div className="form-group">
                                     <label>Loại yêu cầu</label>
@@ -193,7 +193,7 @@ const Contact = () => {
                                     className="submit-btn"
                                     disabled={loading}
                                 >
-                                    {loading ? '⏳ Đang gửi...' : '🚀 Gửi tin nhắn'}
+                                    {loading ? '⟳ Đang gửi...' : '→ Gửi tin nhắn'}
                                 </button>
                             </form>
                         </div>
@@ -203,7 +203,7 @@ const Contact = () => {
                 <div className="additional-info">
                     <div className="info-grid">
                         <div className="info-card">
-                            <h3>🏢 Văn phòng</h3>
+                            <h3>▣ Văn phòng</h3>
                             <p>
                                 Tầng 10, Tòa nhà ABC<br/>
                                 123 Đường Nguyễn Huệ<br/>
@@ -212,7 +212,7 @@ const Contact = () => {
                         </div>
 
                         <div className="info-card">
-                            <h3>⏰ Giờ làm việc</h3>
+                            <h3>• Giờ làm việc</h3>
                             <p>
                                 Thứ 2 - Thứ 6: 8:00 - 18:00<br/>
                                 Thứ 7: 9:00 - 17:00<br/>
@@ -221,7 +221,7 @@ const Contact = () => {
                         </div>
 
                         <div className="info-card">
-                            <h3>🌍 Ngôn ngữ hỗ trợ</h3>
+                            <h3>• Ngôn ngữ hỗ trợ</h3>
                             <p>
                                 Tiếng Việt (chính)<br/>
                                 English<br/>
