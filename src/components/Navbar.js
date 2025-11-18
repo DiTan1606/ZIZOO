@@ -57,7 +57,6 @@ export default function Navbar() {
         { path: '/complete-planner', label: 'Lập kế hoạch', iconImg: planIcon, protected: true },
         { path: '/ai-recommendations', label: 'AI Gợi ý', iconImg: aiIcon, protected: true },
         { path: '/mytrips', label: 'Chuyến đi', iconImg: tripIcon, protected: true },
-        { path: '/route-optimizer', label: '🗺️ Lộ trình', protected: true },
         { path: '/about', label: 'Về chúng tôi', iconImg: aboutIcon },
         { path: '/contact', label: 'Liên hệ', iconImg: contactIcon },
         { path: '/feedback', label: 'Phản hồi', iconImg: feedbackIcon }
