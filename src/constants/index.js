@@ -121,6 +121,35 @@ export const LOCATION_ALIASES = {
     'thua thien hue': 'Thừa Thiên Huế'
 };
 
+// Scenic Spot Types - Các loại địa điểm tham quan cảnh đẹp
+export const SCENIC_SPOT_TYPES = [
+    'tourist_attraction',
+    'natural_feature',
+    'park',
+    'point_of_interest',
+    'scenic_viewpoint',
+    'mountain',
+    'beach',
+    'waterfall',
+    'lake',
+    'hiking_area',
+    'historical_landmark',
+    'cultural_landmark',
+    'monument',
+    'museum',
+    'art_gallery',
+    'temple',
+    'church',
+    'pagoda',
+    'shrine',
+    'garden',
+    'botanical_garden',
+    'zoo',
+    'aquarium',
+    'amusement_park',
+    'theme_park'
+];
+
 // Type to Places Mapping
 export const TYPE_TO_PLACES = {
     'Nghỉ dưỡng': ['tourist_attraction', 'beach', 'spa'],

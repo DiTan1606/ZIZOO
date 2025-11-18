@@ -1008,7 +1008,7 @@ const getCategoryConfig = (category, interests) => {
     const configs = {
         scenic_viewpoints: {
             queries: ['viewpoint', 'scenic view', 'panoramic', 'vista'],
-            types: ['tourist_attraction', 'natural_feature'],
+            types: ['tourist_attraction', 'natural_feature', 'scenic_viewpoint'],
             radius: 50000
         },
         cultural_architecture: {
@@ -1033,7 +1033,7 @@ const getCategoryConfig = (category, interests) => {
         },
         top_attractions: {
             queries: ['tourist attraction', 'popular', 'famous', 'must visit'],
-            types: ['tourist_attraction', 'amusement_park'],
+            types: ['tourist_attraction', 'amusement_park', 'scenic_viewpoint'],
             radius: 50000
         }
     };
@@ -1071,7 +1071,7 @@ const calculateCategoryRelevance = (place, category) => {
     const name = place.name?.toLowerCase() || '';
 
     const relevanceMap = {
-        scenic_viewpoints: ['tourist_attraction', 'natural_feature', 'park'],
+        scenic_viewpoints: ['tourist_attraction', 'natural_feature', 'park', 'scenic_viewpoint'],
         cultural_architecture: ['place_of_worship', 'museum', 'tourist_attraction'],
         local_restaurants: ['restaurant', 'meal_takeaway', 'food'],
         parks_gardens: ['park', 'zoo', 'amusement_park'],

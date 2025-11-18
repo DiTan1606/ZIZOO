@@ -62,6 +62,7 @@ const UserProfile = () => {
     const [stats, setStats] = useState({
         totalTrips: 0,
         totalDestinations: 0,
+        totalSpending: 0,
         memberSince: null
     });
 
@@ -420,26 +421,27 @@ const UserProfile = () => {
                                 onClick={handleAvatarDelete}
                                 disabled={loading}
                             >
-                                🗑️ Xóa ảnh
                             </button>
                         )}
                     </div>
                     <div className="profile-info">
                         <h1>{profileData.displayName || 'Người dùng ZIZOO'}</h1>
                         <p className="user-email">Thành viên</p>
-                        <p className="join-date">Tham gia từ {formatDate(stats.joinDate)}</p>
+                        <p className="join-date">
+                            Tham gia từ {stats.memberSince ? formatDate(stats.memberSince) : 'N/A'}
+                        </p>
                     </div>
                     <div className="profile-stats">
                         <div className="stat-item">
-                            <span className="stat-number">{stats.totalTrips}</span>
+                            <span className="stat-number">{stats.totalTrips || 0}</span>
                             <span className="stat-label">Chuyến đi</span>
                         </div>
                         <div className="stat-item">
-                            <span className="stat-number">{stats.totalDestinations}</span>
+                            <span className="stat-number">{stats.totalDestinations || 0}</span>
                             <span className="stat-label">Điểm đến</span>
                         </div>
                         <div className="stat-item">
-                            <span className="stat-number">{formatMoney(stats.totalSpent)}</span>
+                            <span className="stat-number">{formatMoney(stats.totalSpending || 0)}</span>
                             <span className="stat-label">Tổng chi tiêu</span>
                         </div>
                     </div>
@@ -714,7 +716,7 @@ const UserProfile = () => {
                                 <div className="form-section danger-zone">
                                     <h3>Vùng nguy hiểm</h3>
                                     <p>Các hành động này không thể hoàn tác</p>
-                                    <button className="delete-account-btn">🗑️ Xóa tài khoản</button>
+                                    <button className="delete-account-btn">🗑️  Xóatài khoản</button>
                                 </div>
                             </div>
                         )}

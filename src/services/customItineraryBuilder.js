@@ -7,7 +7,7 @@
  * Sắp xếp địa điểm theo khung giờ và tối ưu hóa lộ trình
  */
 export const organizeDestinationsByTime = (selectedDestinations, preferences) => {
-    const { duration, departureTime } = preferences;
+    const { duration, startTime = '08:00' } = preferences; // Đổi từ departureTime sang startTime
     
     // Phân loại địa điểm
     const withTime = selectedDestinations.filter(d => d.preferredTime);
@@ -119,8 +119,8 @@ const isWithinOpeningHours = (time, destination) => {
     // Giờ mở cửa thông thường cho các loại địa điểm
     const defaultHours = {
         'restaurant': { open: 6 * 60, close: 22 * 60 }, // 6:00 - 22:00
-        'cafe': { open: 7 * 60, close: 23 * 60 }, // 7:00 - 23:00
-        'tourist_attraction': { open: 8 * 60, close: 18 * 60 }, // 8:00 - 18:00
+        'cafe': { open: 7 * 60, close: 21 * 60 }, // 7:00 - 23:00
+        'tourist_attraction': { open: 8 * 60, close: 16 * 60 }, // 8:00 - 18:00
         'museum': { open: 8 * 60, close: 17 * 60 }, // 8:00 - 17:00
         'park': { open: 5 * 60, close: 22 * 60 }, // 5:00 - 22:00
         'shopping_mall': { open: 9 * 60, close: 22 * 60 }, // 9:00 - 22:00
@@ -176,52 +176,15 @@ const adjustTimeForOpeningHours = (time, destination) => {
  * Tạo lịch trình theo giờ chi tiết từ danh sách địa điểm
  */
 export const generateScheduleFromDestinations = (dailyPlan, preferences, dayNumber) => {
-    const { departureTime } = preferences;
+    const { startTime = '08:00' } = preferences; // Đổi từ departureTime sang startTime
     const schedule = [];
     const warnings = []; // Lưu các cảnh báo về giờ mở cửa
     
-    // Thời gian bắt đầu
-    let currentTime = dayNumber === 1 ? departureTime : '07:00';
+    // Thời gian bắt đầu = startTime (giờ bắt đầu hành trình du lịch)
+    let currentTime = startTime;
     
-    // Nếu là ngày đầu, thêm hoạt động khởi hành
-    if (dayNumber === 1) {
-        schedule.push({
-            time: currentTime,
-            activity: 'Khởi hành từ điểm xuất phát',
-            type: 'transport',
-            duration: '30 phút',
-            notes: ['Chuẩn bị hành lý', 'Kiểm tra giấy tờ', 'Mang theo đồ ăn nhẹ']
-        });
-        currentTime = addMinutes(currentTime, 30);
-        
-        schedule.push({
-            time: '12:00',
-            activity: 'Ăn trưa',
-            type: 'meal',
-            duration: '1 giờ',
-            notes: ['Thử món đặc sản', 'Nghỉ ngơi sau buổi sáng']
-        });
-        
-        schedule.push({
-            time: '12:30',
-            activity: 'Đến điểm đến, nhận phòng',
-            type: 'accommodation',
-            duration: '45 phút',
-            notes: ['Check-in khách sạn', 'Nghỉ ngơi', 'Ăn trưa nhẹ']
-        });
-        
-        currentTime = '14:00';
-    } else {
-        // Các ngày khác bắt đầu với bữa sáng
-        schedule.push({
-            time: currentTime,
-            activity: 'Ăn sáng',
-            type: 'meal',
-            duration: '45 phút',
-            notes: ['Thử món đặc sản địa phương']
-        });
-        currentTime = addMinutes(currentTime, 45);
-    }
+    // Không thêm "Khởi hành từ điểm xuất phát" nữa
+    // Bắt đầu trực tiếp với hoạt động tham quan hoặc ăn uống
     
     // Thêm các địa điểm đã chọn với kiểm tra giờ mở cửa
     dailyPlan.destinations.forEach((dest, index) => {
@@ -266,12 +229,38 @@ export const generateScheduleFromDestinations = (dailyPlan, preferences, dayNumb
         currentTime = addMinutes(activityTime, durationInMinutes + 15); // +15 phút di chuyển
     });
     
-    // Thêm bữa tối (đảm bảo không quá muộn)
+    // Thêm bữa ăn vào các thời điểm phù hợp
+    // Ăn sáng (nếu bắt đầu sớm, trước 10:00)
+    const [startHour] = startTime.split(':').map(Number);
+    if (startHour < 10) {
+        schedule.push({
+            time: startTime,
+            activity: `Ăn sáng tại nhà hàng địa phương`,
+            type: 'meal',
+            duration: '45 phút',
+            notes: ['Phở bò/gà', 'Bánh mì', 'Cà phê sữa đá'],
+            location: { name: 'Quán ăn sáng địa phương', category: 'restaurant' }
+        });
+        currentTime = addMinutes(startTime, 45);
+    }
+    
+    // Ăn trưa (khoảng 12:00)
+    const lunchTime = '12:00';
+    schedule.push({
+        time: lunchTime,
+        activity: `Ăn trưa tại nhà hàng địa phương`,
+        type: 'meal',
+        duration: '1 giờ',
+        notes: ['Cơm/Bún/Phở', 'Món đặc sản', 'Nghỉ ngơi'],
+        location: { name: 'Nhà hàng trưa', category: 'restaurant' }
+    });
+    
+    // Ăn tối (khoảng 18:30, không quá muộn)
     let dinnerTime = currentTime;
     if (currentTime < '18:00') {
         dinnerTime = '18:30';
     } else if (currentTime > '21:00') {
-        dinnerTime = '19:00'; // Không để quá muộn
+        dinnerTime = '19:00';
         warnings.push({
             destination: 'Bữa tối',
             reason: 'Điều chỉnh giờ ăn tối để phù hợp (không quá muộn)'
@@ -280,10 +269,11 @@ export const generateScheduleFromDestinations = (dailyPlan, preferences, dayNumb
     
     schedule.push({
         time: dinnerTime,
-        activity: 'Ăn tối',
+        activity: `Ăn tối tại nhà hàng địa phương`,
         type: 'meal',
         duration: '1.5 giờ',
-        notes: ['Bữa tối thịnh soạn', 'Thưởng thức đặc sản địa phương']
+        notes: ['Bữa tối thịnh soạn', 'Đặc sản địa phương', 'Hải sản tươi sống'],
+        location: { name: 'Nhà hàng tối', category: 'restaurant' }
     });
     
     // Hoạt động tối
@@ -310,6 +300,12 @@ export const generateScheduleFromDestinations = (dailyPlan, preferences, dayNumb
  * Thêm phút vào thời gian (format HH:MM)
  */
 const addMinutes = (time, minutes) => {
+    // Validation: nếu time undefined hoặc không hợp lệ, return default
+    if (!time || typeof time !== 'string') {
+        console.warn('addMinutes: Invalid time parameter:', time);
+        return '08:00'; // Default fallback
+    }
+    
     const [hours, mins] = time.split(':').map(Number);
     const totalMinutes = hours * 60 + mins + minutes;
     const newHours = Math.floor(totalMinutes / 60) % 24;

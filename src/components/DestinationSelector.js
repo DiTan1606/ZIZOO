@@ -1,7 +1,7 @@
 // src/components/DestinationSelector.js
 import React, { useState, useEffect } from 'react';
 import { toast } from 'react-toastify';
-import { searchPlacesByText } from '../services/placesService';
+import { searchPlacesByText, initPlacesService } from '../services/placesService';
 import provinceCoords from '../assets/provinceCoord.json';
 import './DestinationSelector.css';
 
@@ -10,6 +10,7 @@ const DestinationSelector = ({ preferences, onConfirm, onBack }) => {
     const [destinations, setDestinations] = useState([]);
     const [selectedDestinations, setSelectedDestinations] = useState([]);
     const [activeCategory, setActiveCategory] = useState('all');
+    const [placesServiceReady, setPlacesServiceReady] = useState(false);
     
     // Custom destination input
     const [showCustomInput, setShowCustomInput] = useState(false);
@@ -17,7 +18,9 @@ const DestinationSelector = ({ preferences, onConfirm, onBack }) => {
         name: '',
         address: '',
         preferredTime: '',
-        duration: '2'
+        duration: '2',
+        type: 'tourist_attraction',
+        price: ''
     });
 
     const categories = [
@@ -31,11 +34,72 @@ const DestinationSelector = ({ preferences, onConfirm, onBack }) => {
         { id: 'night_club', name: 'Giải trí', icon: '🎉' }
     ];
 
+    // Initialize Places Service
     useEffect(() => {
-        loadDestinations();
-    }, [preferences.destination]);
+        const initService = async () => {
+            try {
+                // Wait for Google Maps API to load
+                await new Promise((resolve) => {
+                    if (window.google?.maps?.places) {
+                        resolve();
+                    } else {
+                        const checkInterval = setInterval(() => {
+                            if (window.google?.maps?.places) {
+                                clearInterval(checkInterval);
+                                resolve();
+                            }
+                        }, 100);
+                        
+                        // Timeout after 10 seconds
+                        setTimeout(() => {
+                            clearInterval(checkInterval);
+                            resolve();
+                        }, 10000);
+                    }
+                });
+
+                // Create a hidden map for Places Service if not exists
+                if (!window.hiddenMapForPlaces) {
+                    const mapDiv = document.createElement('div');
+                    mapDiv.style.display = 'none';
+                    document.body.appendChild(mapDiv);
+                    
+                    window.hiddenMapForPlaces = new window.google.maps.Map(mapDiv, {
+                        center: { lat: 16.047, lng: 108.220 },
+                        zoom: 10
+                    });
+                }
+
+                // Initialize Places Service
+                const success = initPlacesService(window.hiddenMapForPlaces);
+                setPlacesServiceReady(success);
+                
+                if (!success) {
+                    toast.warning('⚠️ Google Maps Places API không khả dụng. Vui lòng thêm địa điểm tùy chỉnh.');
+                }
+            } catch (error) {
+                console.error('Error initializing Places Service:', error);
+                setPlacesServiceReady(false);
+            }
+        };
+
+        initService();
+    }, []);
+
+    useEffect(() => {
+        if (placesServiceReady) {
+            loadDestinations();
+        }
+    }, [preferences.destination, placesServiceReady]);
 
     const loadDestinations = async () => {
+        if (!placesServiceReady) {
+            console.warn('Places Service not ready yet');
+            setLoading(false);
+            setDestinations([]);
+            return;
+        }
+
         setLoading(true);
         try {
             const coord = provinceCoords[preferences.destination] || { lat: 16.047, lng: 108.220 };
@@ -131,20 +195,31 @@ const DestinationSelector = ({ preferences, onConfirm, onBack }) => {
             return;
         }
 
+        // Get category info based on type
+        const categoryInfo = categories.find(cat => cat.id === customDestination.type) || {
+            id: 'other',
+            name: 'Khác',
+            icon: '📍'
+        };
+
         const newDestination = {
             id: `custom_${Date.now()}`,
             name: customDestination.name,
             address: customDestination.address || preferences.destination,
             rating: 0,
             userRatingsTotal: 0,
-            types: ['point_of_interest'],
-            category: 'custom',
-            categoryName: 'Tùy chỉnh',
-            categoryIcon: '📍',
+            types: [customDestination.type],
+            category: customDestination.type,
+            categoryName: categoryInfo.name,
+            categoryIcon: categoryInfo.icon,
             preferredTime: customDestination.preferredTime,
             duration: customDestination.duration,
             isCustom: true,
-            priceLevel: 2
+            // Price info
+            price: customDestination.price ? parseInt(customDestination.price) : null,
+            priceLevel: customDestination.price ? calculatePriceLevel(parseInt(customDestination.price)) : 2,
+            // Store original type for better categorization
+            placeType: customDestination.type
         };
 
         setSelectedDestinations(prev => [...prev, newDestination]);
@@ -154,11 +229,21 @@ const DestinationSelector = ({ preferences, onConfirm, onBack }) => {
             name: '',
             address: '',
             preferredTime: '',
-            duration: '2'
+            duration: '2',
+            type: 'tourist_attraction',
+            price: ''
         });
         setShowCustomInput(false);
         
         toast.success(`✅ Đã thêm "${newDestination.name}"`);
+    };
+
+    // Helper function to calculate price level from VND
+    const calculatePriceLevel = (price) => {
+        if (price < 50000) return 1;      // Rẻ
+        if (price < 200000) return 2;     // Trung bình
+        if (price < 500000) return 3;     // Cao
+        return 4;                          // Rất cao
     };
 
     const removeDestination = (destinationId) => {
@@ -279,6 +364,45 @@ const DestinationSelector = ({ preferences, onConfirm, onBack }) => {
                         </div>
                         <div className="form-row">
                             <div className="form-group">
+                                <label>Loại địa điểm *</label>
+                                <select
+                                    value={customDestination.type}
+                                    onChange={(e) => setCustomDestination(prev => ({
+                                        ...prev,
+                                        type: e.target.value
+                                    }))}
+                                >
+                                    <option value="tourist_attraction">🏛️ Tham quan</option>
+                                    <option value="restaurant">🍽️ Nhà hàng</option>
+                                    <option value="cafe">☕ Cà phê</option>
+                                    <option value="park">🌳 Công viên</option>
+                                    <option value="museum">🎨 Bảo tàng</option>
+                                    <option value="shopping_mall">🛍️ Mua sắm</option>
+                                    <option value="night_club">🎉 Giải trí</option>
+                                    <option value="hotel">🏨 Khách sạn</option>
+                                    <option value="beach">🏖️ Bãi biển</option>
+                                    <option value="temple">🏯 Đền/Chùa</option>
+                                    <option value="market">🏪 Chợ</option>
+                                    <option value="other">📍 Khác</option>
+                                </select>
+                            </div>
+                            <div className="form-group">
+                                <label>Giá (VNĐ) - tùy chọn</label>
+                                <input
+                                    type="number"
+                                    placeholder="VD: 100000"
+                                    value={customDestination.price}
+                                    onChange={(e) => setCustomDestination(prev => ({
+                                        ...prev,
+                                        price: e.target.value
+                                    }))}
+                                    min="0"
+                                    step="1000"
+                                />
+                            </div>
+                        </div>
+                        <div className="form-row">
+                            <div className="form-group">
                                 <label>Khung giờ mong muốn (tùy chọn)</label>
                                 <input
                                     type="time"
@@ -336,6 +460,16 @@ const DestinationSelector = ({ preferences, onConfirm, onBack }) => {
                                     <span className="item-number">{index + 1}</span>
                                     <span className="item-name">{dest.name}</span>
                                     {dest.isCustom && <span className="custom-badge">Tùy chỉnh</span>}
+                                    {dest.categoryIcon && (
+                                        <span className="category-icon" title={dest.categoryName}>
+                                            {dest.categoryIcon}
+                                        </span>
+                                    )}
+                                    {dest.price && (
+                                        <span className="price-badge" title="Giá dự kiến">
+                                            💰 {dest.price.toLocaleString('vi-VN')}đ
+                                        </span>
+                                    )}
                                     <button 
                                         className="remove-btn"
                                         onClick={() => removeDestination(dest.id)}
@@ -344,6 +478,11 @@ const DestinationSelector = ({ preferences, onConfirm, onBack }) => {
                                         ✕
                                     </button>
                                 </div>
+                                {dest.address && (
+                                    <div className="item-address">
+                                        📍 {dest.address}
+                                    </div>
+                                )}
                                 <div className="item-controls">
                                     <div className="control-group">
                                         <label>⏰ Khung giờ:</label>

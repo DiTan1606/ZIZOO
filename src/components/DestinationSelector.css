@@ -235,6 +235,30 @@
     font-weight: 600;
 }
 
+.category-icon {
+    font-size: 18px;
+    margin-left: 5px;
+    cursor: help;
+}
+
+.price-badge {
+    background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+    color: white;
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+    margin-left: 5px;
+    white-space: nowrap;
+}
+
+.item-address {
+    font-size: 13px;
+    color: #666;
+    margin: 5px 0;
+    padding-left: 35px;
+}
+
 .remove-btn {
     background: #dc3545;
     color: white;

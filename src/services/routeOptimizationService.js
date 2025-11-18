@@ -1,5 +1,5 @@
-// src/services/routeOptimizationService.js - Tối ưu lộ trình với A* algorithm
-const GOONG_API_KEY = process.env.REACT_APP_GOONG_API_KEY;
+// src/services/routeOptimizationService.js - Tối ưu lộ trình với Google Maps API
+const GOOGLE_MAPS_API_KEY = process.env.REACT_APP_GOOGLE_MAPS_API_KEY;
 
 /**
  * Tính khoảng cách Haversine giữa 2 điểm (km)
@@ -17,16 +17,16 @@ const haversineDistance = (lat1, lon1, lat2, lon2) => {
 };
 
 /**
- * Lấy khoảng cách thực tế từ Goong Directions API
+ * Lấy khoảng cách thực tế từ Google Maps Directions API
  */
 const getRealDistance = async (origin, destination) => {
     try {
         const response = await fetch(
-            `https://rsapi.goong.io/Direction?origin=${origin.lat},${origin.lng}&destination=${destination.lat},${destination.lng}&vehicle=car&api_key=${GOONG_API_KEY}`
+            `https://maps.googleapis.com/maps/api/directions/json?origin=${origin.lat},${origin.lng}&destination=${destination.lat},${destination.lng}&mode=driving&key=${GOOGLE_MAPS_API_KEY}`
         );
         const data = await response.json();
         
-        if (data.routes && data.routes.length > 0) {
+        if (data.status === 'OK' && data.routes && data.routes.length > 0) {
             const distance = data.routes[0].legs[0].distance.value / 1000; // Convert to km
             const duration = data.routes[0].legs[0].duration.value / 60; // Convert to minutes
             return { distance, duration };

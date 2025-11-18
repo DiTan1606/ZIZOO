@@ -327,26 +327,48 @@ export const updateUserPreferences = async (userId, preferences) => {
 };
 
 /**
- * Get user statistics
+ * Get user statistics (chỉ tính các chuyến đi đã hoàn thành)
  */
 export const getUserStats = async (userId) => {
     try {
-        // Get itineraries count
+        // Get user profile for memberSince
+        const userRef = doc(db, 'users', userId);
+        const userSnap = await getDoc(userRef);
+        let memberSince = null;
+        
+        if (userSnap.exists()) {
+            const userData = userSnap.data();
+            memberSince = userData.createdAt || userData.memberSince || null;
+        }
+        
+        // Get itineraries
         const itinerariesRef = doc(db, 'userItineraries', userId);
         const itinerariesSnap = await getDoc(itinerariesRef);
         
         let totalTrips = 0;
         let totalDestinations = 0;
+        let totalSpending = 0;
         
         if (itinerariesSnap.exists()) {
             const itineraries = itinerariesSnap.data().itineraries || [];
-            totalTrips = itineraries.length;
             
-            // Count unique destinations
+            // Chỉ đếm các chuyến đi đã hoàn thành
+            const completedTrips = itineraries.filter(itinerary => 
+                itinerary.status === 'completed'
+            );
+            
+            totalTrips = completedTrips.length;
+            
+            // Count unique destinations từ chuyến đi đã hoàn thành
             const destinations = new Set();
-            itineraries.forEach(itinerary => {
+            completedTrips.forEach(itinerary => {
                 if (itinerary.destination) {
                     destinations.add(itinerary.destination);
+                }
+                
+                // Tính tổng chi tiêu
+                if (itinerary.budget) {
+                    totalSpending += Number(itinerary.budget) || 0;
                 }
             });
             totalDestinations = destinations.size;
@@ -357,7 +379,8 @@ export const getUserStats = async (userId) => {
             stats: {
                 totalTrips,
                 totalDestinations,
-                memberSince: null // Will be set from user profile
+                totalSpending,
+                memberSince
             }
         };
     } catch (error) {
@@ -368,6 +391,7 @@ export const getUserStats = async (userId) => {
             stats: {
                 totalTrips: 0,
                 totalDestinations: 0,
+                totalSpending: 0,
                 memberSince: null
             }
         };

@@ -1,6 +1,6 @@
 // src/services/completeItineraryService.js
 import { db } from '../firebase';
-import { collection, addDoc, getDocs, query, where, orderBy, getDoc, doc, deleteDoc } from 'firebase/firestore';
+import { collection, addDoc, getDocs, query, where, orderBy, getDoc, doc, deleteDoc, updateDoc } from 'firebase/firestore';
 import { searchPlacesByText, searchNearbyPlaces } from './placesService';
 import { get7DayWeatherForecast } from './weatherService';
 import { findRealPlacesByCategory, findRealRestaurants, getRealWeatherForItinerary } from './realTimeDataService';
@@ -28,7 +28,7 @@ export const createCompleteItinerary = async (preferences, userId) => {
         travelStyle = 'standard',
         interests = [],
         departureCity = 'Hà Nội',
-        departureTime = '06:30',
+        startTime = '08:00', // Giờ bắt đầu hành trình du lịch
         specialActivities = {}
     } = preferences;
 
@@ -193,7 +193,7 @@ const generateDailyItinerary = async (preferences) => {
         travelStyle, 
         budget, 
         travelers,
-        departureTime = '06:30',
+        startTime = '08:00', // Giờ bắt đầu hành trình du lịch
         specialActivities = {},
         customDestinations = []
     } = preferences;
@@ -279,7 +279,7 @@ const generateDailyItinerary = async (preferences) => {
                 dailyBudget, 
                 budget, 
                 travelers,
-                departureTime,
+                startTime,
                 specialActivities
             );
             dailyPlans.push(dayPlan);
@@ -337,7 +337,7 @@ const generateSingleDayPlan = async (
     dailyBudget = 500000, 
     budget = 5000000, 
     travelers = 2,
-    departureTime = '06:30',
+    startTime = '08:00', // Giờ bắt đầu hành trình du lịch
     specialActivities = {}
 ) => {
     try {
@@ -355,7 +355,7 @@ const generateSingleDayPlan = async (
             destinations, 
             restaurants, 
             interests,
-            departureTime,
+            startTime,
             specialActivities
         );
 
@@ -965,6 +965,7 @@ const saveItineraryToFirebase = async (itinerary) => {
         const sanitizedItinerary = sanitizeForFirebase({
             ...itinerary,
             createdAt: new Date(),
+            status: 'active', // Mặc định là active, user có thể đổi thành completed sau
             version: '1.0'
         });
         
@@ -1192,7 +1193,7 @@ const isTourismPlace = (place) => {
     
     const tourismTypes = [
         'tourist_attraction', 'point_of_interest', 'establishment',
-        'natural_feature', 'park', 'beach', 'museum',
+        'natural_feature', 'park', 'beach', 'museum', 'scenic_viewpoint',
         'place_of_worship', 'hindu_temple', 'buddhist_temple',
         'church', 'mosque', 'synagogue',
         'amusement_park', 'aquarium', 'zoo', 'campground',
@@ -1358,6 +1359,26 @@ export const getUserItineraries = async (userId) => {
     } catch (error) {
         console.error('Error getting user itineraries:', error);
         return [];
+    }
+};
+
+/**
+ * Cập nhật trạng thái lịch trình (active -> completed)
+ */
+export const updateItineraryStatus = async (itineraryId, status) => {
+    try {
+        const itineraryRef = doc(db, 'complete_itineraries', itineraryId);
+        await updateDoc(itineraryRef, {
+            status: status,
+            completedAt: status === 'completed' ? new Date() : null,
+            updatedAt: new Date()
+        });
+        
+        console.log(`✅ Đã cập nhật trạng thái lịch trình thành: ${status}`);
+        return { success: true };
+    } catch (error) {
+        console.error('Error updating itinerary status:', error);
+        return { success: false, error: error.message };
     }
 };
 
@@ -2990,9 +3011,9 @@ const diversifyDestinations = (destinations, dayNumber) => {
     
     // Ưu tiên theo ngày với nhiều category hơn và tránh lặp
     const dayPriorities = {
-        1: ['tourist_attraction', 'lighthouse', 'landmark', 'point_of_interest'], // Ngày đầu - điểm nổi tiếng
+        1: ['tourist_attraction', 'lighthouse', 'landmark', 'point_of_interest', 'scenic_viewpoint'], // Ngày đầu - điểm nổi tiếng
         2: ['museum', 'temple', 'religious', 'establishment'], // Ngày 2 - văn hóa
-        3: ['beach', 'park', 'natural_feature', 'viewpoint'], // Ngày 3 - thiên nhiên
+        3: ['beach', 'park', 'natural_feature', 'viewpoint', 'scenic_viewpoint'], // Ngày 3 - thiên nhiên
         4: ['amusement_park', 'zoo', 'aquarium', 'shopping_mall'], // Ngày 4 - giải trí
         5: ['spa', 'night_market', 'local_government_office', 'cemetery'], // Ngày 5 - đặc biệt
         6: ['university', 'library', 'hospital', 'school'], // Ngày 6 - khác
@@ -4217,6 +4238,53 @@ const generateEnhancedDayTheme = (dayNumber, destinations, interests, destinatio
 };
 
 /**
+ * Helper: Kiểm tra xem địa điểm có phải là văn hóa/lịch sử không
+ */
+const isCulturalHistoricalSite = (destination) => {
+    if (!destination) return false;
+    
+    const culturalKeywords = [
+        'bảo tàng', 'museum', 'đền', 'chùa', 'temple', 'pagoda',
+        'di tích', 'heritage', 'lịch sử', 'historical', 'historic',
+        'cung điện', 'palace', 'đình', 'miếu', 'shrine',
+        'tượng đài', 'monument', 'memorial', 'tưởng niệm',
+        'nhà thờ', 'church', 'cathedral', 'nhà cổ', 'ancient house',
+        'phố cổ', 'old quarter', 'old town', 'thành cổ', 'citadel',
+        'lăng', 'tomb', 'mausoleum', 'văn miếu', 'confucian temple'
+    ];
+    
+    const name = (destination.name || '').toLowerCase();
+    const types = destination.types || [];
+    const category = (destination.category || '').toLowerCase();
+    
+    // Check name
+    const hasKeywordInName = culturalKeywords.some(keyword => name.includes(keyword));
+    
+    // Check types
+    const culturalTypes = ['museum', 'church', 'hindu_temple', 'mosque', 'synagogue', 'place_of_worship', 'tourist_attraction'];
+    const hasCulturalType = types.some(type => culturalTypes.includes(type));
+    
+    // Check category
+    const hasCulturalCategory = category.includes('museum') || category.includes('tourist_attraction');
+    
+    return hasKeywordInName || hasCulturalType || hasCulturalCategory;
+};
+
+/**
+ * Helper: Kiểm tra thời gian có phù hợp cho địa điểm văn hóa/lịch sử không
+ * Văn hóa/lịch sử chỉ nên đi từ 07:00 - 16:30
+ */
+const isValidTimeForCulturalSite = (timeString) => {
+    const [hours, minutes] = timeString.split(':').map(Number);
+    const timeInMinutes = hours * 60 + minutes;
+    
+    const minTime = 7 * 60; // 07:00
+    const maxTime = 16 * 60 + 30; // 16:30
+    
+    return timeInMinutes >= minTime && timeInMinutes <= maxTime;
+};
+
+/**
  * Helper: Gộp các địa điểm liên quan (cùng khu vực/tên tương tự)
  */
 const groupRelatedDestinations = (destinations) => {
@@ -4340,51 +4408,56 @@ const generateEnhancedHourlySchedule = (
     destinations, 
     restaurants, 
     interests,
-    departureTime = '06:30',
+    startTime = '08:00', // Giờ bắt đầu hành trình du lịch
     specialActivities = {}
 ) => {
     const schedule = [];
     const usedRestaurants = new Set();
     
-    // Ngày 1: Khởi hành và check-in
+    // Ngày 1: Bắt đầu hành trình từ startTime
     if (dayNumber === 1) {
-        schedule.push({
-            time: departureTime,
-            activity: 'Khởi hành từ điểm xuất phát',
-            type: 'transport',
-            duration: '30 phút',
-            notes: ['Chuẩn bị hành lý', 'Kiểm tra giấy tờ', 'Mang theo đồ ăn nhẹ'],
-            realData: true
-        });
+        // Bắt đầu từ startTime (ví dụ: 08:00)
+        let currentTime = startTime;
         
-        // Lunch trên đường hoặc khi đến
-        if (restaurants.lunch) {
+        // Nếu bắt đầu sớm (trước 11:00), thêm ăn sáng
+        const [startHour] = startTime.split(':').map(Number);
+        if (startHour < 11 && restaurants.breakfast) {
             schedule.push({
-                time: '12:00',
+                time: currentTime,
+                activity: `Ăn sáng tại ${restaurants.breakfast.name}`,
+                type: 'meal',
+                duration: '45 phút',
+                location: restaurants.breakfast,
+                specialty: restaurants.breakfast.specialty,
+                estimatedCost: restaurants.breakfast.estimatedCost,
+                notes: ['Bắt đầu ngày mới với bữa sáng ngon'],
+                realData: true
+            });
+            usedRestaurants.add(restaurants.breakfast.name);
+            currentTime = calculateNextTime(currentTime, '45 phút');
+        }
+        
+        // Lunch nếu đến giờ trưa
+        if (restaurants.lunch) {
+            const lunchTime = startHour < 11 ? '12:00' : calculateNextTime(currentTime, '1 giờ');
+            schedule.push({
+                time: lunchTime,
                 activity: `Ăn trưa tại ${restaurants.lunch.name}`,
                 type: 'meal',
                 duration: '1 giờ',
                 location: restaurants.lunch,
                 specialty: restaurants.lunch.specialty,
                 estimatedCost: restaurants.lunch.estimatedCost,
-                notes: ['Thử món đặc sản', 'Nghỉ ngơi sau buổi sáng'],
+                notes: ['Thử món đặc sản địa phương'],
                 realData: true
             });
             usedRestaurants.add(restaurants.lunch.name);
+            currentTime = calculateNextTime(lunchTime, '1 giờ');
         }
-        
-        schedule.push({
-            time: '12:30',
-            activity: `Đến điểm đến, nhận phòng`,
-            type: 'accommodation',
-            duration: '45 phút',
-            notes: ['Check-in khách sạn', 'Nghỉ ngơi', 'Ăn trưa nhẹ'],
-            realData: true
-        });
     }
     
-    // Xác định thời gian bắt đầu
-    let currentTime = dayNumber === 1 ? '14:00' : '07:00';
+    // Xác định thời gian bắt đầu tham quan
+    let currentTime = dayNumber === 1 ? calculateNextTime(startTime, '2 giờ') : startTime;
     
     // Sunrise activity (chỉ ngày 2+)
     if (dayNumber > 1 && specialActivities.sunrise) {
@@ -4420,9 +4493,34 @@ const generateEnhancedHourlySchedule = (
     // Gộp các địa điểm liên quan
     const groupedDestinations = groupRelatedDestinations(destinations);
     
-    // Thêm các hoạt động tham quan (8:00-11:00 sáng)
-    groupedDestinations.forEach((group, index) => {
+    // Phân loại địa điểm: văn hóa/lịch sử vs các loại khác
+    const culturalSites = [];
+    const otherSites = [];
+    
+    groupedDestinations.forEach(group => {
+        if (isCulturalHistoricalSite(group.main)) {
+            culturalSites.push(group);
+        } else {
+            otherSites.push(group);
+        }
+    });
+    
+    // Sắp xếp lại: Ưu tiên địa điểm văn hóa vào buổi sáng/chiều sớm (07:00-16:30)
+    // Các địa điểm khác có thể đi bất kỳ lúc nào
+    const reorderedDestinations = [...culturalSites, ...otherSites];
+    
+    console.log(`📍 Phân loại địa điểm: ${culturalSites.length} văn hóa/lịch sử, ${otherSites.length} địa điểm khác`);
+    
+    // Thêm các hoạt động tham quan
+    reorderedDestinations.forEach((group, index) => {
         const mainDest = group.main;
+        const isCultural = isCulturalHistoricalSite(mainDest);
+        
+        // Kiểm tra thời gian cho địa điểm văn hóa/lịch sử
+        if (isCultural && !isValidTimeForCulturalSite(currentTime)) {
+            console.log(`⏰ Bỏ qua ${mainDest.name} - địa điểm văn hóa/lịch sử không phù hợp với thời gian ${currentTime}`);
+            return; // Skip địa điểm này
+        }
         
         // Tạo activity name
         let activityName = `Tham quan ${mainDest.name}`;
@@ -4438,6 +4536,9 @@ const generateEnhancedHourlySchedule = (
         
         // Tạo notes
         const notes = ['Điểm chụp ảnh đẹp'];
+        if (isCultural) {
+            notes.push('⏰ Địa điểm văn hóa/lịch sử - mở cửa 07:00-16:30');
+        }
         if (group.related.length > 0) {
             notes.push(`Bao gồm: ${group.related.map(r => r.name).join(', ')}`);
         }
