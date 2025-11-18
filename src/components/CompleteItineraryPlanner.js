@@ -139,12 +139,8 @@ const CompleteItineraryPlanner = () => {
         try {
             const itinerary = await createCompleteItinerary(preferences, currentUser.uid);
             setCompleteItinerary(itinerary);
+            setStep(4); // Chuyển sang step 4 để hiển thị kết quả
             toast.success('🎉 Lịch trình hoàn chỉnh đã được tạo và lưu thành công!');
-            
-            // Chờ 2 giây để user thấy thông báo, sau đó chuyển về MyTrips
-            setTimeout(() => {
-                navigate('/my-trips');
-            }, 2000);
         } catch (error) {
             console.error('Lỗi tạo lịch trình:', error);
             toast.error(`Lỗi: ${error.message}`);
