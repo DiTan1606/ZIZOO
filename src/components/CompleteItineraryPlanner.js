@@ -149,6 +149,41 @@ const CompleteItineraryPlanner = () => {
         }
     };
 
+    const handleSelectHotel = (hotel) => {
+        if (!completeItinerary) return;
+
+        // Tính chênh lệch giá khách sạn
+        const oldHotelCost = completeItinerary.accommodation.selected.totalCost;
+        const newHotelCost = hotel.totalCost;
+        const priceDifference = newHotelCost - oldHotelCost;
+
+        // Cập nhật khách sạn đã chọn
+        const updatedItinerary = {
+            ...completeItinerary,
+            accommodation: {
+                ...completeItinerary.accommodation,
+                selected: hotel
+            },
+            costBreakdown: {
+                ...completeItinerary.costBreakdown,
+                accommodation: {
+                    ...completeItinerary.costBreakdown.accommodation,
+                    total: newHotelCost,
+                    perNight: hotel.pricePerNight
+                },
+                grandTotal: completeItinerary.costBreakdown.grandTotal + priceDifference
+            },
+            summary: {
+                ...completeItinerary.summary,
+                totalCost: completeItinerary.summary.totalCost + priceDifference,
+                costPerPerson: Math.round((completeItinerary.summary.totalCost + priceDifference) / completeItinerary.summary.travelers)
+            }
+        };
+
+        setCompleteItinerary(updatedItinerary);
+        toast.success(`✅ Đã chọn ${hotel.name}. Giá tổng đã được cập nhật!`);
+    };
+
     const formatMoney = (amount) => {
         return new Intl.NumberFormat('vi-VN').format(amount) + ' VNĐ';
     };
@@ -930,17 +965,25 @@ const CompleteItineraryPlanner = () => {
                             )}
                             
                             {/* Các tùy chọn khác */}
-                            {completeItinerary.accommodation.options && completeItinerary.accommodation.options.length > 1 && (
+                            {completeItinerary.accommodation.options && completeItinerary.accommodation.options.length > 0 && (
                                 <div className="accommodation-options">
                                     <h4>Các tùy chọn khác</h4>
                                     <div className="hotels-grid">
-                                        {completeItinerary.accommodation.options.slice(1).map((hotel, idx) => (
+                                        {completeItinerary.accommodation.options
+                                            .filter(hotel => hotel.name !== completeItinerary.accommodation.selected?.name)
+                                            .map((hotel, idx) => (
                                             <div key={idx} className="hotel-card">
                                                 <h5>{hotel.name}</h5>
                                                 <p>⭐ {hotel.rating}/5</p>
                                                 <p>📍 {hotel.location}</p>
                                                 <p>💰 {formatMoney(hotel.pricePerNight)}/đêm</p>
                                                 <p>💵 Tổng: {formatMoney(hotel.totalCost)}</p>
+                                                <button 
+                                                    className="btn-select-hotel"
+                                                    onClick={() => handleSelectHotel(hotel)}
+                                                >
+                                                    Chọn khách sạn này
+                                                </button>
                                             </div>
                                         ))}
                                     </div>

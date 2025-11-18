@@ -76,15 +76,71 @@ export default function DailyRouteMap({ day, dayNumber, destination }) {
         setLoading(false);
     };
 
+    // Kiểm tra xem có đường đi giữa 2 điểm không
+    const checkIfReachable = (directionsService, from, to) => {
+        return new Promise((resolve) => {
+            directionsService.route(
+                {
+                    origin: { lat: from.lat, lng: from.lng },
+                    destination: { lat: to.lat, lng: to.lng },
+                    travelMode: window.google.maps.TravelMode.DRIVING
+                },
+                (result, status) => {
+                    resolve(status === 'OK');
+                }
+            );
+        });
+    };
+
     const calculateRouteInfo = async (locs) => {
         if (!window.google || locs.length < 2) return;
 
         try {
             const directionsService = new window.google.maps.DirectionsService();
             
-            const origin = { lat: locs[0].lat, lng: locs[0].lng };
-            const destination = { lat: locs[locs.length - 1].lat, lng: locs[locs.length - 1].lng };
-            const waypoints = locs.slice(1, -1).map(loc => ({
+            // Lọc địa điểm: chỉ giữ lại địa điểm có đường đi
+            const validLocs = [];
+            const islandLocs = [];
+            
+            // Kiểm tra từng địa điểm xem có thể đi đường bộ không
+            for (let i = 0; i < locs.length; i++) {
+                if (i === 0) {
+                    validLocs.push(locs[i]); // Điểm đầu luôn giữ
+                    continue;
+                }
+                
+                // Thử tìm đường từ điểm trước đó đến điểm này
+                const canReach = await checkIfReachable(
+                    directionsService,
+                    validLocs[validLocs.length - 1],
+                    locs[i]
+                );
+                
+                if (canReach) {
+                    validLocs.push(locs[i]);
+                } else {
+                    islandLocs.push(locs[i]);
+                    console.log(`⚠️ ${locs[i].name} - Không có đường bộ (đảo/biển)`);
+                }
+            }
+            
+            console.log(`✅ ${validLocs.length} địa điểm có đường, ${islandLocs.length} địa điểm đảo/biển`);
+            
+            // Nếu không có đủ địa điểm để vẽ route
+            if (validLocs.length < 2) {
+                setRouteInfo({
+                    totalDistance: 'N/A',
+                    totalDuration: 'N/A',
+                    route: null,
+                    error: 'Hầu hết địa điểm cần đi tàu/phà'
+                });
+                return;
+            }
+            
+            // Vẽ route cho các địa điểm hợp lệ
+            const origin = { lat: validLocs[0].lat, lng: validLocs[0].lng };
+            const destination = { lat: validLocs[validLocs.length - 1].lat, lng: validLocs[validLocs.length - 1].lng };
+            const waypoints = validLocs.slice(1, -1).map(loc => ({
                 location: { lat: loc.lat, lng: loc.lng },
                 stopover: true
             }));
@@ -111,7 +167,8 @@ export default function DailyRouteMap({ day, dayNumber, destination }) {
                         setRouteInfo({
                             totalDistance: (totalDistance / 1000).toFixed(1), // km
                             totalDuration: Math.round(totalDuration / 60), // minutes
-                            route: result.routes[0]
+                            route: result.routes[0],
+                            warning: islandLocs.length > 0 ? `${islandLocs.length} địa điểm cần đi tàu/phà (đã loại khỏi lộ trình)` : null
                         });
 
                         // Render route trên map
@@ -119,7 +176,16 @@ export default function DailyRouteMap({ day, dayNumber, destination }) {
                             directionsRendererRef.current.setDirections(result);
                         }
                     } else {
-                        console.error('Directions request failed:', status);
+                        // Không tìm thấy đường đi (có thể là đảo/biển)
+                        console.warn(`⚠️ Không tìm thấy đường đi: ${status}`);
+                        
+                        // Vẫn hiển thị markers nhưng không có route
+                        setRouteInfo({
+                            totalDistance: 'N/A',
+                            totalDuration: 'N/A',
+                            route: null,
+                            error: status === 'ZERO_RESULTS' ? 'Một số địa điểm cần đi tàu/phà' : 'Không tìm thấy đường đi'
+                        });
                     }
                 }
             );
@@ -236,19 +302,36 @@ export default function DailyRouteMap({ day, dayNumber, destination }) {
                             {routeInfo && (
                                 <div style={{
                                     padding: '15px',
-                                    backgroundColor: '#dbeafe',
+                                    backgroundColor: routeInfo.error ? '#fff3cd' : '#dbeafe',
                                     borderRadius: '8px',
                                     marginBottom: '10px',
                                     display: 'flex',
                                     gap: '20px',
-                                    alignItems: 'center'
+                                    alignItems: 'center',
+                                    flexWrap: 'wrap'
                                 }}>
-                                    <div>
-                                        <strong>📏 Tổng quãng đường:</strong> {routeInfo.totalDistance} km
-                                    </div>
-                                    <div>
-                                        <strong>⏱️ Thời gian di chuyển:</strong> ~{routeInfo.totalDuration} phút
-                                    </div>
+                                    {routeInfo.error ? (
+                                        <div style={{ color: '#856404', width: '100%' }}>
+                                            <strong>⚠️ Lưu ý:</strong> {routeInfo.error}
+                                            <div style={{ fontSize: '0.9em', marginTop: '5px' }}>
+                                                Các địa điểm vẫn được hiển thị trên bản đồ. Một số địa điểm có thể cần phương tiện đặc biệt (tàu, phà).
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <>
+                                            <div>
+                                                <strong>📏 Tổng quãng đường:</strong> {routeInfo.totalDistance} km
+                                            </div>
+                                            <div>
+                                                <strong>⏱️ Thời gian di chuyển:</strong> ~{routeInfo.totalDuration} phút
+                                            </div>
+                                            {routeInfo.warning && (
+                                                <div style={{ color: '#856404', fontSize: '0.9em', width: '100%', marginTop: '5px' }}>
+                                                    ⚠️ {routeInfo.warning}
+                                                </div>
+                                            )}
+                                        </>
+                                    )}
                                 </div>
                             )}
 
