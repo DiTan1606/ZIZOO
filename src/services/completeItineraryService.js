@@ -9,6 +9,7 @@ import provinceCoords from '../assets/provinceCoord.json';
 import { TRAVEL_STYLES, ACCOMMODATION_TYPES, TRANSPORT_OPTIONS } from '../constants';
 import { formatMoney, getSeason, getClimate } from '../utils/commonUtils';
 import transportDataService from './transportDataService';
+import amadeusService from './amadeusService';
 
 /**
  * Service tạo lịch trình du lịch hoàn chỉnh theo cấu trúc chuẩn
@@ -540,27 +541,58 @@ const generateCostBreakdown = async (preferences, dailyItinerary, accommodationP
 };
 
 /**
- * 4. TẠO KẾ HOẠCH PHƯƠNG TIỆN DI CHUYỂN
+ * 4. TẠO KẾ HOẠCH PHƯƠNG TIỆN DI CHUYỂN - TÍCH HỢP AMADEUS
  */
 const generateTransportPlan = async (preferences) => {
-    const { departureCity, destination, travelStyle, startDate, duration } = preferences;
+    const { departureCity, destination, travelStyle, startDate, duration, travelers } = preferences;
+    
+    // Tính khoảng cách giữa 2 thành phố
+    const distance = calculateDistanceBetweenCities(departureCity, destination);
+    
+    // Ngày về = ngày đi + số ngày chơi + 1
+    // Ví dụ: Đi 19/11, chơi 4 ngày → Về 24/11 (19 + 4 + 1)
+    const returnDate = new Date(startDate);
+    returnDate.setDate(returnDate.getDate() + duration);
+    
+    // Lấy options cho chiều đi
+    const departureOptions = await getIntercityTransportOptions(
+        departureCity, 
+        destination, 
+        travelStyle, 
+        startDate, 
+        travelers,
+        distance
+    );
+    
+    // Lấy options cho chiều về
+    const returnOptions = await getIntercityTransportOptions(
+        destination,
+        departureCity, 
+        travelStyle, 
+        returnDate.toISOString(), 
+        travelers,
+        distance
+    );
     
     return {
         // Đi từ nơi ở đến điểm du lịch
         intercity: {
+            distance: distance,
             departure: {
                 from: departureCity,
                 to: destination,
                 date: new Date(startDate).toLocaleDateString('vi-VN'),
-                options: getIntercityTransportOptions(departureCity, destination, travelStyle),
-                recommended: getRecommendedTransport(departureCity, destination, travelStyle)
+                dateISO: startDate,
+                options: departureOptions,
+                recommended: getRecommendedTransport(departureOptions, distance)
             },
             return: {
                 from: destination,
                 to: departureCity,
-                date: new Date(new Date(startDate).getTime() + (duration - 1) * 24 * 60 * 60 * 1000).toLocaleDateString('vi-VN'),
-                options: getIntercityTransportOptions(destination, departureCity, travelStyle),
-                recommended: getRecommendedTransport(destination, departureCity, travelStyle)
+                date: returnDate.toLocaleDateString('vi-VN'),
+                dateISO: returnDate.toISOString(),
+                options: returnOptions,
+                recommended: getRecommendedTransport(returnOptions, distance)
             }
         },
         
@@ -1470,6 +1502,224 @@ export const deleteUserItinerary = async (userId, itineraryId) => {
     }
 };
 
+/**
+ * Tính khoảng cách giữa 2 thành phố (km)
+ */
+const calculateDistanceBetweenCities = (city1, city2) => {
+    const coord1 = provinceCoords[city1];
+    const coord2 = provinceCoords[city2];
+    
+    if (!coord1 || !coord2) {
+        console.warn(`⚠️ No coordinates for ${city1} or ${city2}`);
+        return 500; // Default 500km
+    }
+    
+    // Haversine formula
+    const R = 6371; // Radius of Earth in km
+    const dLat = (coord2.lat - coord1.lat) * Math.PI / 180;
+    const dLon = (coord2.lng - coord1.lng) * Math.PI / 180;
+    const a = 
+        Math.sin(dLat/2) * Math.sin(dLat/2) +
+        Math.cos(coord1.lat * Math.PI / 180) * Math.cos(coord2.lat * Math.PI / 180) *
+        Math.sin(dLon/2) * Math.sin(dLon/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    const distance = R * c;
+    
+    return Math.round(distance);
+};
+
+/**
+ * Lấy tất cả options phương tiện (xe khách + máy bay nếu có)
+ */
+const getIntercityTransportOptions = async (from, to, travelStyle, date, travelers, distance) => {
+    const options = [];
+    
+    // 1. LẤY VÉ XE KHÁCH TỪ CSV (luôn có)
+    const busInfo = transportDataService.getTransportSuggestion(from, to);
+    if (busInfo) {
+        // Option xe khách rẻ nhất
+        options.push({
+            type: 'bus',
+            name: 'Xe khách',
+            provider: busInfo.cheapest.company,
+            price: busInfo.cheapest.price * travelers,
+            pricePerPerson: busInfo.cheapest.price,
+            duration: `${busInfo.cheapest.duration}h`,
+            departure: busInfo.cheapest.departureTime,
+            arrival: busInfo.cheapest.arrivalTime,
+            comfort: 'Ghế ngồi',
+            recommended: distance < 300 // Recommend cho dưới 300km
+        });
+        
+        // Option xe khách nhanh nhất (nếu khác)
+        if (busInfo.fastest.company !== busInfo.cheapest.company) {
+            options.push({
+                type: 'bus',
+                name: 'Xe khách (Nhanh)',
+                provider: busInfo.fastest.company,
+                price: busInfo.fastest.price * travelers,
+                pricePerPerson: busInfo.fastest.price,
+                duration: `${busInfo.fastest.duration}h`,
+                departure: busInfo.fastest.departureTime,
+                arrival: busInfo.fastest.arrivalTime,
+                comfort: 'Ghế ngồi/Giường nằm',
+                recommended: false
+        });
+        }
+    }
+    
+    // 2. LẤY VÉ MÁY BAY (nếu khoảng cách >= 300km VÀ cả 2 thành phố đều có sân bay)
+    const hasFromAirport = amadeusService.hasAirport(from);
+    const hasToAirport = amadeusService.hasAirport(to);
+    
+    if (distance >= 300 && hasFromAirport && hasToAirport) {
+        try {
+            console.log(`✈️ Distance ${distance}km >= 300km, searching flights...`);
+            const flights = await amadeusService.searchFlights(from, to, date, travelers);
+            
+            if (flights && flights.length > 0) {
+                // Lọc chỉ lấy 1 vé/hãng (unique airlines)
+                const uniqueAirlines = {};
+                flights.forEach(flight => {
+                    const airline = flight.airline;
+                    if (!uniqueAirlines[airline] || flight.price < uniqueAirlines[airline].price) {
+                        uniqueAirlines[airline] = flight;
+                    }
+                });
+                
+                // Chuyển thành array và sort theo giá
+                const sortedFlights = Object.values(uniqueAirlines).sort((a, b) => a.price - b.price);
+                
+                console.log(`✈️ Filtered to ${sortedFlights.length} unique airlines:`, sortedFlights.map(f => f.airline).join(', '));
+                
+                sortedFlights.forEach((flight, index) => {
+                    console.log(`✈️ Adding flight option: ${flight.airline} - Price: ${flight.price} VND (${flight.pricePerPerson} VND/person)`);
+                    
+                    const flightOption = {
+                        type: 'flight',
+                        name: index === 0 ? 'Máy bay (Rẻ nhất)' : 'Máy bay',
+                        provider: flight.airline,
+                        flightNumber: flight.flightNumber,
+                        price: flight.price,
+                        pricePerPerson: flight.pricePerPerson,
+                        duration: amadeusService.formatDuration(flight.duration),
+                        departure: new Date(flight.departure.time).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
+                        arrival: new Date(flight.arrival.time).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
+                        comfort: flight.bookingClass,
+                        recommended: distance > 500 && index === 0
+                    };
+                    
+                    console.log('🔍 Flight option object:', JSON.stringify(flightOption, null, 2));
+                    options.push(flightOption);
+                });
+                console.log(`✅ Added ${sortedFlights.length} real flights from Amadeus`);
+            } else {
+                // Fallback: ước tính giá máy bay
+                console.log('⚠️ No flights from Amadeus, using estimated prices');
+                const estimated = amadeusService.getEstimatedFlightPrice(from, to, travelers);
+                if (estimated) {
+                    options.push({
+                        type: 'flight',
+                        name: 'Máy bay (Giá ước tính)',
+                        provider: 'Vietnam Airlines/VietJet/Bamboo',
+                        price: estimated.totalPrice,
+                        pricePerPerson: estimated.pricePerPerson,
+                        duration: '~2h',
+                        departure: 'Nhiều giờ bay',
+                        arrival: 'Nhiều giờ bay',
+                        comfort: 'Economy',
+                        estimated: true,
+                        recommended: distance > 500,
+                        note: 'Giá tham khảo, vui lòng kiểm tra khi đặt vé'
+                    });
+                }
+            }
+        } catch (error) {
+            console.warn('⚠️ Amadeus API error, using estimated prices:', error.message);
+            // Fallback: ước tính giá máy bay
+            const estimated = amadeusService.getEstimatedFlightPrice(from, to, travelers);
+            if (estimated) {
+                options.push({
+                    type: 'flight',
+                    name: 'Máy bay (Giá ước tính)',
+                    provider: 'Vietnam Airlines/VietJet/Bamboo',
+                    price: estimated.totalPrice,
+                    pricePerPerson: estimated.pricePerPerson,
+                    duration: '~2h',
+                    departure: 'Nhiều giờ bay',
+                    arrival: 'Nhiều giờ bay',
+                    comfort: 'Economy',
+                    estimated: true,
+                    recommended: distance > 500,
+                    note: 'Giá tham khảo, vui lòng kiểm tra khi đặt vé'
+                });
+            }
+        }
+    }
+    
+    return options;
+};
+
+/**
+ * Chọn phương tiện được đề xuất dựa trên khoảng cách
+ */
+const getRecommendedTransport = (options, distance) => {
+    if (!options || options.length === 0) return null;
+    
+    // Dưới 300km: Xe khách
+    if (distance < 300) {
+        return options.find(opt => opt.type === 'bus') || options[0];
+    }
+    
+    // 300-500km: Ưu tiên xe khách nhưng gợi ý cả máy bay
+    if (distance < 500) {
+        const bus = options.find(opt => opt.type === 'bus');
+        if (bus) {
+            bus.note = 'Đề xuất cho khoảng cách này. Máy bay cũng là lựa chọn tốt.';
+            return bus;
+        }
+    }
+    
+    // Trên 500km: Ưu tiên máy bay
+    const flight = options.find(opt => opt.type === 'flight');
+    if (flight) {
+        flight.note = 'Đề xuất cho khoảng cách xa. Tiết kiệm thời gian.';
+        return flight;
+    }
+    
+    // Fallback: option đầu tiên
+    return options[0];
+};
+
+/**
+ * Lấy tips di chuyển tại địa phương
+ */
+const getLocalTransportTips = (destination, travelStyle) => {
+    const tips = [
+        'Sử dụng Grab/Gojek để di chuyển an toàn và tiện lợi',
+        'Thương lượng giá trước khi đi taxi truyền thống',
+        'Thuê xe máy nếu có bằng lái và quen đường'
+    ];
+    
+    if (travelStyle === 'luxury' || travelStyle === 'comfort') {
+        tips.push('Thuê xe riêng với tài xế cho cả ngày (800k-1.2M/ngày)');
+    }
+    
+    return tips;
+};
+
+/**
+ * Lấy options thuê xe
+ */
+const getRentalOptions = (destination, travelStyle) => {
+    return [
+        { type: 'Xe máy', price: '100,000-150,000đ/ngày', note: 'Cần bằng lái' },
+        { type: 'Xe đạp điện', price: '80,000-120,000đ/ngày', note: 'Phù hợp quãng ngắn' },
+        { type: 'Ô tô tự lái', price: '600,000-1,000,000đ/ngày', note: 'Cần bằng lái B2' },
+        { type: 'Ô tô có tài xế', price: '800,000-1,500,000đ/ngày', note: 'Tiện lợi nhất' }
+    ];
+};
+
 // Export các functions cần thiết
 export {
     generateTripHeader,
@@ -1484,7 +1734,10 @@ export {
 
 // Thêm các helper functions khác...
 const calculateTransportCost = (from, to, travelers, style) => {
-    // Sử dụng dữ liệu thực từ CSV
+    // Tính khoảng cách
+    const distance = calculateDistanceBetweenCities(from, to);
+    
+    // Sử dụng dữ liệu thực từ CSV cho xe khách
     const transportInfo = transportDataService.getTransportSuggestion(from, to);
     
     if (transportInfo) {
@@ -1497,6 +1750,16 @@ const calculateTransportCost = (from, to, travelers, style) => {
         const totalCost = pricePerPerson * travelers * 2;
         console.log(`🚌 Transport cost ${from} ↔ ${to}: ${totalCost.toLocaleString('vi-VN')}đ (${travelers} người)`);
         return roundPrice(totalCost);
+    }
+    
+    // Nếu khoảng cách > 500km, ước tính giá máy bay
+    if (distance > 500) {
+        const flightEstimate = amadeusService.getEstimatedFlightPrice(from, to, travelers);
+        if (flightEstimate) {
+            const totalCost = flightEstimate.totalPrice * 2; // Khứ hồi
+            console.log(`✈️ Flight cost ${from} ↔ ${to}: ${totalCost.toLocaleString('vi-VN')}đ (${travelers} người)`);
+            return roundPrice(totalCost);
+        }
     }
     
     // Fallback nếu không tìm thấy trong CSV
@@ -1657,181 +1920,7 @@ const getClothingList = (climate, season, interests, duration) => {
 
 export default createCompleteItinerary;
 
-// ==================== MISSING HELPER FUNCTIONS ====================
-
-const getIntercityTransportOptions = (from, to, style) => {
-    // Sử dụng dữ liệu thực từ CSV
-    const transportInfo = transportDataService.getTransportSuggestion(from, to);
-    
-    if (transportInfo && transportInfo.allOptions.length > 0) {
-        console.log(`🚌 Found ${transportInfo.allOptions.length} transport options from ${from} to ${to}`);
-        
-        return transportInfo.allOptions.map(option => {
-            const hours = option.travelTime || 5;
-            const hoursText = hours < 1 ? `${Math.round(hours * 60)} phút` : `${Math.round(hours * 10) / 10}h`;
-            
-            return {
-                type: `Xe khách ${option.company}`,
-                duration: hoursText,
-                cost: option.price,
-                note: option.note,
-                company: option.company,
-                pros: [
-                    option.note.includes('Giường nằm') ? 'Thoải mái' : 'Tiết kiệm',
-                    option.note.includes('Limousine') ? 'Sang trọng' : 'Phổ biến'
-                ],
-                cons: [
-                    hours > 10 ? 'Thời gian dài' : 'Phụ thuộc giao thông',
-                    'Cần đặt vé trước'
-                ]
-            };
-        });
-    }
-    
-    // Fallback nếu không tìm thấy trong CSV
-    const distance = calculateCityDistance(from, to);
-    const options = [];
-
-    // Máy bay
-    if (distance > 300) {
-        options.push({
-            type: 'Máy bay',
-            duration: '1-2 giờ',
-            cost: style === 'luxury' ? 3000000 : style === 'comfort' ? 1200000 : 800000,
-            pros: ['Nhanh nhất', 'Tiện lợi'],
-            cons: ['Đắt nhất', 'Phụ thuộc thời tiết']
-        });
-    }
-
-    // Xe khách
-    options.push({
-        type: 'Xe khách/Limousine',
-        duration: `${Math.ceil(distance / 50)} giờ`,
-        cost: style === 'luxury' ? 600000 : style === 'comfort' ? 400000 : 200000,
-        pros: ['Linh hoạt', 'Giá rẻ'],
-        cons: ['Mệt mỏi', 'Phụ thuộc giao thông']
-    });
-
-    return options;
-};
-
-const getRecommendedTransport = (from, to, style) => {
-    const options = getIntercityTransportOptions(from, to, style);
-    
-    // Sử dụng dữ liệu thực từ CSV
-    const transportInfo = transportDataService.getTransportSuggestion(from, to);
-    
-    if (transportInfo) {
-        // Chọn theo style
-        if (style === 'luxury' || style === 'comfort') {
-            // Ưu tiên xe nhanh nhất hoặc limousine
-            const limousine = options.find(o => o.note?.includes('Limousine'));
-            if (limousine) return limousine;
-            
-            return options.find(o => o.company === transportInfo.fastest.company) || options[0];
-        } else {
-            // Ưu tiên xe rẻ nhất
-            return options.find(o => o.company === transportInfo.cheapest.company) || options[0];
-        }
-    }
-    
-    // Fallback
-    const distance = calculateCityDistance(from, to);
-
-    if (distance > 500 && (style === 'comfort' || style === 'luxury')) {
-        return options.find(o => o.type === 'Máy bay') || options[0];
-    }
-    
-    return options.find(o => o.type.includes('Xe khách')) || options[0];
-};
-
-const calculateCityDistance = (from, to) => {
-    const distances = {
-        'Hà Nội-Hồ Chí Minh': 1200,
-        'Hà Nội-Đà Nẵng': 600,
-        'Hà Nội-Nha Trang': 900,
-        'Hà Nội-Đà Lạt': 1000,
-        'Hồ Chí Minh-Đà Nẵng': 800,
-        'Hồ Chí Minh-Nha Trang': 400,
-        'Hồ Chí Minh-Đà Lạt': 300,
-        'Đà Nẵng-Nha Trang': 500,
-        'Đà Nẵng-Hội An': 30,
-        'Hồ Chí Minh-Vũng Tàu': 100,
-        'Hà Nội-Sapa': 300,
-        'Hà Nội-Hải Phòng': 100
-    };
-
-    const key1 = `${from}-${to}`;
-    const key2 = `${to}-${from}`;
-    
-    return distances[key1] || distances[key2] || 400; // Default 400km
-};
-
-const getLocalTransportTips = (destination, style) => {
-    const tips = [
-        'Tải app Grab, Be để đặt xe dễ dàng',
-        'Mang theo tiền mặt cho xe ôm, taxi truyền thống',
-        'Thương lượng giá trước khi lên xe (nếu không có đồng hồ)'
-    ];
-
-    if (destination === 'Hồ Chí Minh') {
-        tips.push('Tránh giờ cao điểm 7-9h sáng và 17-19h chiều');
-        tips.push('Xe máy là phương tiện phổ biến nhất');
-    }
-
-    if (destination === 'Hà Nội') {
-        tips.push('Phố cổ thích hợp đi bộ hoặc xe đạp');
-        tips.push('Tránh khu vực quanh hồ Gươm vào cuối tuần');
-    }
-
-    if (['Đà Lạt', 'Sapa'].includes(destination)) {
-        tips.push('Thuê xe máy để khám phá vùng ngoại ô');
-        tips.push('Cẩn thận khi đi đường đèo, sương mù');
-    }
-
-    return tips;
-};
-
-const getRentalOptions = (destination, style) => {
-    const options = [];
-
-    // Xe máy
-    if (!['Hà Nội', 'Hồ Chí Minh'].includes(destination)) {
-        options.push({
-            type: 'Xe máy',
-            cost: '150,000-250,000 VNĐ/ngày',
-            requirements: 'GPLX, đặt cọc',
-            suitable: 'Khám phá tự do, đường ngắn'
-        });
-    }
-
-    // Xe đạp
-    options.push({
-        type: 'Xe đạp',
-        cost: '50,000-100,000 VNĐ/ngày',
-        requirements: 'Đặt cọc',
-        suitable: 'Khu vực trung tâm, tập thể dục'
-    });
-
-    // Ô tô
-    if (style === 'comfort' || style === 'luxury') {
-        options.push({
-            type: 'Ô tô tự lái',
-            cost: '800,000-1,500,000 VNĐ/ngày',
-            requirements: 'GPLX B2, thẻ tín dụng',
-            suitable: 'Gia đình, đường dài'
-        });
-
-        options.push({
-            type: 'Xe + tài xế',
-            cost: '1,200,000-2,000,000 VNĐ/ngày',
-            requirements: 'Đặt trước',
-            suitable: 'Thoải mái, không tự lái'
-        });
-    }
-
-    return options;
-};
+// ==================== HELPER FUNCTIONS ====================
 
 const getRecommendedAmenities = (style) => {
     const amenities = {
@@ -2533,28 +2622,43 @@ const calculateDayTravelTime = (destinations) => {
 };
 
 const getTransportDetails = (from, to, style) => {
-    const recommended = getRecommendedTransport(from, to, style);
     const transportInfo = transportDataService.getTransportSuggestion(from, to);
     
+    if (!transportInfo) {
+        return {
+            type: 'Xe khách',
+            duration: '8-10 giờ',
+            cost: 300000,
+            company: 'Các nhà xe',
+            note: 'Đặt vé trước',
+            bookingTips: [
+                'Đặt vé trước 1-2 tuần để có giá tốt',
+                'Kiểm tra chính sách hủy/đổi vé',
+                'Mang theo giấy tờ tùy thân khi đi'
+            ]
+        };
+    }
+    
+    // Chọn xe theo style
+    const recommended = style === 'luxury' || style === 'comfort' 
+        ? transportInfo.fastest 
+        : transportInfo.cheapest;
+    
     const details = {
-        type: recommended.type,
-        duration: recommended.duration,
-        cost: recommended.cost,
+        type: `Xe khách ${recommended.company}`,
+        duration: `${recommended.duration}h`,
+        cost: recommended.price,
         company: recommended.company,
-        note: recommended.note,
+        note: recommended.note || 'Xe khách',
         bookingTips: [
             'Đặt vé trước 1-2 tuần để có giá tốt',
             'Kiểm tra chính sách hủy/đổi vé',
-            'Mang theo giấy tờ tùy thân khi đi'
-        ]
+            'Mang theo giấy tờ tùy thân khi đi',
+            `Có ${transportInfo.allOptions.length} nhà xe khác nhau`
+        ],
+        allOptions: transportInfo.allOptions.length,
+        priceRange: `${transportInfo.cheapest.price.toLocaleString('vi-VN')}đ - ${transportInfo.fastest.price.toLocaleString('vi-VN')}đ`
     };
-    
-    // Thêm thông tin chi tiết từ CSV
-    if (transportInfo) {
-        details.allOptions = transportInfo.allOptions.length;
-        details.priceRange = `${transportInfo.cheapest.price.toLocaleString('vi-VN')}đ - ${transportInfo.fastest.price.toLocaleString('vi-VN')}đ`;
-        details.bookingTips.push(`Có ${transportInfo.allOptions.length} nhà xe khác nhau`);
-    }
     
     return details;
 };
@@ -4611,23 +4715,53 @@ const generateEnhancedHourlySchedule = (
     // Gộp các địa điểm liên quan
     const groupedDestinations = groupRelatedDestinations(destinations);
     
-    // Thêm các hoạt động tham quan (8:00-11:00 sáng)
-    groupedDestinations.forEach((group, index) => {
+    // Thêm các hoạt động tham quan - chia đều trong ngày
+    let destIndex = 0;
+    let hasAddedLunch = false;
+    
+    while (destIndex < groupedDestinations.length) {
+        const [hours] = currentTime.split(':').map(Number);
+        
+        // Thêm lunch nếu đã qua 11:30 và chưa thêm
+        if (hours >= 11 && hours < 14 && !hasAddedLunch && restaurants.lunch && !usedRestaurants.has(restaurants.lunch.name)) {
+            const lunchTime = hours >= 12 ? currentTime : '11:30';
+            const lunchDuration = '1 giờ';
+            
+            schedule.push({
+                time: lunchTime,
+                activity: `Ăn trưa tại ${restaurants.lunch.name}`,
+                type: 'meal',
+                duration: lunchDuration,
+                location: restaurants.lunch,
+                specialty: restaurants.lunch.specialty,
+                estimatedCost: restaurants.lunch.estimatedCost,
+                notes: ['Thử món đặc sản', 'Nghỉ ngơi sau buổi sáng'],
+                realData: true
+            });
+            usedRestaurants.add(restaurants.lunch.name);
+            currentTime = calculateNextTime(lunchTime, lunchDuration);
+            hasAddedLunch = true;
+            continue; // Tiếp tục loop để thêm activity tiếp theo
+        }
+        
+        // Dừng nếu đã quá 17:00 (để dành thời gian cho dinner)
+        if (hours >= 17) break;
+        
+        // Thêm activity tham quan
+        const group = groupedDestinations[destIndex];
         const mainDest = group.main;
         
-        // Tạo activity name
         let activityName = `Tham quan ${mainDest.name}`;
         if (group.related.length > 0) {
             activityName = `Tham quan khu vực ${mainDest.name}`;
         }
         
-        // Tính duration
-        const baseDuration = 2;
+        // Tính duration hợp lý (1.5-2.5 giờ)
+        const baseDuration = 1.5;
         const additionalTime = group.related.length * 0.5;
-        const totalDuration = baseDuration + additionalTime;
+        const totalDuration = Math.min(baseDuration + additionalTime, 2.5);
         const durationStr = `${Math.floor(totalDuration)}-${Math.ceil(totalDuration)} giờ`;
         
-        // Tạo notes
         const notes = ['Điểm chụp ảnh đẹp'];
         if (group.related.length > 0) {
             notes.push(`Bao gồm: ${group.related.map(r => r.name).join(', ')}`);
@@ -4647,28 +4781,8 @@ const generateEnhancedHourlySchedule = (
         });
         
         currentTime = calculateNextTime(currentTime, durationStr);
-        
-        // Thêm lunch nếu đã qua 11:30
-        const [hours] = currentTime.split(':').map(Number);
-        if (hours >= 11 && hours < 14 && restaurants.lunch && !usedRestaurants.has(restaurants.lunch.name)) {
-            const lunchTime = hours >= 12 ? currentTime : '11:30';
-            const lunchDuration = '1 giờ';
-            
-            schedule.push({
-                time: lunchTime,
-                activity: `Ăn trưa tại ${restaurants.lunch.name}`,
-                type: 'meal',
-                duration: lunchDuration,
-                location: restaurants.lunch,
-                specialty: restaurants.lunch.specialty,
-                estimatedCost: restaurants.lunch.estimatedCost,
-                notes: ['Thử món đặc sản', 'Nghỉ ngơi sau buổi sáng'],
-                realData: true
-            });
-            usedRestaurants.add(restaurants.lunch.name);
-            currentTime = calculateNextTime(lunchTime, lunchDuration);
-        }
-    });
+        destIndex++;
+    }
     
     // Hoạt động chiều (13:00-15:00) - nhóm 2
     // Đã được xử lý trong loop trên

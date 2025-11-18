@@ -40,6 +40,8 @@ const CompleteItineraryPlanner = () => {
         customDestinations: [] // Địa điểm do người dùng chọn
     });
     const [completeItinerary, setCompleteItinerary] = useState(null);
+    const [selectedDepartureFlight, setSelectedDepartureFlight] = useState(null);
+    const [selectedReturnFlight, setSelectedReturnFlight] = useState(null);
 
     const vietnamCities = [
         'Hà Nội', 'Hồ Chí Minh', 'Đà Nẵng', 'Hải Phòng', 'Cần Thơ',
@@ -186,6 +188,43 @@ const CompleteItineraryPlanner = () => {
 
     const formatMoney = (amount) => {
         return new Intl.NumberFormat('vi-VN').format(amount) + ' VNĐ';
+    };
+
+    // Hàm chọn vé máy bay và cập nhật giá
+    const handleSelectFlight = (flight, direction) => {
+        if (direction === 'departure') {
+            setSelectedDepartureFlight(flight);
+        } else {
+            setSelectedReturnFlight(flight);
+        }
+        
+        // Cập nhật giá tổng
+        if (completeItinerary) {
+            const updatedItinerary = { ...completeItinerary };
+            
+            if (direction === 'departure') {
+                updatedItinerary.transport.intercity.departure.recommended = flight;
+            } else {
+                updatedItinerary.transport.intercity.return.recommended = flight;
+            }
+            
+            // Tính lại tổng chi phí
+            const departurePrice = (direction === 'departure' ? flight : selectedDepartureFlight || updatedItinerary.transport.intercity.departure.recommended).pricePerPerson || 0;
+            const returnPrice = (direction === 'return' ? flight : selectedReturnFlight || updatedItinerary.transport.intercity.return.recommended).pricePerPerson || 0;
+            const travelers = updatedItinerary.header.travelers.total;
+            
+            const newTransportCost = (departurePrice + returnPrice) * travelers;
+            const oldTransportCost = updatedItinerary.costBreakdown.transport.intercity;
+            const difference = newTransportCost - oldTransportCost;
+            
+            updatedItinerary.costBreakdown.transport.intercity = newTransportCost;
+            updatedItinerary.costBreakdown.transport.total += difference;
+            updatedItinerary.costBreakdown.grandTotal += difference;
+            updatedItinerary.costBreakdown.perPerson = Math.round(updatedItinerary.costBreakdown.grandTotal / travelers);
+            
+            setCompleteItinerary(updatedItinerary);
+            toast.success(`Đã chọn chuyến bay ${flight.provider} ${flight.flightNumber || ''}`);
+        }
     };
 
     const formatDate = (dateString) => {
@@ -865,58 +904,99 @@ const CompleteItineraryPlanner = () => {
                         <div className="transport-plan">
                             {/* Lượt đi */}
                             <div className="transport-category">
-                                <h4>Lượt đi: {completeItinerary.header.destination.departure} → {completeItinerary.header.destination.main}</h4>
-                                <p><strong>Ngày:</strong> {completeItinerary.transport.intercity.departure.date}</p>
-                                <p><strong>Khuyến nghị:</strong> {completeItinerary.transport.intercity.departure.recommended.type}</p>
-                                {completeItinerary.transport.intercity.departure.recommended.company && (
-                                    <p><strong>Nhà xe:</strong> {completeItinerary.transport.intercity.departure.recommended.company}</p>
-                                )}
-                                <p><strong>Thời gian:</strong> {completeItinerary.transport.intercity.departure.recommended.duration}</p>
-                                <p><strong>Chi phí:</strong> {formatMoney(completeItinerary.transport.intercity.departure.recommended.cost)}/người</p>
-                                {completeItinerary.transport.intercity.departure.recommended.note && (
-                                    <p><strong>Loại xe:</strong> {completeItinerary.transport.intercity.departure.recommended.note.split('-')[1]?.trim() || completeItinerary.transport.intercity.departure.recommended.note}</p>
-                                )}
+                                <h4>✈️ Lượt đi: {completeItinerary.header.destination.departure} → {completeItinerary.header.destination.main}</h4>
+                                <p><strong>📅 Ngày:</strong> {completeItinerary.transport.intercity.departure.date}</p>
                                 
-                                {completeItinerary.transport.intercity.departure.options && completeItinerary.transport.intercity.departure.options.length > 1 && (() => {
-                                    // Lọc bỏ option đã được recommend
-                                    const recommendedCompany = completeItinerary.transport.intercity.departure.recommended?.company;
-                                    const otherOptions = completeItinerary.transport.intercity.departure.options.filter(
-                                        option => option.company !== recommendedCompany
-                                    );
-                                    
-                                    if (otherOptions.length === 0) return null;
-                                    
-                                    return (
-                                        <details className="transport-options-details">
-                                            <summary>Xem thêm {otherOptions.length} tùy chọn khác</summary>
-                                            <div className="options-grid">
-                                                {otherOptions.map((option, idx) => (
-                                                    <div key={idx} className="option-card">
-                                                        <p><strong>{option.type}</strong></p>
-                                                        {option.company && <p>{option.company}</p>}
-                                                        <p>Thời gian: {option.duration}</p>
-                                                        <p>Chi phí: {formatMoney(option.cost)}</p>
-                                                        {option.note && <p className="option-note">Loại xe: {option.note.split('-')[1]?.trim() || option.note}</p>}
+                                {/* Hiển thị TẤT CẢ các options để chọn */}
+                                {completeItinerary.transport.intercity.departure.options && completeItinerary.transport.intercity.departure.options.length > 0 && (
+                                    <div className="flights-selection">
+                                        <p><strong>Chọn phương tiện:</strong></p>
+                                        <div className="flights-grid">
+                                            {completeItinerary.transport.intercity.departure.options.map((option, idx) => {
+                                                const currentSelected = selectedDepartureFlight || completeItinerary.transport.intercity.departure.recommended;
+                                                
+                                                // So sánh chính xác: ưu tiên flightNumber, sau đó company
+                                                let isSelected = false;
+                                                if (option.flightNumber && currentSelected.flightNumber) {
+                                                    isSelected = option.flightNumber === currentSelected.flightNumber;
+                                                } else if (option.company && currentSelected.company) {
+                                                    isSelected = option.company === currentSelected.company;
+                                                } else if (option.provider && currentSelected.provider) {
+                                                    isSelected = option.provider === currentSelected.provider;
+                                                }
+                                                
+                                                const isFlight = option.type === 'flight';
+                                                const displayName = option.provider || option.company || option.name;
+                                                
+                                                return (
+                                                    <div 
+                                                        key={idx} 
+                                                        className={`flight-option-card ${isSelected ? 'selected' : ''}`}
+                                                        onClick={() => handleSelectFlight(option, 'departure')}
+                                                    >
+                                                        {isSelected && <span className="badge-selected">✓ Đã chọn</span>}
+                                                        <p><strong>{isFlight ? '✈️ ' : '🚌 '}{displayName}</strong></p>
+                                                        {option.flightNumber && <p className="flight-number">{option.flightNumber}</p>}
+                                                        <p className="flight-time">⏱️ {option.duration || 'N/A'}</p>
+                                                        {option.departure && option.arrival && (
+                                                            <p className="flight-schedule">🕐 {option.departure} → {option.arrival}</p>
+                                                        )}
+                                                        <p className="flight-price">💰 {formatMoney(option.pricePerPerson || option.cost || 0)}/người</p>
+                                                        {option.estimated && <p className="estimated-badge">Giá ước tính</p>}
                                                     </div>
-                                                ))}
-                                            </div>
-                                        </details>
-                                    );
-                                })()}
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                             
                             {/* Lượt về */}
                             <div className="transport-category">
-                                <h4>Lượt về: {completeItinerary.header.destination.main} → {completeItinerary.header.destination.departure}</h4>
-                                <p><strong>Ngày:</strong> {completeItinerary.transport.intercity.return.date}</p>
-                                <p><strong>Khuyến nghị:</strong> {completeItinerary.transport.intercity.return.recommended.type}</p>
-                                {completeItinerary.transport.intercity.return.recommended.company && (
-                                    <p><strong>Nhà xe:</strong> {completeItinerary.transport.intercity.return.recommended.company}</p>
-                                )}
-                                <p><strong>Thời gian:</strong> {completeItinerary.transport.intercity.return.recommended.duration}</p>
-                                <p><strong>Chi phí:</strong> {formatMoney(completeItinerary.transport.intercity.return.recommended.cost)}/người</p>
-                                {completeItinerary.transport.intercity.return.recommended.note && (
-                                    <p><strong>Loại xe:</strong> {completeItinerary.transport.intercity.return.recommended.note.split('-')[1]?.trim() || completeItinerary.transport.intercity.return.recommended.note}</p>
+                                <h4>🔙 Lượt về: {completeItinerary.header.destination.main} → {completeItinerary.header.destination.departure}</h4>
+                                <p><strong>📅 Ngày:</strong> {completeItinerary.transport.intercity.return.date}</p>
+                                
+                                {/* Hiển thị TẤT CẢ các options để chọn */}
+                                {completeItinerary.transport.intercity.return.options && completeItinerary.transport.intercity.return.options.length > 0 && (
+                                    <div className="flights-selection">
+                                        <p><strong>Chọn phương tiện:</strong></p>
+                                        <div className="flights-grid">
+                                            {completeItinerary.transport.intercity.return.options.map((option, idx) => {
+                                                const currentSelected = selectedReturnFlight || completeItinerary.transport.intercity.return.recommended;
+                                                
+                                                // So sánh chính xác: ưu tiên flightNumber, sau đó company
+                                                let isSelected = false;
+                                                if (option.flightNumber && currentSelected.flightNumber) {
+                                                    isSelected = option.flightNumber === currentSelected.flightNumber;
+                                                } else if (option.company && currentSelected.company) {
+                                                    isSelected = option.company === currentSelected.company;
+                                                } else if (option.provider && currentSelected.provider) {
+                                                    isSelected = option.provider === currentSelected.provider;
+                                                }
+                                                
+                                                const isFlight = option.type === 'flight';
+                                                const displayName = option.provider || option.company || option.name;
+                                                
+                                                return (
+                                                    <div 
+                                                        key={idx} 
+                                                        className={`flight-option-card ${isSelected ? 'selected' : ''}`}
+                                                        onClick={() => handleSelectFlight(option, 'return')}
+                                                    >
+                                                        {isSelected && <span className="badge-selected">✓ Đã chọn</span>}
+                                                        <p><strong>{isFlight ? '✈️ ' : '🚌 '}{displayName}</strong></p>
+                                                        {option.flightNumber && <p className="flight-number">{option.flightNumber}</p>}
+                                                        <p className="flight-time">⏱️ {option.duration || 'N/A'}</p>
+                                                        {option.departure && option.arrival && (
+                                                            <p className="flight-schedule">🕐 {option.departure} → {option.arrival}</p>
+                                                        )}
+                                                        <p className="flight-price">💰 {formatMoney(option.pricePerPerson || option.cost || 0)}/người</p>
+                                                        {option.estimated && <p className="estimated-badge">Giá ước tính</p>}
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
                                 )}
                             </div>
                             

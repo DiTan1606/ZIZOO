@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Amadeus API</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 { color: #2196F3; }
+        button {
+            background: #2196F3;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px 5px;
+        }
+        button:hover { background: #1976D2; }
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f9f9f9;
+            border-left: 4px solid #2196F3;
+            border-radius: 4px;
+        }
+        .flight {
+            background: white;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 5px;
+            border: 1px solid #ddd;
+        }
+        .price { 
+            color: #4CAF50; 
+            font-weight: bold;
+            font-size: 18px;
+        }
+        .loading {
+            color: #FF9800;
+            font-style: italic;
+        }
+        .error {
+            color: #f44336;
+            background: #ffebee;
+            padding: 10px;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>✈️ Test Amadeus Flight API</h1>
+        <p>Test tích hợp Amadeus API để tìm vé máy bay thực tế</p>
+        
+        <div>
+            <button onclick="testAuth()">1. Test Authentication</button>
+            <button onclick="testFlightSearch()">2. Test Flight Search (HAN → SGN)</button>
+            <button onclick="testDistance()">3. Test Distance Calculation</button>
+        </div>
+
+        <div id="result" class="result" style="display:none;">
+            <h3>Kết quả:</h3>
+            <div id="output"></div>
+        </div>
+    </div>
+
+    <script>
+        const API_KEY = 'pG4FCCej0bkL1YctO2YEqqXT5CEY8JdP';
+        const API_SECRET = 'U0cUD0aFObHaq9U2';
+        let accessToken = null;
+
+        function showResult(html) {
+            document.getElementById('result').style.display = 'block';
+            document.getElementById('output').innerHTML = html;
+        }
+
+        async function testAuth() {
+            showResult('<p class="loading">⏳ Đang xác thực với Amadeus...</p>');
+            
+            try {
+                const response = await fetch('https://test.api.amadeus.com/v1/security/oauth2/token', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded'
+                    },
+                    body: new URLSearchParams({
+                        grant_type: 'client_credentials',
+                        client_id: API_KEY,
+                        client_secret: API_SECRET
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                const data = await response.json();
+                accessToken = data.access_token;
+                
+                showResult(`
+                    <p style="color: green;">✅ Xác thực thành công!</p>
+                    <p><strong>Access Token:</strong> ${accessToken.substring(0, 50)}...</p>
+                    <p><strong>Expires in:</strong> ${data.expires_in} seconds (${Math.round(data.expires_in/60)} phút)</p>
+                    <p><strong>Token Type:</strong> ${data.token_type}</p>
+                `);
+            } catch (error) {
+                showResult(`<p class="error">❌ Lỗi: ${error.message}</p>`);
+            }
+        }
+
+        async function testFlightSearch() {
+            showResult('<p class="loading">⏳ Đang tìm chuyến bay HAN → SGN qua backend...</p>');
+
+            try {
+                const tomorrow = new Date();
+                tomorrow.setDate(tomorrow.getDate() + 7);
+                const departureDate = tomorrow.toISOString().split('T')[0];
+
+                // Gọi BACKEND PROXY thay vì gọi trực tiếp Amadeus
+                const url = `http://localhost:5000/api/flights?origin=HAN&destination=SGN&date=${departureDate}&travelers=1`;
+
+                const response = await fetch(url);
+
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`HTTP ${response.status}: ${errorText}`);
+                }
+
+                const data = await response.json();
+
+                if (!data.data || data.data.length === 0) {
+                    showResult('<p class="error">⚠️ Không tìm thấy chuyến bay nào</p>');
+                    return;
+                }
+
+                let html = `<p style="color: green;">✅ Tìm thấy ${data.data.length} chuyến bay!</p>`;
+                
+                data.data.slice(0, 3).forEach((offer, index) => {
+                    const segment = offer.itineraries[0].segments[0];
+                    const price = parseFloat(offer.price.total);
+                    const duration = offer.itineraries[0].duration;
+
+                    html += `
+                        <div class="flight">
+                            <h4>Chuyến bay ${index + 1}</h4>
+                            <p><strong>Hãng:</strong> ${segment.carrierCode} ${segment.number}</p>
+                            <p><strong>Khởi hành:</strong> ${new Date(segment.departure.at).toLocaleString('vi-VN')}</p>
+                            <p><strong>Đến:</strong> ${new Date(segment.arrival.at).toLocaleString('vi-VN')}</p>
+                            <p><strong>Thời gian bay:</strong> ${duration}</p>
+                            <p class="price">💰 ${price.toLocaleString('vi-VN')} VNĐ</p>
+                        </div>
+                    `;
+                });
+
+                showResult(html);
+            } catch (error) {
+                showResult(`<p class="error">❌ Lỗi: ${error.message}</p>`);
+            }
+        }
+
+        function testDistance() {
+            const provinceCoords = {
+                'Hà Nội': { lat: 21.0285, lng: 105.8542 },
+                'Hồ Chí Minh': { lat: 10.8231, lng: 106.6297 },
+                'Đà Nẵng': { lat: 16.0544, lng: 108.2022 },
+                'Phú Quốc': { lat: 10.2899, lng: 103.9840 }
+            };
+
+            function calculateDistance(coord1, coord2) {
+                const R = 6371;
+                const dLat = (coord2.lat - coord1.lat) * Math.PI / 180;
+                const dLon = (coord2.lng - coord1.lng) * Math.PI / 180;
+                const a = 
+                    Math.sin(dLat/2) * Math.sin(dLat/2) +
+                    Math.cos(coord1.lat * Math.PI / 180) * Math.cos(coord2.lat * Math.PI / 180) *
+                    Math.sin(dLon/2) * Math.sin(dLon/2);
+                const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+                return Math.round(R * c);
+            }
+
+            let html = '<h4>📏 Khoảng cách giữa các thành phố:</h4>';
+            
+            const routes = [
+                ['Hà Nội', 'Hồ Chí Minh'],
+                ['Hà Nội', 'Đà Nẵng'],
+                ['Hồ Chí Minh', 'Phú Quốc'],
+                ['Đà Nẵng', 'Hồ Chí Minh']
+            ];
+
+            routes.forEach(([from, to]) => {
+                const distance = calculateDistance(provinceCoords[from], provinceCoords[to]);
+                let recommendation = '';
+                
+                if (distance < 300) {
+                    recommendation = '🚌 Xe khách';
+                } else if (distance < 500) {
+                    recommendation = '🚌 Xe khách (ưu tiên) hoặc ✈️ Máy bay';
+                } else {
+                    recommendation = '✈️ Máy bay (ưu tiên) hoặc 🚌 Xe khách';
+                }
+
+                html += `
+                    <div class="flight">
+                        <p><strong>${from} → ${to}:</strong> ${distance} km</p>
+                        <p><strong>Đề xuất:</strong> ${recommendation}</p>
+                    </div>
+                `;
+            });
+
+            showResult(html);
+        }
+    </script>
+</body>
+</html>
