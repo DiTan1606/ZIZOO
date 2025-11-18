@@ -1,5 +1,6 @@
 import React from 'react';
 import './ItineraryDetailModal.css';
+import DailyRouteMap from './DailyRouteMap';
 
 const ItineraryDetailModal = ({ itinerary, onClose }) => {
     if (!itinerary) return null;
@@ -147,6 +148,25 @@ const ItineraryDetailModal = ({ itinerary, onClose }) => {
                                     </div>
                                 )}
 
+                                {/* Route Map */}
+                                <DailyRouteMap 
+                                    day={{
+                                        activities: day.schedule?.map(item => ({
+                                            location: item.activity,
+                                            time: item.time,
+                                            description: item.duration,
+                                            address: item.address || (item.location?.address)
+                                        })) || day.destinations?.map(dest => ({
+                                            location: dest.name,
+                                            time: dest.visitTime,
+                                            description: dest.address,
+                                            address: dest.address
+                                        })) || []
+                                    }}
+                                    dayNumber={day.day}
+                                    destination={itinerary.header?.destination?.main || itinerary.header?.destination}
+                                />
+
                                 {/* Schedule */}
                                 {day.schedule && day.schedule.length > 0 && (
                                     <div className="day-schedule">
@@ -159,6 +179,26 @@ const ItineraryDetailModal = ({ itinerary, onClose }) => {
                                                         <span className="schedule-activity">{item.activity}</span>
                                                         {item.duration && (
                                                             <span className="schedule-duration">({item.duration})</span>
+                                                        )}
+                                                        {item.address && (
+                                                            <div style={{ 
+                                                                fontSize: '13px', 
+                                                                color: '#3b82f6', 
+                                                                marginTop: '4px',
+                                                                fontWeight: '500'
+                                                            }}>
+                                                                📍 {item.address}
+                                                            </div>
+                                                        )}
+                                                        {item.location?.address && !item.address && (
+                                                            <div style={{ 
+                                                                fontSize: '13px', 
+                                                                color: '#3b82f6', 
+                                                                marginTop: '4px',
+                                                                fontWeight: '500'
+                                                            }}>
+                                                                📍 {item.location.address}
+                                                            </div>
                                                         )}
                                                     </div>
                                                 </div>
