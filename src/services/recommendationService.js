@@ -10,8 +10,8 @@ import { db } from '../firebase';
 import provinceCoords from '../assets/provinceCoord.json';
 
 const typeToPlaces = {
-    'Nghỉ dưỡng': ['tourist_attraction', 'beach', 'spa'],
-    'Mạo hiểm': ['park', 'hiking_area'],
+    'Nghỉ dưỡng': ['tourist_attraction', 'beach', 'spa', 'scenic_viewpoint'],
+    'Mạo hiểm': ['park', 'hiking_area', 'scenic_viewpoint'],
     'Văn hóa': ['museum', 'historical_landmark'],
     'Ẩm thực': ['restaurant'],
     'Gia đình': ['amusement_park', 'zoo'],

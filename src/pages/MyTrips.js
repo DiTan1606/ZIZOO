@@ -3,6 +3,11 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { getUserItineraries } from '../services/firestoreService';
 import { getUserItineraries as getCompleteItineraries } from '../services/completeItineraryService';
+import { 
+    updateItineraryStatus, 
+    getItineraryStatus 
+} from '../services/itineraryManagementService';
+import { toast } from 'react-toastify';
 import MapViewer from '../components/MapViewer';
 import ItineraryDetailModal from '../components/ItineraryDetailModal';
 
@@ -10,8 +15,11 @@ export default function MyTrips() {
     const { currentUser } = useAuth();
     const [trips, setTrips] = useState([]);
     const [completeTrips, setCompleteTrips] = useState([]);
-    const [activeTab, setActiveTab] = useState('complete'); // Default to complete itineraries
+    const [activeTab, setActiveTab] = useState('active'); // Tab: active, completed, cancelled
     const [selectedItinerary, setSelectedItinerary] = useState(null);
+    const [showCancelModal, setShowCancelModal] = useState(false);
+    const [tripToCancel, setTripToCancel] = useState(null);
+    const [cancelReason, setCancelReason] = useState('');
     const mapInitialized = useRef(new Set()); // Theo dõi map đã load
 
     useEffect(() => {
@@ -44,6 +52,60 @@ export default function MyTrips() {
             setCompleteTrips(newTrips);
         } catch (error) {
             console.error('Error refreshing trips:', error);
+        }
+    };
+
+    // Lọc trips theo status
+    const getFilteredTrips = () => {
+        return completeTrips.filter(trip => {
+            const status = getItineraryStatus(trip);
+            if (activeTab === 'active') return status === 'active' || status === 'ongoing';
+            if (activeTab === 'completed') return status === 'completed';
+            if (activeTab === 'cancelled') return status === 'cancelled';
+            return true;
+        });
+    };
+
+    // Đánh dấu hoàn thành
+    const handleMarkCompleted = async (tripId) => {
+        try {
+            await updateItineraryStatus(currentUser.uid, tripId, 'completed');
+            toast.success('✅ Đã đánh dấu chuyến đi hoàn thành!');
+            await refreshTrips();
+        } catch (error) {
+            console.error('Error marking trip as completed:', error);
+            toast.error('Lỗi khi cập nhật trạng thái!');
+        }
+    };
+
+    // Mở modal hủy
+    const handleOpenCancelModal = (trip) => {
+        setTripToCancel(trip);
+        setShowCancelModal(true);
+    };
+
+    // Xác nhận hủy
+    const handleConfirmCancel = async () => {
+        if (!cancelReason.trim()) {
+            toast.error('Vui lòng nhập lý do hủy!');
+            return;
+        }
+
+        try {
+            await updateItineraryStatus(
+                currentUser.uid, 
+                tripToCancel.id, 
+                'cancelled',
+                cancelReason
+            );
+            toast.success('✅ Đã hủy chuyến đi!');
+            setShowCancelModal(false);
+            setTripToCancel(null);
+            setCancelReason('');
+            await refreshTrips();
+        } catch (error) {
+            console.error('Error cancelling trip:', error);
+            toast.error('Lỗi khi hủy chuyến đi!');
         }
     };
 
@@ -123,48 +185,77 @@ export default function MyTrips() {
             <div className="flex mb-6 bg-gray-100 rounded-lg p-1">
                 <button
                     className={`flex-1 py-2 px-4 rounded-md font-medium transition-colors ${
-                        activeTab === 'complete' 
+                        activeTab === 'active' 
                             ? 'bg-white text-indigo-700 shadow-sm' 
                             : 'text-gray-600 hover:text-gray-800'
                     }`}
-                    onClick={() => setActiveTab('complete')}
+                    onClick={() => setActiveTab('active')}
                 >
-                    Lịch Trình Hoàn Chỉnh ({completeTrips.length})
+                    🎯 Đang hoạt động ({getFilteredTrips().length})
                 </button>
                 <button
                     className={`flex-1 py-2 px-4 rounded-md font-medium transition-colors ${
-                        activeTab === 'simple' 
+                        activeTab === 'completed' 
                             ? 'bg-white text-indigo-700 shadow-sm' 
                             : 'text-gray-600 hover:text-gray-800'
                     }`}
-                    onClick={() => setActiveTab('simple')}
+                    onClick={() => setActiveTab('completed')}
                 >
-                    Lịch Trình Đơn Giản ({trips.length})
+                    ✅ Đã hoàn thành ({completeTrips.filter(t => getItineraryStatus(t) === 'completed').length})
+                </button>
+                <button
+                    className={`flex-1 py-2 px-4 rounded-md font-medium transition-colors ${
+                        activeTab === 'cancelled' 
+                            ? 'bg-white text-indigo-700 shadow-sm' 
+                            : 'text-gray-600 hover:text-gray-800'
+                    }`}
+                    onClick={() => setActiveTab('cancelled')}
+                >
+                    ❌ Đã hủy ({completeTrips.filter(t => getItineraryStatus(t) === 'cancelled').length})
                 </button>
             </div>
 
-            {/* Complete Itineraries Tab */}
-            {activeTab === 'complete' && (
-                <>
-                    {completeTrips.length === 0 ? (
+            {/* Trips List */}
+            <>
+                {getFilteredTrips().length === 0 ? (
                         <div className="text-center py-12">
-                            <p className="text-gray-500 text-lg">Chưa có lịch trình hoàn chỉnh nào.</p>
+                            <p className="text-gray-500 text-lg">
+                                {activeTab === 'active' && 'Chưa có chuyến đi nào đang hoạt động.'}
+                                {activeTab === 'completed' && 'Chưa có chuyến đi nào hoàn thành.'}
+                                {activeTab === 'cancelled' && 'Chưa có chuyến đi nào bị hủy.'}
+                            </p>
                             <p className="text-sm text-gray-400 mt-2">
-                                Hãy tạo lịch trình hoàn chỉnh tại <strong>Complete Itinerary Planner</strong>!
+                                Hãy tạo lịch trình mới tại <strong>Complete Itinerary Planner</strong>!
                             </p>
                         </div>
                     ) : (
                         <div className="space-y-6">
-                            {completeTrips.map(trip => (
+                            {getFilteredTrips().map(trip => {
+                                const status = getItineraryStatus(trip);
+                                return (
                                 <div
                                     key={trip.id}
                                     className="bg-white p-6 rounded-2xl shadow-lg hover:shadow-xl transition-shadow border border-gray-100"
                                 >
                                     <div className="flex justify-between items-start mb-4">
-                                        <div>
-                                            <h3 className="text-2xl font-bold text-indigo-700">
-                                                {trip.tripName}
-                                            </h3>
+                                        <div className="flex-1">
+                                            <div className="flex items-center gap-3">
+                                                <h3 className="text-2xl font-bold text-indigo-700">
+                                                    {trip.tripName}
+                                                </h3>
+                                                {/* Status Badge */}
+                                                <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+                                                    status === 'ongoing' ? 'bg-blue-100 text-blue-700' :
+                                                    status === 'completed' ? 'bg-green-100 text-green-700' :
+                                                    status === 'cancelled' ? 'bg-red-100 text-red-700' :
+                                                    'bg-gray-100 text-gray-700'
+                                                }`}>
+                                                    {status === 'ongoing' && '🚀 Đang đi'}
+                                                    {status === 'completed' && '✅ Hoàn thành'}
+                                                    {status === 'cancelled' && '❌ Đã hủy'}
+                                                    {status === 'active' && '📅 Sắp tới'}
+                                                </span>
+                                            </div>
                                             <p className="text-lg text-gray-600 mt-1">
                                                 {trip.destination}
                                             </p>
@@ -174,6 +265,11 @@ export default function MyTrips() {
                                                     : `${trip.duration} ngày ${trip.duration - 1} đêm`
                                                 } • {typeof trip.travelers === 'object' ? trip.travelers?.total || trip.travelers?.adults || 2 : trip.travelers} người • Bắt đầu: {formatDate(trip.startDate)}
                                             </p>
+                                            {trip.cancelReason && (
+                                                <p className="text-sm text-red-600 mt-2 italic">
+                                                    Lý do hủy: {trip.cancelReason}
+                                                </p>
+                                            )}
                                         </div>
                                         <div className="text-right">
                                             <p className="text-xs text-gray-500">Ngân sách ({typeof trip.travelers === 'object' ? trip.travelers?.total || trip.travelers?.adults || 2 : trip.travelers} người)</p>
@@ -210,19 +306,31 @@ export default function MyTrips() {
                                     )}
 
                                     <div className="mt-4 flex justify-between items-center">
-                                        <div className="flex gap-2">
+                                        <div className="flex gap-2 flex-wrap">
                                             <button
                                                 onClick={() => setSelectedItinerary(trip.fullItinerary || trip)}
                                                 className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
                                             >
-                                                Xem chi tiết
+                                                📋 Xem chi tiết
                                             </button>
-                                            <button
-                                                onClick={refreshTrips}
-                                                className="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-                                            >
-                                                Làm mới
-                                            </button>
+                                            
+                                            {/* Action buttons based on status */}
+                                            {(status === 'active' || status === 'ongoing') && (
+                                                <>
+                                                    <button
+                                                        onClick={() => handleMarkCompleted(trip.id)}
+                                                        className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                                                    >
+                                                        ✅ Hoàn thành
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleOpenCancelModal(trip)}
+                                                        className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                                                    >
+                                                        ❌ Hủy chuyến
+                                                    </button>
+                                                </>
+                                            )}
                                         </div>
                                         <div className="text-right text-sm text-gray-500">
                                             <div>Tạo lúc: {formatDate(trip.createdAt)}</div>
@@ -232,14 +340,15 @@ export default function MyTrips() {
                                         </div>
                                     </div>
                                 </div>
-                            ))}
+                                );
+                            })}
                         </div>
                     )}
                 </>
-            )}
 
-            {/* Simple Itineraries Tab */}
-            {activeTab === 'simple' && (
+
+            {/* Removed Simple Itineraries Tab - Only using Complete Itineraries now */}
+            {activeTab === 'old-simple' && (
                 <>
                     {trips.length === 0 ? (
                         <div className="text-center py-12">
@@ -332,6 +441,50 @@ export default function MyTrips() {
                     itinerary={selectedItinerary}
                     onClose={() => setSelectedItinerary(null)}
                 />
+            )}
+
+            {/* Cancel Trip Modal */}
+            {showCancelModal && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6">
+                        <h3 className="text-2xl font-bold text-red-600 mb-4">
+                            ❌ Hủy chuyến đi
+                        </h3>
+                        <p className="text-gray-700 mb-4">
+                            Bạn có chắc muốn hủy chuyến đi <strong>{tripToCancel?.tripName}</strong>?
+                        </p>
+                        <div className="mb-4">
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                                Lý do hủy <span className="text-red-500">*</span>
+                            </label>
+                            <textarea
+                                value={cancelReason}
+                                onChange={(e) => setCancelReason(e.target.value)}
+                                placeholder="Vui lòng nhập lý do hủy chuyến đi..."
+                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent"
+                                rows="4"
+                            />
+                        </div>
+                        <div className="flex gap-3">
+                            <button
+                                onClick={handleConfirmCancel}
+                                className="flex-1 bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg font-medium transition-colors"
+                            >
+                                Xác nhận hủy
+                            </button>
+                            <button
+                                onClick={() => {
+                                    setShowCancelModal(false);
+                                    setTripToCancel(null);
+                                    setCancelReason('');
+                                }}
+                                className="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-700 px-4 py-2 rounded-lg font-medium transition-colors"
+                            >
+                                Đóng
+                            </button>
+                        </div>
+                    </div>
+                </div>
             )}
         </div>
     );

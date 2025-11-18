@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import { createCompleteItinerary } from '../services/completeItineraryService';
 import ItineraryAlertsPanel from './ItineraryAlertsPanel';
+import DestinationSelector from './DestinationSelector';
 import './CompleteItineraryPlanner.css';
 
 const CompleteItineraryPlanner = () => {
@@ -12,6 +13,7 @@ const CompleteItineraryPlanner = () => {
     const navigate = useNavigate();
     const [step, setStep] = useState(1);
     const [loading, setLoading] = useState(false);
+    const [selectedDestinations, setSelectedDestinations] = useState([]);
     // Get tomorrow's date for default
     const getTomorrowDate = () => {
         const tomorrow = new Date();
@@ -23,7 +25,7 @@ const CompleteItineraryPlanner = () => {
         destination: 'Vũng Tàu',
         departureCity: 'Hồ Chí Minh',
         startDate: getTomorrowDate(),
-        departureTime: '06:30', // Giờ khởi hành
+        startTime: '08:00', // Giờ bắt đầu hành trình du lịch (tại điểm đến)
         duration: 3,
         travelers: 2,
         budget: 3000000,
@@ -34,7 +36,8 @@ const CompleteItineraryPlanner = () => {
             sunset: false,       // Ngắm hoàng hôn
             nightMarket: false,  // Chợ đêm
             nightlife: false     // Bar/pub/nightlife
-        }
+        },
+        customDestinations: [] // Địa điểm do người dùng chọn
     });
     const [completeItinerary, setCompleteItinerary] = useState(null);
 
@@ -103,13 +106,22 @@ const CompleteItineraryPlanner = () => {
             }
         }));
         
-        // Auto-adjust departure time if sunrise is selected
+        // Auto-adjust start time if sunrise is selected
         if (activity === 'sunrise' && !preferences.specialActivities.sunrise) {
             setPreferences(prev => ({
                 ...prev,
-                departureTime: '05:30'
+                startTime: '05:30'
             }));
         }
+    };
+
+    const handleDestinationsConfirm = (destinations) => {
+        setSelectedDestinations(destinations);
+        setPreferences(prev => ({
+            ...prev,
+            customDestinations: destinations
+        }));
+        setStep(3); // Chuyển sang bước xác nhận
     };
 
     const generateItinerary = async () => {
@@ -127,8 +139,12 @@ const CompleteItineraryPlanner = () => {
         try {
             const itinerary = await createCompleteItinerary(preferences, currentUser.uid);
             setCompleteItinerary(itinerary);
-            setStep(3);
             toast.success('🎉 Lịch trình hoàn chỉnh đã được tạo và lưu thành công!');
+            
+            // Chờ 2 giây để user thấy thông báo, sau đó chuyển về MyTrips
+            setTimeout(() => {
+                navigate('/my-trips');
+            }, 2000);
         } catch (error) {
             console.error('Lỗi tạo lịch trình:', error);
             toast.error(`Lỗi: ${error.message}`);
@@ -199,14 +215,19 @@ const CompleteItineraryPlanner = () => {
                         <div className="form-row">
                             <div className="form-group">
                                 <label>Điểm khởi hành</label>
-                                <select 
+                                <input
+                                    type="text"
                                     value={preferences.departureCity}
                                     onChange={(e) => handleInputChange('departureCity', e.target.value)}
-                                >
+                                    placeholder="Nhập điểm khởi hành..."
+                                    list="departure-cities-list"
+                                />
+                                <datalist id="departure-cities-list">
                                     {vietnamCities.map(city => (
                                         <option key={city} value={city}>{city}</option>
                                     ))}
-                                </select>
+                                </datalist>
+                                <small>💡 Gợi ý: Hồ Chí Minh, Hà Nội, Đà Nẵng, Cần Thơ, Hải Phòng...</small>
                             </div>
 
                             <div className="form-group">
@@ -215,15 +236,15 @@ const CompleteItineraryPlanner = () => {
                                     type="text"
                                     value={preferences.destination}
                                     onChange={(e) => handleInputChange('destination', e.target.value)}
-                                    placeholder="Nhập tên thành phố/địa điểm..."
+                                    placeholder="Nhập điểm đến..."
                                     list="destinations-list"
                                 />
                                 <datalist id="destinations-list">
-                                    {vietnamCities.filter(city => city !== preferences.departureCity).map(city => (
+                                    {vietnamCities.map(city => (
                                         <option key={city} value={city}>{city}</option>
                                     ))}
                                 </datalist>
-                                <small>💡 Gợi ý: Hà Nội, Đà Nẵng, Hội An, Đà Lạt, Phú Quốc, Nha Trang, Vũng Tàu...</small>
+                                <small>💡 Gợi ý: Vũng Tàu, Đà Lạt, Nha Trang, Phú Quốc, Hội An, Huế...</small>
                             </div>
                         </div>
 
@@ -374,20 +395,21 @@ const CompleteItineraryPlanner = () => {
                     </div>
 
                     <div className="form-section">
-                        <h3>⏰ Giờ khởi hành</h3>
+                        <h3>⏰ Giờ bắt đầu hành trình</h3>
                         <div className="input-group">
-                            <label>Thời gian bắt đầu chuyến đi</label>
+                            <label>Thời gian bắt đầu hành trình du lịch</label>
                             <input 
                                 type="time"
-                                value={preferences.departureTime}
-                                onChange={(e) => handleInputChange('departureTime', e.target.value)}
+                                value={preferences.startTime}
+                                onChange={(e) => handleInputChange('startTime', e.target.value)}
                                 className="time-input"
                             />
                             <small className="hint">
-                                {preferences.departureTime < '06:00' ? '🌙 Khởi hành rất sớm - phù hợp ngắm bình minh' :
-                                 preferences.departureTime < '08:00' ? '🌅 Khởi hành sớm - tận dụng tối đa thời gian' :
-                                 preferences.departureTime < '10:00' ? '☀️ Khởi hành bình thường' :
-                                 '⚠️ Khởi hành muộn - thời gian tham quan bị giới hạn'}
+                                {preferences.startTime < '06:00' ? '🌙 Bắt đầu rất sớm - tận dụng tối đa thời gian' :
+                                 preferences.startTime < '08:00' ? '🌅 Bắt đầu sớm - phù hợp ngắm bình minh' :
+                                 preferences.startTime < '10:00' ? '☀️ Bắt đầu bình thường - thời gian lý tưởng' :
+                                 preferences.startTime < '12:00' ? '⏰ Bắt đầu hơi muộn' :
+                                 '⚠️ Bắt đầu muộn - thời gian tham quan bị giới hạn'}
                             </small>
                         </div>
                     </div>
@@ -402,7 +424,7 @@ const CompleteItineraryPlanner = () => {
                                 <span className="activity-icon">🌅</span>
                                 <div className="activity-info">
                                     <h4>Ngắm bình minh</h4>
-                                    <p>Khởi hành 05:30 - 06:00</p>
+                                    <p>Bắt đầu 05:30 - 06:00</p>
                                 </div>
                             </div>
                             <div 
@@ -444,7 +466,7 @@ const CompleteItineraryPlanner = () => {
                             onClick={() => setStep(2)}
                             disabled={!preferences.destination || !preferences.startDate}
                         >
-                            Tiếp theo: Xem trước lịch trình
+                            Tiếp theo: Chọn địa điểm
                         </button>
                     </div>
                 </div>
@@ -453,6 +475,16 @@ const CompleteItineraryPlanner = () => {
     }
 
     if (step === 2) {
+        return (
+            <DestinationSelector
+                preferences={preferences}
+                onConfirm={handleDestinationsConfirm}
+                onBack={() => setStep(1)}
+            />
+        );
+    }
+
+    if (step === 3) {
         return (
             <div className="complete-itinerary-planner">
                 <div className="header">
@@ -484,8 +516,33 @@ const CompleteItineraryPlanner = () => {
                                     interestOptions.find(opt => opt.value === i)?.name || i
                                 ).filter(Boolean).join(', ') || 'Không có'}
                             </div>
+                            <div className="info-item">
+                                <strong>Địa điểm đã chọn:</strong> {selectedDestinations.length} địa điểm
+                            </div>
                         </div>
                     </div>
+
+                    {selectedDestinations.length > 0 && (
+                        <div className="preview-section">
+                            <h3>📍 Địa điểm bạn đã chọn</h3>
+                            <div className="selected-destinations-preview">
+                                {selectedDestinations.map((dest, index) => (
+                                    <div key={dest.id} className="preview-destination-item">
+                                        <span className="preview-number">{index + 1}</span>
+                                        <div className="preview-info">
+                                            <strong>{dest.name}</strong>
+                                            {dest.preferredTime && (
+                                                <span className="preview-time">⏰ {dest.preferredTime}</span>
+                                            )}
+                                            {dest.duration && (
+                                                <span className="preview-duration">⏱️ {dest.duration}h</span>
+                                            )}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
 
                     <div className="preview-section">
                         <h3>📝 Lịch trình sẽ bao gồm</h3>
@@ -552,9 +609,9 @@ const CompleteItineraryPlanner = () => {
                     <div className="preview-actions">
                         <button 
                             className="back-btn"
-                            onClick={() => setStep(1)}
+                            onClick={() => setStep(2)}
                         >
-                            ← Quay lại chỉnh sửa
+                            ← Quay lại chọn địa điểm
                         </button>
                         <button 
                             className="generate-btn"
@@ -576,7 +633,7 @@ const CompleteItineraryPlanner = () => {
         );
     }
 
-    if (step === 3 && completeItinerary) {
+    if (step === 4 && completeItinerary) {
         return (
             <div className="complete-itinerary-result">
                 <div className="result-header no-print">
