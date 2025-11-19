@@ -1,0 +1,62 @@
+[33m9ac5ebe[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mUI[m[33m, [m[1;31morigin/newbranch[m[33m, [m[1;31morigin/UI[m[33m, [m[1;32mnewbranch[m[33m)[m Merge remote-tracking branch 'origin/UI' into newbranch
+[33m3042d61[m Chỉnh sửa Profile và Feedback
+[33m38368ab[m Merge remote-tracking branch 'origin/UI' into newbranch
+[33mf28bf00[m final
+[33m8b77887[m[33m ([m[1;31morigin/NhanBui[m[33m)[m Chỉnh sửa giao diện
+[33m5103f2d[m s
+[33mcb3099e[m --thêm vé máy bay
+[33m0ea364c[m sửa cái khách sạn với lộ trình đi
+[33m866c08b[m Update completeItineraryService.js
+[33m6e04ce6[m Update CompleteItineraryPlanner.js
+[33mfc81ac0[m Merge branch 'NhanBui' into newbranch
+[33mddceca2[m Update Navbar.js
+[33m43db131[m -- chỉnh sửa thêm chức năng thêm địa điểm
+[33m49fbb2f[m Merge branch 'newbranch' into NhanBui
+[33m60d9eb5[m thêm route
+[33m2daf45c[m Merge branch 'NhanBui' into newbranch
+[33mcc87f7e[m Update transportDataService.js
+[33m0f9ff02[m -- Thêm 1 tùy chỉnh địa điểm trước khi ra lịch trình hoàn chỉnh
+[33meb26821[m -- backend cho userProfile
+[33m27ffe1f[m update
+[33me22476a[m ai update
+[33m7f94c1b[m pop
+[33m1ad5006[m commit
+[33m3922db5[m commit
+[33m4ac1188[m weather
+[33mce88642[m -v4
+[33m06c530e[m Merge branch 'Phuctran' into NhanBui
+[33m58a826c[m[33m ([m[1;31morigin/Phuctran[m[33m)[m Update createRealTimeItinerary.js
+[33m2ebd5eb[m Update createRealTimeItinerary.js
+[33m5333c95[m Update createRealTimeItinerary.js
+[33mcd01a00[m Update createRealTimeItinerary.js
+[33m49078fc[m Merge branch 'Phuctran'
+[33m4d80097[m Update createRealTimeItinerary.js
+[33m789d9aa[m Update createRealTimeItinerary.js
+[33m2593b07[m sửa
+[33m2718d3a[m Merge branch 'main' of https://github.com/DiTan1606/ZIZOO
+[33m93e9692[m Update createRealTimeItinerary.js
+[33m67528df[m --5 sửa lỗi main
+[33m2757b5c[m merge main
+[33mbfcd85b[m Update createRealTimeItinerary.js
+[33mda362b5[m --4. Cập nhật lấy giá thực và khách sạn thực
+[33m07cc18e[m --3 new version
+[33m4db6c82[m --2 thêm api weather
+[33m6093827[m Sua api
+[33m2750fcd[m --1. base file
+[33m7dc0a67[m Delete README.md
+[33m461bfc2[m Delete package.json
+[33mc3bfed4[m Delete package-lock.json
+[33mb68282f[m Delete firebase.json
+[33m507669e[m Delete .gitignore
+[33mbd31908[m Delete .env.example
+[33m483ec4e[m Delete .firebaserc
+[33m8c5cf39[m Delete src directory
+[33mb06a328[m Delete public directory
+[33m8b35a7d[m update README.md
+[33m794b80a[m update README.md
+[33m4d43ab9[m update README.md
+[33ma46fc73[m update gitignore
+[33m87ff232[m deloy first
+[33md9912d5[m update readme
+[33m9f764c4[m Initial commit: Setup React + Firebase boilerplate and folder structure
+[33mb0f184a[m Initialize project using Create React App
