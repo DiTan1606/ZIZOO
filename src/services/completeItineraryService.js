@@ -4430,6 +4430,59 @@ const generateEnhancedDayTheme = (dayNumber, destinations, interests, destinatio
 const generateEnhancedHourlySchedule = (dayNumber, destinations, restaurants, interests, departureTime = '08:00', specialActivities = {}, workingLocations = []) => {
     const schedule = [];
     let currentTime = '';
+    const usedRestaurants = new Set(); // Track restaurants đã dùng
+    
+    // Helper function: Gộp các địa điểm liên quan gần nhau
+    const groupRelatedDestinations = (dests) => {
+        if (!dests || dests.length === 0) return [];
+        
+        const groups = [];
+        const used = new Set();
+        
+        dests.forEach((dest, index) => {
+            if (used.has(index)) return;
+            
+            const group = {
+                main: dest,
+                related: []
+            };
+            
+            // Tìm các địa điểm gần (trong bán kính 2km)
+            for (let j = index + 1; j < dests.length; j++) {
+                if (used.has(j)) continue;
+                
+                const otherDest = dests[j];
+                if (dest.lat && dest.lng && otherDest.lat && otherDest.lng) {
+                    const distance = calculateHaversineDistance(
+                        dest.lat, dest.lng,
+                        otherDest.lat, otherDest.lng
+                    );
+                    
+                    if (distance <= 2) { // 2km
+                        group.related.push(otherDest);
+                        used.add(j);
+                    }
+                }
+            }
+            
+            used.add(index);
+            groups.push(group);
+        });
+        
+        return groups;
+    };
+    
+    // Helper function: Calculate Haversine distance
+    const calculateHaversineDistance = (lat1, lon1, lat2, lon2) => {
+        const R = 6371;
+        const dLat = (lat2 - lat1) * Math.PI / 180;
+        const dLon = (lon2 - lon1) * Math.PI / 180;
+        const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                  Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                  Math.sin(dLon/2) * Math.sin(dLon/2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        return R * c;
+    };
     
     // ===== NGÀY 1: Logic đặc biệt =====
     // Helper function: Kiểm tra xem thời gian có conflict với working hours không
@@ -4496,6 +4549,36 @@ const generateEnhancedHourlySchedule = (dayNumber, destinations, restaurants, in
         }
     };
     
+    // Wrapper: Tính thời gian tiếp theo VÀ tự động skip working hours
+    const calculateNextTimeAndSkipWorking = (currentTime, duration) => {
+        const nextTime = calculateNextTime(currentTime, duration);
+        return getNextAvailableTime(nextTime);
+    };
+    
+    // Thêm working locations vào schedule trước (nếu có)
+    if (workingLocations && workingLocations.length > 0) {
+        workingLocations.forEach(workLoc => {
+            schedule.push({
+                time: workLoc.startTime,
+                activity: `💼 ${workLoc.name}`,
+                type: 'working',
+                duration: calculateDuration(workLoc.startTime, workLoc.endTime),
+                location: {
+                    name: workLoc.name,
+                    address: workLoc.address || '',
+                    coordinates: workLoc.coordinates || {}
+                },
+                notes: [
+                    'Thời gian làm việc cố định',
+                    workLoc.description || 'Công việc',
+                    '⚠️ Không thể thay đổi thời gian này'
+                ],
+                isFixed: true, // Đánh dấu là không thể di chuyển
+                realData: true
+            });
+        });
+    }
+    
     // Ngày 1: Khởi hành và check-in
     if (dayNumber === 1) {
         // Bắt đầu hành trình từ departureTime
@@ -4517,8 +4600,8 @@ const generateEnhancedHourlySchedule = (dayNumber, destinations, restaurants, in
                     notes: ['Bắt đầu hành trình với bữa sáng ngon'],
                     realData: true
                 });
+                usedRestaurants.add(restaurants.breakfast.name);
                 currentTime = calculateNextTime(currentTime, '45 phút');
-
                 currentTime = getNextAvailableTime(currentTime);
             }
             

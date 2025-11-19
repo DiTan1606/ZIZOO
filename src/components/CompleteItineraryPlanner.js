@@ -149,7 +149,7 @@ const CompleteItineraryPlanner = () => {
             
             setPreferences(prev => ({
                 ...prev,
-                workingLocations: [...prev.workingLocations, newLocation.toJSON()]
+                workingLocations: [...(prev.workingLocations || []), newLocation.toJSON()]
             }));
             
             setShowWorkingForm(false);
@@ -163,7 +163,7 @@ const CompleteItineraryPlanner = () => {
     const handleRemoveWorkingLocation = (index) => {
         setPreferences(prev => ({
             ...prev,
-            workingLocations: prev.workingLocations.filter((_, i) => i !== index)
+            workingLocations: (prev.workingLocations || []).filter((_, i) => i !== index)
         }));
         toast.success('Đã xóa địa điểm làm việc!');
     };
@@ -542,7 +542,7 @@ const CompleteItineraryPlanner = () => {
                                 </h4>
                                 
                                 {/* Danh sách working locations */}
-                                {preferences.workingLocations.length > 0 && (
+                                {preferences.workingLocations && preferences.workingLocations.length > 0 && (
                                     <div style={{ marginBottom: '15px' }}>
                                         {preferences.workingLocations.map((loc, index) => (
                                             <div key={index} style={{
