@@ -13,6 +13,11 @@ import alertIcon from '../icon/cbtm.png';
 import sustainableIcon from '../icon/dlbv.png';
 import budgetIcon from '../icon/tuns.png';
 
+// Import button icons
+import planIcon from '../icon/bdlkh.png';
+import riskMapIcon from '../icon/xbdrr.png';
+import aiSuggestIcon from '../icon/ai.png';
+
 // Import core value icons
 import userFocusIcon from '../icon/ttnd.png';
 import innovationIcon from '../icon/dmlt.png';
@@ -56,11 +61,36 @@ export default function Home() {
                     }}>
                         Khám phá và Trải nghiệm du lịch Việt Nam theo cách của bạn
                     </p>
-                    
-                    <div className="inline-flex items-center gap-3 px-6 py-3 bg-white/95 backdrop-blur-md rounded-full mb-6 shadow-2xl border-2 border-white">
-                        <p className="text-base font-bold bg-gradient-to-r from-red-600 to-orange-600 bg-clip-text text-transparent">
-                            Cảnh báo rủi ro bão lũ theo thời gian thực • AI gợi ý lộ trình an toàn
-                        </p>
+
+                    {/* Nút hành động */}
+                    <div className="hero-button-container max-w-6xl mx-auto flex flex-row gap-4 justify-center items-center mb-8 px-8 py-4 backdrop-blur-md rounded-full border-2 border-white">
+                        <Link
+                            to="/complete-planner"
+                            className="hero-action-button px-8 py-2 text-lg font-bold text-gray-800 bg-transparent rounded-full flex items-center justify-center gap-3 min-w-[240px]"
+                        >
+                            <img src={planIcon} alt="Plan" className="w-6 h-6" />
+                            Bắt đầu lập kế hoạch
+                        </Link>
+
+                        <div className="w-px h-6 bg-gray-300"></div>
+
+                        <Link
+                            to="/ai-recommendations"
+                            className="hero-action-button px-10 py-2 text-xl font-bold text-gray-800 bg-transparent rounded-full flex items-center justify-center gap-3 min-w-[240px]"
+                        >
+                            <img src={aiSuggestIcon} alt="AI Suggest" className="w-7 h-7" />
+                            AI Gợi ý
+                        </Link>
+
+                        <div className="w-px h-6 bg-gray-300"></div>
+
+                        <Link
+                            to="/risk-map"
+                            className="hero-action-button px-8 py-2 text-lg font-bold text-gray-800 bg-transparent rounded-full flex items-center justify-center gap-3 min-w-[240px]"
+                        >
+                            <img src={riskMapIcon} alt="Risk Map" className="w-6 h-6" />
+                            Xem bản đồ rủi ro
+                        </Link>
                     </div>
 
                     {/* Bản đồ nhỏ ở trang chủ */}
@@ -68,47 +98,6 @@ export default function Home() {
                         boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.5)'
                     }}>
                         <MapViewer points={samplePoints} showRoute={false} />
-                    </div>
-
-                    {/* Nút hành động */}
-                    <div className="flex flex-col sm:flex-row gap-5 justify-center items-center mb-6">
-                        <Link
-                            to="/complete-planner"
-                            className="px-12 py-6 text-xl font-bold text-white bg-gradient-to-r from-blue-600 to-indigo-700 rounded-full border-2 border-white/30 transform hover:scale-105 transition-all duration-300"
-                            style={{
-                                boxShadow: '0 10px 40px rgba(0, 0, 0, 0.6), 0 0 20px rgba(99, 102, 241, 0.5)',
-                                textShadow: '0 2px 10px rgba(0, 0, 0, 0.5)'
-                            }}
-                        >
-                            Bắt đầu lập kế hoạch ngay
-                        </Link>
-
-                        <Link
-                            to="/risk-map"
-                            className="px-12 py-6 text-xl font-bold text-white bg-gradient-to-r from-red-600 via-orange-500 to-pink-600 rounded-full border-2 border-white/30 transform hover:scale-105 transition-all duration-300"
-                            style={{
-                                boxShadow: '0 10px 40px rgba(0, 0, 0, 0.6), 0 0 20px rgba(239, 68, 68, 0.5)',
-                                textShadow: '0 2px 10px rgba(0, 0, 0, 0.5)'
-                            }}
-                        >
-                            Xem bản đồ rủi ro toàn quốc
-                        </Link>
-                    </div>
-
-                    <div className="inline-flex items-center gap-8 px-8 py-4 bg-white/20 backdrop-blur-md rounded-full" style={{
-                        boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)'
-                    }}>
-                        <div className="flex items-center gap-2">
-                            <span className="font-semibold text-lg text-white" style={{
-                                textShadow: '0 2px 10px rgba(0, 0, 0, 0.8)'
-                            }}>63 tỉnh thành</span>
-                        </div>
-                        <div className="w-2 h-2 bg-white rounded-full shadow-lg"></div>
-                        <div className="flex items-center gap-2">
-                            <span className="font-semibold text-lg text-white" style={{
-                                textShadow: '0 2px 10px rgba(0, 0, 0, 0.8)'
-                            }}>Cập nhật theo thời gian thực</span>
-                        </div>
                     </div>
                 </div>
             </div>
