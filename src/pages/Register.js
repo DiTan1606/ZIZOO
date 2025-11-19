@@ -22,7 +22,7 @@ export default function Register() {
         try {
             await register(email, password);
             toast.success('Đăng ký thành công! Chào mừng đến ZIZOO!');
-            navigate('/planner'); // Chuyển về planner sau đăng ký
+            navigate('/'); // Chuyển về planner sau đăng ký
         } catch (err) {
             toast.error(`Đăng ký thất bại: ${err.message}`);
         }

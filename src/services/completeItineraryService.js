@@ -225,7 +225,8 @@ const generateDailyItinerary = async (preferences) => {
         budget, 
         travelers,
         startTime = '08:00', // Giờ bắt đầu
-        specialActivities = {}
+        specialActivities = {},
+        workingLocations = [] // Thêm working locations
     } = preferences;
     const coord = provinceCoords[destination] || { lat: 16.047, lng: 108.220 };
     
@@ -240,7 +241,14 @@ const generateDailyItinerary = async (preferences) => {
     for (let day = 0; day < duration; day++) {
         const currentDate = new Date(startDate);
         currentDate.setDate(currentDate.getDate() + day);
-
+        const dateString = currentDate.toISOString().split('T')[0];
+        
+        // Lấy working locations cho ngày này
+        const dayWorkingLocations = workingLocations.filter(loc => 
+            loc.isAllDays || (loc.workingDays && loc.workingDays.includes(dateString))
+        );
+        
+        
         // Tạo kế hoạch cho từng ngày với ngân sách và departureTime
         const dayPlan = await generateSingleDayPlan(
             day + 1, 
@@ -255,7 +263,8 @@ const generateDailyItinerary = async (preferences) => {
             departureTime,
             specialActivities,
             [],
-            duration
+            duration,
+            dayWorkingLocations // Truyền working locations cho ngày này
         );
         dailyPlans.push(dayPlan);
     }
@@ -279,7 +288,8 @@ const generateSingleDayPlan = async (
     departureTime = '08:00',
     specialActivities = {},
     customDestinations = [],
-    duration = 3
+    duration = 3,
+    workingLocations = [] // Thêm working locations
 ) => {
     try {
         console.log(`📅 Generating DIVERSE day plan for Day ${dayNumber} in ${destination}...`);
@@ -323,7 +333,8 @@ const generateSingleDayPlan = async (
             restaurants, 
             interests,
             departureTime,
-            specialActivities // Sử dụng specialActivities từ parameter
+            specialActivities, // Sử dụng specialActivities từ parameter
+            workingLocations // Truyền working locations
         );
 
         // Lấy thời tiết thực tế với dự báo rủi ro (fallback nếu API key không có)
@@ -4416,11 +4427,76 @@ const generateEnhancedDayTheme = (dayNumber, destinations, interests, destinatio
  * Ngày 1: Dùng departureTime (giờ bắt đầu hành trình)
  * Ngày 2+: Bắt đầu từ 7:00 (ăn sáng)
  */
-const generateEnhancedHourlySchedule = (dayNumber, destinations, restaurants, interests, departureTime = '08:00', specialActivities = {}) => {
+const generateEnhancedHourlySchedule = (dayNumber, destinations, restaurants, interests, departureTime = '08:00', specialActivities = {}, workingLocations = []) => {
     const schedule = [];
     let currentTime = '';
     
     // ===== NGÀY 1: Logic đặc biệt =====
+    // Helper function: Kiểm tra xem thời gian có conflict với working hours không
+    const isInWorkingHours = (time) => {
+        if (workingLocations.length === 0) return false;
+        
+        const timeMinutes = timeToMinutes(time);
+        
+        for (const workLoc of workingLocations) {
+            const startMinutes = timeToMinutes(workLoc.startTime);
+            const endMinutes = timeToMinutes(workLoc.endTime);
+            
+            if (timeMinutes >= startMinutes && timeMinutes < endMinutes) {
+                return true;
+            }
+        }
+        return false;
+    };
+    
+    // Helper function: Chuyển time string thành minutes
+    const timeToMinutes = (timeStr) => {
+        const [hours, mins] = timeStr.split(':').map(Number);
+        return hours * 60 + mins;
+    };
+    
+    // Helper function: Tìm thời gian available tiếp theo (sau working hours)
+    const getNextAvailableTime = (time) => {
+        if (!isInWorkingHours(time)) return time;
+        
+        // Tìm working location đang conflict
+        const timeMinutes = timeToMinutes(time);
+        let latestEndTime = timeMinutes;
+        
+        for (const workLoc of workingLocations) {
+            const startMinutes = timeToMinutes(workLoc.startTime);
+            const endMinutes = timeToMinutes(workLoc.endTime);
+            
+            if (timeMinutes >= startMinutes && timeMinutes < endMinutes) {
+                latestEndTime = Math.max(latestEndTime, endMinutes);
+            }
+        }
+        
+        // Convert back to time string
+        const hours = Math.floor(latestEndTime / 60);
+        const mins = latestEndTime % 60;
+        return `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
+    };
+    
+    // Helper function: Tính duration giữa 2 thời gian
+    const calculateDuration = (startTime, endTime) => {
+        const startMinutes = timeToMinutes(startTime);
+        const endMinutes = timeToMinutes(endTime);
+        const durationMinutes = endMinutes - startMinutes;
+        
+        const hours = Math.floor(durationMinutes / 60);
+        const mins = durationMinutes % 60;
+        
+        if (hours > 0 && mins > 0) {
+            return `${hours} giờ ${mins} phút`;
+        } else if (hours > 0) {
+            return `${hours} giờ`;
+        } else {
+            return `${mins} phút`;
+        }
+    };
+    
+    // Ngày 1: Khởi hành và check-in
     if (dayNumber === 1) {
         // Bắt đầu hành trình từ departureTime
         currentTime = departureTime;
@@ -4442,6 +4518,8 @@ const generateEnhancedHourlySchedule = (dayNumber, destinations, restaurants, in
                     realData: true
                 });
                 currentTime = calculateNextTime(currentTime, '45 phút');
+
+                currentTime = getNextAvailableTime(currentTime);
             }
             
             // Tham quan 1-2 địa điểm trước check-in

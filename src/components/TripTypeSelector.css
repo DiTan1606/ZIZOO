@@ -1,0 +1,65 @@
+/* Branch 1: feature/trip-type-selector */
+/* Developer A - Styles cho Trip Type Selector */
+
+.trip-type-selector {
+    margin-bottom: 30px;
+}
+
+.trip-type-selector h3 {
+    color: #2c3e50;
+    margin-bottom: 20px;
+    font-size: 1.3rem;
+    font-weight: 600;
+}
+
+.trip-type-options {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 20px;
+}
+
+.trip-type-card {
+    background: white;
+    border: 3px solid #e8ecf1;
+    border-radius: 15px;
+    padding: 30px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    text-align: center;
+}
+
+.trip-type-card:hover {
+    border-color: #667eea;
+    transform: translateY(-3px);
+    box-shadow: 0 8px 20px rgba(102, 126, 234, 0.2);
+}
+
+.trip-type-card.active {
+    border-color: #667eea;
+    background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
+    box-shadow: 0 8px 25px rgba(102, 126, 234, 0.3);
+}
+
+.trip-type-icon {
+    font-size: 3rem;
+    margin-bottom: 15px;
+}
+
+.trip-type-name {
+    font-size: 1.3rem;
+    font-weight: 700;
+    color: #2c3e50;
+    margin-bottom: 10px;
+}
+
+.trip-type-desc {
+    font-size: 0.95rem;
+    color: #666;
+    line-height: 1.5;
+}
+
+@media (max-width: 768px) {
+    .trip-type-options {
+        grid-template-columns: 1fr;
+    }
+}

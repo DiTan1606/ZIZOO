@@ -109,7 +109,7 @@
     border-radius: 20px;
     box-shadow: 0 8px 25px rgba(0,0,0,0.1);
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     gap: 20px;
     transition: all 0.3s ease;
     border: 1px solid rgba(255, 255, 255, 0.5);
@@ -135,16 +135,25 @@
     box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
 }
 
+.card-icon-img {
+    width: 60px;
+    height: 60px;
+    object-fit: contain;
+    flex-shrink: 0;
+}
+
 .info-card h3 {
     color: #2c3e50;
     margin-bottom: 10px;
-    font-size: 1.2rem;
+    font-size: 1.4rem;
+    font-weight: 700;
 }
 
 .info-card p {
     color: #666;
-    line-height: 1.6;
+    line-height: 1.8;
     margin: 0;
+    font-size: 1.05rem;
 }
 
 .feedback-stats {

@@ -1,0 +1,231 @@
+/* Branch 3: feature/working-location-ui */
+/* Developer C - Styles cho Working Location Form */
+
+.working-location-form {
+    background: white;
+    border-radius: 15px;
+    padding: 30px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+    margin-bottom: 30px;
+    position: relative;
+    z-index: 1;
+}
+
+/* Google Places Autocomplete Dropdown Styles */
+.pac-container {
+    background-color: #fff;
+    position: absolute !important;
+    z-index: 9999 !important;
+    border-radius: 8px;
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15) !important;
+    border: 1px solid #e8ecf1;
+    margin-top: 4px;
+    font-family: inherit;
+}
+
+.pac-item {
+    padding: 12px 15px;
+    cursor: pointer;
+    border-top: 1px solid #f0f0f0;
+    font-size: 14px;
+    line-height: 1.4;
+}
+
+.pac-item:first-child {
+    border-top: none;
+}
+
+.pac-item:hover {
+    background-color: #f8f9ff;
+}
+
+.pac-item-selected,
+.pac-item-selected:hover {
+    background-color: #667eea;
+    color: white;
+}
+
+.pac-icon {
+    margin-right: 10px;
+}
+
+.pac-item-query {
+    font-weight: 600;
+    color: #2c3e50;
+}
+
+.pac-matched {
+    font-weight: 700;
+}
+
+.form-header {
+    margin-bottom: 25px;
+    padding-bottom: 20px;
+    border-bottom: 2px solid #f0f0f0;
+}
+
+.form-header h3 {
+    color: #2c3e50;
+    font-size: 1.5rem;
+    margin-bottom: 8px;
+}
+
+.form-header p {
+    color: #666;
+    font-size: 0.95rem;
+}
+
+.form-group {
+    margin-bottom: 20px;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 8px;
+    color: #2c3e50;
+    font-weight: 600;
+    font-size: 0.95rem;
+}
+
+.form-group input[type="text"],
+.form-group input[type="time"],
+.form-group textarea {
+    width: 100%;
+    padding: 12px 15px;
+    border: 2px solid #e8ecf1;
+    border-radius: 8px;
+    font-size: 1rem;
+    transition: all 0.3s ease;
+    font-family: inherit;
+}
+
+.form-group input:focus,
+.form-group textarea:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+}
+
+.all-days-toggle {
+    margin-bottom: 15px;
+    padding: 15px;
+    background: #f8f9fa;
+    border-radius: 8px;
+}
+
+.checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    font-size: 0.95rem;
+    color: #2c3e50;
+}
+
+.checkbox-label input[type="checkbox"] {
+    width: 20px;
+    height: 20px;
+    cursor: pointer;
+}
+
+.working-days-selector {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+    gap: 10px;
+    margin-top: 10px;
+}
+
+.day-button {
+    padding: 15px 10px;
+    border: 2px solid #e8ecf1;
+    background: white;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    text-align: center;
+}
+
+.day-button:hover {
+    border-color: #667eea;
+    transform: translateY(-2px);
+}
+
+.day-button.active {
+    border-color: #667eea;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+}
+
+.day-label {
+    font-size: 0.85rem;
+    font-weight: 600;
+    margin-bottom: 5px;
+}
+
+.day-date {
+    font-size: 0.9rem;
+}
+
+.form-actions {
+    display: flex;
+    gap: 15px;
+    justify-content: flex-end;
+    margin-top: 30px;
+    padding-top: 20px;
+    border-top: 2px solid #f0f0f0;
+}
+
+.btn-cancel,
+.btn-submit {
+    padding: 12px 30px;
+    border: none;
+    border-radius: 8px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.btn-cancel {
+    background: #f0f0f0;
+    color: #666;
+}
+
+.btn-cancel:hover {
+    background: #e0e0e0;
+}
+
+.btn-submit {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+}
+
+.btn-submit:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(102, 126, 234, 0.3);
+}
+
+@media (max-width: 768px) {
+    .form-row {
+        grid-template-columns: 1fr;
+    }
+    
+    .working-days-selector {
+        grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+    }
+    
+    .form-actions {
+        flex-direction: column;
+    }
+    
+    .btn-cancel,
+    .btn-submit {
+        width: 100%;
+    }
+}
