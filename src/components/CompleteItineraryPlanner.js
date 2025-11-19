@@ -35,12 +35,6 @@ const CompleteItineraryPlanner = () => {
         budget: 3000000,
         travelStyle: 'standard',
         interests: ['food', 'photography', 'relaxation'],
-        specialActivities: {
-            sunrise: false,      // Ngắm bình minh
-            sunset: false,       // Ngắm hoàng hôn
-            nightMarket: false,  // Chợ đêm
-            nightlife: false     // Bar/pub/nightlife
-        },
         customDestinations: [] // Địa điểm do người dùng chọn
     });
     const [completeItinerary, setCompleteItinerary] = useState(null);
@@ -74,8 +68,7 @@ const CompleteItineraryPlanner = () => {
         { value: 'photography', name: 'Chụp ảnh', icon: '📸' },
         { value: 'adventure', name: 'Mạo hiểm', icon: '🏔️' },
         { value: 'relaxation', name: 'Thư giãn', icon: '🏖️' },
-        { value: 'shopping', name: 'Mua sắm', icon: '🛍️' },
-        { value: 'nightlife', name: 'Cuộc sống đêm', icon: '🌃' }
+        { value: 'shopping', name: 'Mua sắm', icon: '🛍️' }
     ];
 
     const handleInputChange = (field, value) => {
@@ -103,23 +96,7 @@ const CompleteItineraryPlanner = () => {
         }));
     };
 
-    const handleSpecialActivityToggle = (activity) => {
-        setPreferences(prev => ({
-            ...prev,
-            specialActivities: {
-                ...prev.specialActivities,
-                [activity]: !prev.specialActivities[activity]
-            }
-        }));
-        
-        // Auto-adjust start time if sunrise is selected
-        if (activity === 'sunrise' && !preferences.specialActivities.sunrise) {
-            setPreferences(prev => ({
-                ...prev,
-                startTime: '05:30'
-            }));
-        }
-    };
+
 
     const handleDestinationsConfirm = (destinations) => {
         setSelectedDestinations(destinations);
@@ -466,72 +443,6 @@ const CompleteItineraryPlanner = () => {
                                     <span className="name">{interest.name}</span>
                                 </div>
                             ))}
-                        </div>
-                    </div>
-
-                    <div className="form-section">
-                        <h3> Giờ bắt đầu hành trình</h3>
-                        <div className="input-group">
-                            <label>Thời gian bắt đầu hành trình du lịch</label>
-                            <input 
-                                type="time"
-                                value={preferences.startTime}
-                                onChange={(e) => handleInputChange('startTime', e.target.value)}
-                                className="time-input"
-                            />
-                            <small className="hint">
-                                {preferences.startTime < '06:00' ? '🌙 Bắt đầu rất sớm - tận dụng tối đa thời gian' :
-                                 preferences.startTime < '08:00' ? '🌅 Bắt đầu sớm - phù hợp ngắm bình minh' :
-                                 preferences.startTime < '10:00' ? '☀️ Bắt đầu bình thường - thời gian lý tưởng' :
-                                 preferences.startTime < '12:00' ? '⏰ Bắt đầu hơi muộn' :
-                                 '⚠️ Bắt đầu muộn - thời gian tham quan bị giới hạn'}
-                            </small>
-                        </div>
-                    </div>
-
-                    <div className="form-section">
-                        <h3> Hoạt động đặc biệt</h3>
-                        <div className="special-activities-grid-two-cols">
-                            <div 
-                                className={`activity-card ${preferences.specialActivities.sunrise ? 'selected' : ''}`}
-                                onClick={() => handleSpecialActivityToggle('sunrise')}
-                            >
-                                <span className="activity-icon">🌅</span>
-                                <div className="activity-info">
-                                    <h4>Ngắm bình minh</h4>
-                                    <p>Bắt đầu 05:30 - 06:00</p>
-                                </div>
-                            </div>
-                            <div 
-                                className={`activity-card ${preferences.specialActivities.sunset ? 'selected' : ''}`}
-                                onClick={() => handleSpecialActivityToggle('sunset')}
-                            >
-                                <span className="activity-icon">🌇</span>
-                                <div className="activity-info">
-                                    <h4>Ngắm hoàng hôn</h4>
-                                    <p>17:00 - 18:30</p>
-                                </div>
-                            </div>
-                            <div 
-                                className={`activity-card ${preferences.specialActivities.nightMarket ? 'selected' : ''}`}
-                                onClick={() => handleSpecialActivityToggle('nightMarket')}
-                            >
-                                <span className="activity-icon">🏮</span>
-                                <div className="activity-info">
-                                    <h4>Chợ đêm</h4>
-                                    <p>19:00 - 22:00</p>
-                                </div>
-                            </div>
-                            <div 
-                                className={`activity-card ${preferences.specialActivities.nightlife ? 'selected' : ''}`}
-                                onClick={() => handleSpecialActivityToggle('nightlife')}
-                            >
-                                <span className="activity-icon">🎉</span>
-                                <div className="activity-info">
-                                    <h4>Nightlife</h4>
-                                    <p>Bar, pub, rooftop</p>
-                                </div>
-                            </div>
                         </div>
                     </div>
 

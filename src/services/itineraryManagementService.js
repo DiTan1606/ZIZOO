@@ -35,11 +35,15 @@ export const getItineraryStatus = (itinerary) => {
  */
 export const updateItineraryStatus = async (userId, itineraryId, status, reason = null) => {
     try {
-        const itineraryRef = doc(db, 'users', userId, 'completeItineraries', itineraryId);
+        console.log('🔧 updateItineraryStatus called:', { userId, itineraryId, status, reason });
+        
+        // FIX: Lịch trình được lưu ở root collection 'complete_itineraries', không phải subcollection
+        const itineraryRef = doc(db, 'complete_itineraries', itineraryId);
+        console.log('📍 Firestore path:', itineraryRef.path);
         
         const updateData = {
             status,
-            updatedAt: Timestamp.now()
+            lastUpdated: Timestamp.now() // Sử dụng lastUpdated thay vì updatedAt để match với schema
         };
 
         // Nếu là cancelled, lưu lý do
@@ -53,12 +57,17 @@ export const updateItineraryStatus = async (userId, itineraryId, status, reason 
             updateData.completedAt = Timestamp.now();
         }
 
+        console.log('📝 Update data:', updateData);
+        
         await updateDoc(itineraryRef, updateData);
         
         console.log(`✅ Updated itinerary ${itineraryId} status to ${status}`);
         return true;
     } catch (error) {
         console.error('❌ Error updating itinerary status:', error);
+        console.error('❌ Error code:', error.code);
+        console.error('❌ Error message:', error.message);
+        console.error('❌ Details:', { userId, itineraryId, status, reason });
         throw error;
     }
 };

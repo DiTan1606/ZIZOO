@@ -185,3 +185,35 @@ export const DEFAULTS = {
     RADIUS: 30000, // 30km
     MAX_DESTINATIONS: 10
 };
+
+// Meal Costs by Travel Style
+export const MEAL_COSTS = {
+    budget: {
+        breakfast: { min: 20000, avg: 30000, max: 40000 },
+        lunch: { min: 30000, avg: 50000, max: 70000 },
+        dinner: { min: 40000, avg: 60000, max: 80000 },
+        streetFood: { min: 15000, avg: 25000, max: 35000 },
+        cafe: { min: 20000, avg: 30000, max: 40000 }
+    },
+    standard: {
+        breakfast: { min: 40000, avg: 60000, max: 80000 },
+        lunch: { min: 60000, avg: 100000, max: 150000 },
+        dinner: { min: 100000, avg: 150000, max: 200000 },
+        streetFood: { min: 25000, avg: 40000, max: 60000 },
+        cafe: { min: 30000, avg: 50000, max: 70000 }
+    },
+    comfort: {
+        breakfast: { min: 80000, avg: 120000, max: 180000 },
+        lunch: { min: 150000, avg: 250000, max: 400000 },
+        dinner: { min: 250000, avg: 400000, max: 600000 },
+        streetFood: { min: 40000, avg: 60000, max: 80000 },
+        cafe: { min: 50000, avg: 80000, max: 120000 }
+    },
+    luxury: {
+        breakfast: { min: 200000, avg: 350000, max: 500000 },
+        lunch: { min: 400000, avg: 700000, max: 1000000 },
+        dinner: { min: 800000, avg: 1200000, max: 2000000 },
+        streetFood: { min: 60000, avg: 100000, max: 150000 },
+        cafe: { min: 100000, avg: 150000, max: 250000 }
+    }
+};

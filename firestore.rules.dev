@@ -1,0 +1,37 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ============================================
+    // DEVELOPMENT MODE - OPEN ACCESS
+    // ============================================
+    // WARNING: Chỉ dùng cho development!
+    // Trước khi production, đổi lại rules strict
+    
+    match /complete_itineraries/{itineraryId} {
+      allow read, write: if request.auth != null;
+    }
+    
+    match /users/{userId}/{document=**} {
+      allow read, write: if request.auth != null;
+    }
+    
+    // Public read collections
+    match /{collection}/{doc} {
+      allow read: if collection in [
+        'mienbac_cleaned_diadiem',
+        'mientrung_cleaned_diadiem', 
+        'mientay_cleaned_diadiem',
+        'dongnambo_taynguyen_cleaned_diadiem',
+        'mienbac_cleaned_dacsan',
+        'mientrung_cleaned_dacsan',
+        'mientay_cleaned_dacsan',
+        'dongnambo_taynguyen_cleaned_dacsan',
+        'disaster_travel_data_cleaned_storms_cleaned',
+        'disaster_travel_data_cleaned_floods_cleaned',
+        'weather_monthly'
+      ];
+      allow write: if false;
+    }
+  }
+}

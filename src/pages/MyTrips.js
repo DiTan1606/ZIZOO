@@ -58,24 +58,58 @@ export default function MyTrips() {
 
     // Lọc trips theo status
     const getFilteredTrips = () => {
-        return completeTrips.filter(trip => {
+        const filtered = completeTrips.filter(trip => {
             const status = getItineraryStatus(trip);
+            
+            // Debug logging
+            if (trip.status) {
+                console.log(`📊 Trip ${trip.id}: DB status="${trip.status}", computed status="${status}"`);
+            }
+            
             if (activeTab === 'active') return status === 'active' || status === 'ongoing';
             if (activeTab === 'completed') return status === 'completed';
             if (activeTab === 'cancelled') return status === 'cancelled';
             return true;
         });
+        
+        console.log(`📋 Active tab: ${activeTab}, Filtered trips: ${filtered.length}/${completeTrips.length}`);
+        return filtered;
     };
 
     // Đánh dấu hoàn thành
     const handleMarkCompleted = async (tripId) => {
+        console.log('🔄 Marking trip as completed:', tripId);
+        console.log('🔄 Current user:', currentUser?.uid);
+        console.log('🔄 updateItineraryStatus function:', typeof updateItineraryStatus);
+        
         try {
-            await updateItineraryStatus(currentUser.uid, tripId, 'completed');
+            const result = await updateItineraryStatus(currentUser.uid, tripId, 'completed');
+            console.log('✅ Status updated in Firestore, result:', result);
+            
+            // Update local state immediately
+            setCompleteTrips(prev => prev.map(trip => 
+                trip.id === tripId 
+                    ? { ...trip, status: 'completed', completedAt: new Date() }
+                    : trip
+            ));
+            
             toast.success('✅ Đã đánh dấu chuyến đi hoàn thành!');
-            await refreshTrips();
+            
+            // Tự động chuyển sang tab "Đã hoàn thành"
+            setActiveTab('completed');
+            
+            // Refresh từ server sau 5s để đảm bảo Firestore đã sync
+            setTimeout(async () => {
+                await refreshTrips();
+                console.log('✅ Trips refreshed from server');
+            }, 5000);
         } catch (error) {
-            console.error('Error marking trip as completed:', error);
-            toast.error('Lỗi khi cập nhật trạng thái!');
+            console.error('❌ Error marking trip as completed:', error);
+            console.error('❌ Error stack:', error.stack);
+            toast.error('Lỗi khi cập nhật trạng thái: ' + error.message);
+            
+            // Rollback local state nếu có lỗi
+            await refreshTrips();
         }
     };
 
@@ -92,21 +126,50 @@ export default function MyTrips() {
             return;
         }
 
+        console.log('🔄 Cancelling trip:', tripToCancel.id);
+        console.log('🔄 Current user:', currentUser?.uid);
+        console.log('🔄 Cancel reason:', cancelReason);
+        console.log('🔄 updateItineraryStatus function:', typeof updateItineraryStatus);
+
         try {
-            await updateItineraryStatus(
+            const result = await updateItineraryStatus(
                 currentUser.uid, 
                 tripToCancel.id, 
                 'cancelled',
                 cancelReason
             );
+            console.log('✅ Status updated in Firestore, result:', result);
+            
+            // Update local state immediately
+            setCompleteTrips(prev => prev.map(trip => 
+                trip.id === tripToCancel.id 
+                    ? { ...trip, status: 'cancelled', cancelReason, cancelledAt: new Date() }
+                    : trip
+            ));
+            
             toast.success('✅ Đã hủy chuyến đi!');
             setShowCancelModal(false);
             setTripToCancel(null);
             setCancelReason('');
-            await refreshTrips();
+            
+            // Tự động chuyển sang tab "Đã hủy"
+            setActiveTab('cancelled');
+            
+            // Refresh từ server sau 5s để đảm bảo Firestore đã sync
+            setTimeout(async () => {
+                await refreshTrips();
+                console.log('✅ Trips refreshed from server');
+            }, 5000);
         } catch (error) {
-            console.error('Error cancelling trip:', error);
-            toast.error('Lỗi khi hủy chuyến đi!');
+            console.error('❌ Error cancelling trip:', error);
+            console.error('❌ Error stack:', error.stack);
+            toast.error('Lỗi khi hủy chuyến đi: ' + error.message);
+            
+            // Rollback local state nếu có lỗi
+            setShowCancelModal(false);
+            setTripToCancel(null);
+            setCancelReason('');
+            await refreshTrips();
         }
     };
 
@@ -196,7 +259,10 @@ export default function MyTrips() {
                     }`}
                     onClick={() => setActiveTab('active')}
                 >
-                    Đang hoạt động ({getFilteredTrips().length})
+                    🎯 Đang hoạt động ({completeTrips.filter(t => {
+                        const status = getItineraryStatus(t);
+                        return status === 'active' || status === 'ongoing';
+                    }).length})
                 </button>
                 <button
                     className={`flex-1 py-2 px-4 rounded-md font-medium transition-colors ${
