@@ -4549,12 +4549,6 @@ const generateEnhancedHourlySchedule = (dayNumber, destinations, restaurants, in
         }
     };
     
-    // Wrapper: Tính thời gian tiếp theo VÀ tự động skip working hours
-    const calculateNextTimeAndSkipWorking = (currentTime, duration) => {
-        const nextTime = calculateNextTime(currentTime, duration);
-        return getNextAvailableTime(nextTime);
-    };
-    
     // Thêm working locations vào schedule trước (nếu có)
     if (workingLocations && workingLocations.length > 0) {
         workingLocations.forEach(workLoc => {
