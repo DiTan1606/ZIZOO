@@ -1153,13 +1153,18 @@ export const getUserItineraries = async (userId) => {
                 tripName: data.header?.tripName || `Chuyến đi ${data.header?.destination?.main}`,
                 destination: data.header?.destination?.main,
                 startDate: data.header?.duration?.startDate,
+                endDate: data.header?.duration?.endDateISO,
                 duration: data.header?.duration?.days,
                 travelers: typeof data.header?.travelers === 'object' 
                     ? data.header.travelers?.total || data.header.travelers?.adults || 2 
                     : data.header?.travelers || 2,
                 budget: data.header?.budget?.total,
                 createdAt: data.createdAt,
-                status: 'active',
+                status: data.status || 'active', // ✅ Fetch từ Firestore, fallback 'active'
+                cancelReason: data.cancelReason,
+                cancelledAt: data.cancelledAt,
+                completedAt: data.completedAt,
+                lastUpdated: data.lastUpdated,
                 fullItinerary: data // Toàn bộ data lịch trình
             });
         });
@@ -2274,6 +2279,108 @@ const isPremiumAttraction = (name) => {
 };
 
 /**
+ * Nhóm các địa điểm cùng khu vực/tên tương tự
+ * VD: Vinpearl, VinWonders, Vinpearl Land = cùng 1 nhóm
+ */
+const ATTRACTION_GROUPS = {
+    // Nha Trang - Vinpearl group
+    'vinpearl_nhatrang': ['vinpearl', 'vinwonders', 'vin pearl', 'vin wonders', 'vinpearl land', 'vinpearl resort nha trang'],
+    
+    // Đà Nẵng - Bà Nà group
+    'bana_danang': ['bà nà', 'ba na', 'sun world', 'cầu vàng', 'golden bridge', 'ba na hills'],
+    
+    // Phú Quốc - Vinpearl group
+    'vinpearl_phuquoc': ['vinpearl safari', 'vinwonders phu quoc', 'vinpearl phu quoc', 'grand world'],
+    
+    // Hạ Long - Sun World group
+    'sunworld_halong': ['sun world halong', 'sun world ha long', 'queen cable car'],
+    
+    // Sapa - Fansipan group
+    'fansipan_sapa': ['fansipan', 'cáp treo fansipan', 'fansipan cable car', 'đỉnh fansipan'],
+    
+    // Vũng Tàu - Núi Nhỏ group
+    'nuinho_vungtau': ['tượng chúa', 'ngọn hải đăng', 'núi nhỏ', 'christ statue', 'lighthouse vung tau'],
+    
+    // Đà Lạt - Hồ group
+    'lake_dalat': ['hồ xuân hương', 'hồ than thở', 'hồ tuyền lâm', 'lake xuan huong']
+};
+
+/**
+ * Lấy nhóm của địa điểm (nếu có)
+ */
+const getAttractionGroup = (name) => {
+    if (!name) return null;
+    const lowerName = name.toLowerCase();
+    
+    for (const [groupId, keywords] of Object.entries(ATTRACTION_GROUPS)) {
+        if (keywords.some(keyword => lowerName.includes(keyword))) {
+            return groupId;
+        }
+    }
+    return null;
+};
+
+/**
+ * Kiểm tra 2 địa điểm có cùng nhóm không
+ */
+const isSameAttractionGroup = (name1, name2) => {
+    const group1 = getAttractionGroup(name1);
+    const group2 = getAttractionGroup(name2);
+    
+    if (!group1 || !group2) return false;
+    return group1 === group2;
+};
+
+/**
+ * Nhóm các nhà hàng cùng chuỗi/brand
+ */
+const RESTAURANT_CHAINS = [
+    // Chuỗi nhà hàng quốc tế
+    ['kfc', 'kentucky fried chicken'],
+    ['mcdonald', 'mcdonalds', 'mcdonald\'s'],
+    ['lotteria', 'lotte'],
+    ['pizza hut', 'pizza'],
+    ['starbucks', 'starbuck'],
+    ['highland', 'highlands coffee'],
+    ['phở 24', 'pho 24'],
+    ['cơm tấm', 'com tam'],
+    
+    // Chuỗi nhà hàng Việt Nam
+    ['golden gate', 'gogi', 'sumo bbq', 'kichi kichi', 'hotpot story'],
+    ['quán ăn ngon', 'quan an ngon'],
+    ['phở hòa', 'pho hoa'],
+    ['bún chả hương liên', 'bun cha huong lien'],
+    
+    // Chuỗi cafe
+    ['trung nguyên', 'trung nguyen'],
+    ['phúc long', 'phuc long'],
+    ['the coffee house', 'coffee house'],
+    ['cộng cà phê', 'cong ca phe']
+];
+
+/**
+ * Kiểm tra 2 nhà hàng có cùng chuỗi không
+ */
+const isSameRestaurantChain = (name1, name2) => {
+    if (!name1 || !name2) return false;
+    
+    const lower1 = name1.toLowerCase();
+    const lower2 = name2.toLowerCase();
+    
+    // Kiểm tra có cùng chuỗi không
+    for (const chain of RESTAURANT_CHAINS) {
+        const in1 = chain.some(keyword => lower1.includes(keyword));
+        const in2 = chain.some(keyword => lower2.includes(keyword));
+        
+        if (in1 && in2) {
+            return true; // Cùng chuỗi
+        }
+    }
+    
+    return false;
+};
+
+/**
  * Kiểm tra xem nhà hàng có phải là luxury không
  */
 const isLuxuryRestaurant = (name) => {
@@ -2748,10 +2855,23 @@ const diversifyDestinations = (destinations, dayNumber) => {
 
     console.log(`🔍 Day ${dayNumber}: Filtering ${destinations.length} destinations. Used so far:`, Array.from(usedDestinations).slice(0, 10));
     
-    // Lọc bỏ địa điểm đã dùng với fuzzy matching
+    // Lọc bỏ địa điểm đã dùng với fuzzy matching + group matching
     const availableDestinations = destinations.filter(dest => {
         const nameUsed = usedDestinations.has(dest.name);
         const idUsed = usedDestinations.has(dest.place_id);
+        
+        // QUAN TRỌNG: Kiểm tra nhóm địa điểm (Vinpearl, VinWonders = cùng nhóm)
+        const groupUsed = Array.from(usedDestinations).some(used => {
+            if (typeof used === 'string' && dest.name) {
+                return isSameAttractionGroup(dest.name, used);
+            }
+            return false;
+        });
+        
+        if (groupUsed) {
+            console.log(`⚠️ Skipping ${dest.name} - same group as used destination`);
+            return false;
+        }
         
         // Enhanced fuzzy matching để tránh địa điểm tương tự
         const similarUsed = Array.from(usedDestinations).some(used => {
@@ -3396,7 +3516,26 @@ const findRealRestaurantsForDay = async (destination, coord, travelStyle) => {
         
         // Breakfast - ưu tiên nhà hàng chưa dùng, tính giá theo travelStyle
         const styleCosts = MEAL_COSTS[travelStyle] || MEAL_COSTS.standard;
-        const availableForBreakfast = shuffledRestaurants.filter(r => !usedRestaurants.has(r.name));
+        const availableForBreakfast = shuffledRestaurants.filter(r => {
+            // Check đã dùng chưa
+            if (usedRestaurants.has(r.name)) return false;
+            
+            // Check cùng chuỗi với nhà hàng đã dùng chưa
+            const sameChainUsed = Array.from(usedRestaurants).some(used => {
+                if (typeof used === 'string') {
+                    return isSameRestaurantChain(r.name, used);
+                }
+                return false;
+            });
+            
+            if (sameChainUsed) {
+                console.log(`⚠️ Skipping ${r.name} - same chain as used restaurant`);
+                return false;
+            }
+            
+            return true;
+        });
+        
         if (availableForBreakfast.length > 0) {
             const selected = availableForBreakfast[0];
             const estimatedCost = estimateMealCostFromPriceLevel(selected.price_level, 'breakfast', travelStyle);
@@ -3424,7 +3563,19 @@ const findRealRestaurantsForDay = async (destination, coord, travelStyle) => {
         }
         
         // Lunch - ưu tiên nhà hàng khác, tính giá theo travelStyle
-        const availableForLunch = shuffledRestaurants.filter(r => !usedRestaurants.has(r.name));
+        const availableForLunch = shuffledRestaurants.filter(r => {
+            if (usedRestaurants.has(r.name)) return false;
+            
+            const sameChainUsed = Array.from(usedRestaurants).some(used => {
+                if (typeof used === 'string') {
+                    return isSameRestaurantChain(r.name, used);
+                }
+                return false;
+            });
+            
+            return !sameChainUsed;
+        });
+        
         if (availableForLunch.length > 0) {
             const selected = availableForLunch[0];
             const estimatedCost = estimateMealCostFromPriceLevel(selected.price_level, 'lunch', travelStyle);
@@ -3452,7 +3603,19 @@ const findRealRestaurantsForDay = async (destination, coord, travelStyle) => {
         }
         
         // Dinner - ưu tiên nhà hàng khác nữa, tính giá theo travelStyle
-        const availableForDinner = shuffledRestaurants.filter(r => !usedRestaurants.has(r.name));
+        const availableForDinner = shuffledRestaurants.filter(r => {
+            if (usedRestaurants.has(r.name)) return false;
+            
+            const sameChainUsed = Array.from(usedRestaurants).some(used => {
+                if (typeof used === 'string') {
+                    return isSameRestaurantChain(r.name, used);
+                }
+                return false;
+            });
+            
+            return !sameChainUsed;
+        });
+        
         if (availableForDinner.length > 0) {
             const selected = availableForDinner[0];
             const estimatedCost = estimateMealCostFromPriceLevel(selected.price_level, 'dinner', travelStyle);

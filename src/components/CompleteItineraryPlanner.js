@@ -441,28 +441,6 @@ const CompleteItineraryPlanner = () => {
                         </div>
                     </div>
 
-                    <div className="form-section">
-                        <h3>⏰ Giờ bắt đầu hành trình</h3>
-                        <div className="input-group">
-                            <label>Thời gian bắt đầu hành trình du lịch</label>
-                            <input 
-                                type="time"
-                                value={preferences.startTime}
-                                onChange={(e) => handleInputChange('startTime', e.target.value)}
-                                className="time-input"
-                            />
-                            <small className="hint">
-                                {preferences.startTime < '06:00' ? '🌙 Bắt đầu rất sớm - tận dụng tối đa thời gian' :
-                                 preferences.startTime < '08:00' ? '🌅 Bắt đầu sớm - thời gian tốt' :
-                                 preferences.startTime < '10:00' ? '☀️ Bắt đầu bình thường - thời gian lý tưởng' :
-                                 preferences.startTime < '12:00' ? '⏰ Bắt đầu hơi muộn' :
-                                 '⚠️ Bắt đầu muộn - thời gian tham quan bị giới hạn'}
-                            </small>
-                        </div>
-                    </div>
-
-
-
                     <div className="form-actions">
                         <button 
                             className="next-btn"
