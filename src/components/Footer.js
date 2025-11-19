@@ -12,14 +12,14 @@ const Footer = () => {
                             <span className="icon">✉</span>
                             <div>
                                 <strong>Email</strong>
-                                <p>support@zizoo.travel</p>
+                                <p>thezoo263@gmail.com</p>
                             </div>
                         </div>
                         <div className="contact-item">
                             <span className="icon">☎</span>
                             <div>
                                 <strong>Hotline</strong>
-                                <p>1900 1234 (miễn phí)</p>
+                                <p>0706 522 922</p>
                             </div>
                         </div>
                     </div>
@@ -27,7 +27,7 @@ const Footer = () => {
                     <div className="footer-section">
                         <h3>Văn phòng</h3>
                         <p>
-                            Tầng 10, Tòa nhà ABC<br/>
+                            456, Tòa nhà ABC<br/>
                             123 Đường Nguyễn Huệ<br/>
                             Quận 1, TP. Hồ Chí Minh
                         </p>
@@ -46,7 +46,6 @@ const Footer = () => {
                         <h3>Ngôn ngữ hỗ trợ</h3>
                         <p>
                             Tiếng Việt • English<br/>
-                            中文 • 한국어
                         </p>
                     </div>
                 </div>

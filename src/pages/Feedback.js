@@ -146,37 +146,19 @@ const Feedback = () => {
                         <h2>• Tại sao phản hồi quan trọng?</h2>
                         <div className="info-cards">
                             <div className="info-card">
-                                <div className="card-icon">+</div>
+                                <img src={require('../icon/ctsp.png')} alt="Cải thiện sản phẩm" className="card-icon-img" />
                                 <h3>Cải thiện sản phẩm</h3>
                                 <p>Phản hồi của bạn giúp chúng tôi phát triển tính năng mới và cải thiện trải nghiệm người dùng.</p>
                             </div>
                             <div className="info-card">
-                                <div className="card-icon">⚠</div>
+                                <img src={require('../icon/slnc.png')} alt="Sửa lỗi nhanh chóng" className="card-icon-img" />
                                 <h3>Sửa lỗi nhanh chóng</h3>
                                 <p>Báo cáo lỗi giúp chúng tôi phát hiện và khắc phục sự cố một cách nhanh chóng.</p>
                             </div>
                             <div className="info-card">
-                                <div className="card-icon">★</div>
+                                <img src={require('../icon/ytm.png')} alt="Ý tưởng mới" className="card-icon-img" />
                                 <h3>Ý tưởng mới</h3>
                                 <p>Đề xuất tính năng mới từ bạn có thể trở thành reality trong phiên bản tiếp theo.</p>
-                            </div>
-                        </div>
-
-                        <div className="feedback-stats">
-                            <h3>• Thống kê phản hồi</h3>
-                            <div className="stats-grid">
-                                <div className="stat-item">
-                                    <span className="stat-number">1,247</span>
-                                    <span className="stat-label">Phản hồi đã nhận</span>
-                                </div>
-                                <div className="stat-item">
-                                    <span className="stat-number">89%</span>
-                                    <span className="stat-label">Được xử lý trong 24h</span>
-                                </div>
-                                <div className="stat-item">
-                                    <span className="stat-number">156</span>
-                                    <span className="stat-label">Tính năng đã cải thiện</span>
-                                </div>
                             </div>
                         </div>
                     </div>

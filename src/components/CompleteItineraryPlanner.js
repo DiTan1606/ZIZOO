@@ -6,6 +6,9 @@ import { toast } from 'react-toastify';
 import { createCompleteItinerary } from '../services/completeItineraryService';
 import ItineraryAlertsPanel from './ItineraryAlertsPanel';
 import DestinationSelector from './DestinationSelector';
+import TripTypeSelector from './TripTypeSelector';
+import WorkingLocationForm from './WorkingLocationForm';
+import { WorkingLocation } from '../models/workingLocation';
 import './CompleteItineraryPlanner.css';
 
 // Import icons
@@ -18,6 +21,8 @@ const CompleteItineraryPlanner = () => {
     const [step, setStep] = useState(1);
     const [loading, setLoading] = useState(false);
     const [selectedDestinations, setSelectedDestinations] = useState([]);
+    const [tripType, setTripType] = useState('pure-travel');
+    const [showWorkingForm, setShowWorkingForm] = useState(false);
     // Get tomorrow's date for default
     const getTomorrowDate = () => {
         const tomorrow = new Date();
@@ -26,6 +31,7 @@ const CompleteItineraryPlanner = () => {
     };
 
     const [preferences, setPreferences] = useState({
+        tripType: 'pure-travel',
         destination: 'Vũng Tàu',
         departureCity: 'Hồ Chí Minh',
         startDate: getTomorrowDate(),
@@ -41,7 +47,8 @@ const CompleteItineraryPlanner = () => {
             nightMarket: false,  // Chợ đêm
             nightlife: false     // Bar/pub/nightlife
         },
-        customDestinations: [] // Địa điểm do người dùng chọn
+        customDestinations: [], // Địa điểm do người dùng chọn
+        workingLocations: [] // Địa điểm làm việc
     });
     const [completeItinerary, setCompleteItinerary] = useState(null);
     const [selectedDepartureFlight, setSelectedDepartureFlight] = useState(null);
@@ -128,6 +135,60 @@ const CompleteItineraryPlanner = () => {
             customDestinations: destinations
         }));
         setStep(3); // Chuyển sang bước xác nhận
+    };
+
+    // Handler cho trip type
+    const handleTripTypeChange = (type) => {
+        setTripType(type);
+        setPreferences(prev => ({
+            ...prev,
+            tripType: type,
+            workingLocations: type === 'pure-travel' ? [] : prev.workingLocations
+        }));
+    };
+
+    // Helper function để lấy danh sách ngày
+    const getTripDates = () => {
+        const dates = [];
+        const start = new Date(preferences.startDate);
+        for (let i = 0; i < preferences.duration; i++) {
+            const date = new Date(start);
+            date.setDate(start.getDate() + i);
+            dates.push(date.toISOString().split('T')[0]);
+        }
+        return dates;
+    };
+
+    // Handler thêm working location
+    const handleAddWorkingLocation = (formData) => {
+        try {
+            const newLocation = new WorkingLocation(formData);
+            const validation = newLocation.validate();
+            
+            if (!validation.isValid) {
+                toast.error(validation.errors.join(', '));
+                return;
+            }
+            
+            setPreferences(prev => ({
+                ...prev,
+                workingLocations: [...prev.workingLocations, newLocation.toJSON()]
+            }));
+            
+            setShowWorkingForm(false);
+            toast.success('✅ Đã thêm địa điểm làm việc!');
+        } catch (error) {
+            toast.error('Lỗi: ' + error.message);
+        }
+    };
+
+    // Handler xóa working location
+    const handleRemoveWorkingLocation = (index) => {
+        setPreferences(prev => ({
+            ...prev,
+            workingLocations: prev.workingLocations.filter((_, i) => i !== index)
+        }));
+        toast.success('Đã xóa địa điểm làm việc!');
     };
 
     const generateItinerary = async () => {
@@ -286,7 +347,7 @@ const CompleteItineraryPlanner = () => {
 
                 <div className="form-container">
                     <div className="form-section">
-                        <h3> Thông tin cơ bản</h3>
+                        <h3>📋 Thông tin cơ bản</h3>
                         <div className="form-row-two-cols">
                             <div className="form-group">
                                 <label>Điểm khởi hành</label>
@@ -533,6 +594,101 @@ const CompleteItineraryPlanner = () => {
                                 </div>
                             </div>
                         </div>
+                    </div>
+
+                    {/* Trip Type Selector - Đã di chuyển xuống đây */}
+                    <div className="form-section">
+                        <TripTypeSelector 
+                            selectedType={tripType}
+                            onTypeChange={handleTripTypeChange}
+                        />
+
+                        {/* Working Locations Section - Chỉ hiện khi chọn Công tác + Du lịch */}
+                        {tripType === 'business-travel' && (
+                            <div className="working-locations-section" style={{
+                                marginTop: '25px',
+                                padding: '20px',
+                                background: 'rgba(102, 126, 234, 0.05)',
+                                borderRadius: '12px',
+                                border: '2px dashed rgba(102, 126, 234, 0.3)'
+                            }}>
+                                <h4 style={{ marginBottom: '15px', color: '#2c3e50' }}>
+                                    💼 Địa điểm làm việc
+                                </h4>
+                                
+                                {/* Danh sách working locations */}
+                                {preferences.workingLocations.length > 0 && (
+                                    <div style={{ marginBottom: '15px' }}>
+                                        {preferences.workingLocations.map((loc, index) => (
+                                            <div key={index} style={{
+                                                display: 'flex',
+                                                justifyContent: 'space-between',
+                                                alignItems: 'center',
+                                                padding: '12px 15px',
+                                                background: 'white',
+                                                borderRadius: '8px',
+                                                marginBottom: '10px',
+                                                border: '1px solid #e8ecf1'
+                                            }}>
+                                                <div>
+                                                    <strong style={{ color: '#2c3e50' }}>{loc.name}</strong>
+                                                    <div style={{ fontSize: '0.9rem', color: '#666', marginTop: '4px' }}>
+                                                        ⏰ {loc.startTime} - {loc.endTime} | 
+                                                        📅 {loc.isAllDays 
+                                                            ? ' Tất cả các ngày' 
+                                                            : ` ${loc.workingDays.length} ngày`}
+                                                    </div>
+                                                </div>
+                                                <button 
+                                                    onClick={() => handleRemoveWorkingLocation(index)}
+                                                    style={{
+                                                        background: '#ff4444',
+                                                        color: 'white',
+                                                        border: 'none',
+                                                        borderRadius: '50%',
+                                                        width: '28px',
+                                                        height: '28px',
+                                                        cursor: 'pointer',
+                                                        fontSize: '16px'
+                                                    }}
+                                                >
+                                                    ✕
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                                
+                                {/* Button thêm */}
+                                {!showWorkingForm && (
+                                    <button 
+                                        onClick={() => setShowWorkingForm(true)}
+                                        style={{
+                                            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                                            color: 'white',
+                                            border: 'none',
+                                            padding: '12px 24px',
+                                            borderRadius: '8px',
+                                            cursor: 'pointer',
+                                            fontSize: '1rem',
+                                            fontWeight: '600',
+                                            width: '100%'
+                                        }}
+                                    >
+                                        + Thêm địa điểm làm việc
+                                    </button>
+                                )}
+                                
+                                {/* Form */}
+                                {showWorkingForm && (
+                                    <WorkingLocationForm
+                                        tripDates={getTripDates()}
+                                        onAddWorkingLocation={handleAddWorkingLocation}
+                                        onCancel={() => setShowWorkingForm(false)}
+                                    />
+                                )}
+                            </div>
+                        )}
                     </div>
 
                     <div className="form-actions">
@@ -831,7 +987,7 @@ const CompleteItineraryPlanner = () => {
                                 <h4>🚗 Phương tiện di chuyển</h4>
                                 <div className="cost-details">
                                     <div className="cost-item">
-                                        <span>Vé khứ hồi ({completeItinerary.transport.intercity.departure.recommended.type})</span>
+                                        <span>Vé khứ hồi ({completeItinerary.transport?.intercity?.departure?.recommended?.type || 'N/A'})</span>
                                         <span>{formatMoney(completeItinerary.costBreakdown.transport.intercity)}</span>
                                     </div>
                                     <div className="cost-item">
@@ -849,7 +1005,7 @@ const CompleteItineraryPlanner = () => {
                                 <h4>🏨 Lưu trú</h4>
                                 <div className="cost-details">
                                     <div className="cost-item">
-                                        <span>{completeItinerary.costBreakdown.accommodation.type} ({completeItinerary.costBreakdown.accommodation.nights} đêm)</span>
+                                        <span>{completeItinerary.costBreakdown?.accommodation?.type || 'Khách sạn'} ({completeItinerary.costBreakdown?.accommodation?.nights || 0} đêm)</span>
                                         <span>{formatMoney(completeItinerary.costBreakdown.accommodation.total)}</span>
                                     </div>
                                 </div>
@@ -913,12 +1069,13 @@ const CompleteItineraryPlanner = () => {
                                 <p><strong>📅 Ngày:</strong> {completeItinerary.transport.intercity.departure.date}</p>
                                 
                                 {/* Hiển thị TẤT CẢ các options để chọn */}
-                                {completeItinerary.transport.intercity.departure.options && completeItinerary.transport.intercity.departure.options.length > 0 && (
+                                {completeItinerary.transport?.intercity?.departure?.options && completeItinerary.transport.intercity.departure.options.length > 0 && (
                                     <div className="flights-selection">
                                         <p><strong>Chọn phương tiện:</strong></p>
                                         <div className="flights-grid">
                                             {completeItinerary.transport.intercity.departure.options.map((option, idx) => {
-                                                const currentSelected = selectedDepartureFlight || completeItinerary.transport.intercity.departure.recommended;
+                                                if (!option) return null;
+                                                const currentSelected = selectedDepartureFlight || completeItinerary.transport?.intercity?.departure?.recommended || {};
                                                 
                                                 // So sánh chính xác: ưu tiên flightNumber, sau đó company
                                                 let isSelected = false;
@@ -930,8 +1087,8 @@ const CompleteItineraryPlanner = () => {
                                                     isSelected = option.provider === currentSelected.provider;
                                                 }
                                                 
-                                                const isFlight = option.type === 'flight';
-                                                const displayName = option.provider || option.company || option.name;
+                                                const isFlight = option?.type === 'flight';
+                                                const displayName = option?.provider || option?.company || option?.name || 'N/A';
                                                 
                                                 return (
                                                     <div 
@@ -962,12 +1119,13 @@ const CompleteItineraryPlanner = () => {
                                 <p><strong>📅 Ngày:</strong> {completeItinerary.transport.intercity.return.date}</p>
                                 
                                 {/* Hiển thị TẤT CẢ các options để chọn */}
-                                {completeItinerary.transport.intercity.return.options && completeItinerary.transport.intercity.return.options.length > 0 && (
+                                {completeItinerary.transport?.intercity?.return?.options && completeItinerary.transport.intercity.return.options.length > 0 && (
                                     <div className="flights-selection">
                                         <p><strong>Chọn phương tiện:</strong></p>
                                         <div className="flights-grid">
                                             {completeItinerary.transport.intercity.return.options.map((option, idx) => {
-                                                const currentSelected = selectedReturnFlight || completeItinerary.transport.intercity.return.recommended;
+                                                if (!option) return null;
+                                                const currentSelected = selectedReturnFlight || completeItinerary.transport?.intercity?.return?.recommended || {};
                                                 
                                                 // So sánh chính xác: ưu tiên flightNumber, sau đó company
                                                 let isSelected = false;
@@ -979,8 +1137,8 @@ const CompleteItineraryPlanner = () => {
                                                     isSelected = option.provider === currentSelected.provider;
                                                 }
                                                 
-                                                const isFlight = option.type === 'flight';
-                                                const displayName = option.provider || option.company || option.name;
+                                                const isFlight = option?.type === 'flight';
+                                                const displayName = option?.provider || option?.company || option?.name || 'N/A';
                                                 
                                                 return (
                                                     <div 
@@ -1008,7 +1166,7 @@ const CompleteItineraryPlanner = () => {
                             {/* Di chuyển địa phương */}
                             <div className="transport-category">
                                 <h4>Di chuyển tại {completeItinerary.header.destination.main}</h4>
-                                <p><strong>Khuyến nghị:</strong> {completeItinerary.transport.local.recommended.name || completeItinerary.transport.local.recommended.type}</p>
+                                <p><strong>Khuyến nghị:</strong> {completeItinerary.transport?.local?.recommended?.name || completeItinerary.transport?.local?.recommended?.type || 'N/A'}</p>
                                 <p><strong>Chi phí:</strong> {formatMoney(completeItinerary.transport.local.recommended.costPerDay)}/ngày</p>
                                 {completeItinerary.transport.local.apps && completeItinerary.transport.local.apps.length > 0 && (
                                     <div className="transport-apps">
