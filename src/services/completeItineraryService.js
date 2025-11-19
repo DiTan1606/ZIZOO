@@ -3,7 +3,7 @@ import { db } from '../firebase';
 import { collection, addDoc, getDocs, query, where, orderBy, getDoc, doc, deleteDoc } from 'firebase/firestore';
 import { searchPlacesByText, searchNearbyPlaces } from './placesService';
 import { get7DayWeatherForecast } from './weatherService';
-import { findRealPlacesByCategory, findRealRestaurants, getRealWeatherForItinerary, findNightlifeVenues } from './realTimeDataService';
+import { findRealPlacesByCategory, findRealRestaurants, getRealWeatherForItinerary, findNightlifeVenues, findLocalFoodVenues } from './realTimeDataService';
 import { startItineraryMonitoring } from './alertsAndAdjustmentsService';
 import provinceCoords from '../assets/provinceCoord.json';
 import { TRAVEL_STYLES, ACCOMMODATION_TYPES, TRANSPORT_OPTIONS, MEAL_COSTS } from '../constants';
@@ -14,6 +14,33 @@ import amadeusService from './amadeusService';
  * Service tạo lịch trình du lịch hoàn chỉnh theo cấu trúc chuẩn
  * Bao gồm: Header, Daily Itinerary, Chi phí, Phương tiện, Lưu trú, Packing list, Lưu ý, Bản đồ
  */
+
+/**
+ * Tính thời gian tiếp theo dựa trên thời gian hiện tại + duration
+ */
+const calculateNextTime = (currentTime, durationStr) => {
+    const [hours, minutes] = currentTime.split(':').map(Number);
+    
+    // Parse duration (ví dụ: "45 phút", "1-2 giờ", "1.5 giờ")
+    let durationMinutes = 60; // default
+    
+    if (durationStr.includes('phút')) {
+        const match = durationStr.match(/(\d+)\s*phút/);
+        if (match) durationMinutes = parseInt(match[1]);
+    } else if (durationStr.includes('giờ')) {
+        const match = durationStr.match(/([\d.]+)(?:-[\d.]+)?\s*giờ/);
+        if (match) {
+            const hourValue = parseFloat(match[1]);
+            durationMinutes = hourValue * 60;
+        }
+    }
+    
+    const totalMinutes = hours * 60 + minutes + durationMinutes;
+    const newHours = Math.floor(totalMinutes / 60) % 24;
+    const newMinutes = totalMinutes % 60;
+    
+    return `${newHours.toString().padStart(2, '0')}:${newMinutes.toString().padStart(2, '0')}`;
+};
 
 /**
  * Tạo lịch trình du lịch hoàn chỉnh
@@ -270,6 +297,15 @@ const generateSingleDayPlan = async (
         // Tìm nhà hàng ĐA DẠNG
         const restaurants = await findRealRestaurantsForDay(destination, coord, travelStyle);
         
+        // Tìm quán ăn địa phương nếu user quan tâm food
+        let localFoodVenues = [];
+        if (interests.includes('food')) {
+            localFoodVenues = await findLocalFoodVenues(destination, coord, travelStyle);
+            console.log(`🍜 Found ${localFoodVenues.length} local food venues for day ${dayNumber}`);
+            // Thêm vào danh sách nhà hàng
+            restaurants.localFood = localFoodVenues;
+        }
+        
         // Tìm nightlife venues nếu user quan tâm
         let nightlifeVenues = [];
         if (interests.includes('nightlife')) {
@@ -277,7 +313,7 @@ const generateSingleDayPlan = async (
             console.log(`🌃 Found ${nightlifeVenues.length} nightlife venues for day ${dayNumber}`);
         }
         
-        // Thêm nightlife venues vào restaurants object
+        // Thêm venues vào restaurants object
         restaurants.nightlife = nightlifeVenues;
         
         // Tạo lịch trình theo giờ phong phú
@@ -2551,33 +2587,109 @@ const getFallbackRestaurants = (destination) => {
     };
 };
 
+/**
+ * Tối ưu hóa lộ trình trong ngày bằng Nearest Neighbor + 2-opt
+ * Đảm bảo các điểm gần nhau được sắp xếp liên tiếp
+ */
 const optimizeDayRoute = (destinations) => {
     if (destinations.length <= 1) return destinations;
     
-    // Simple optimization: sort by proximity
-    const optimized = [destinations[0]];
-    const remaining = destinations.slice(1);
+    console.log(`🗺️ Optimizing ${destinations.length} destinations...`);
     
-    while (remaining.length > 0) {
-        const last = optimized[optimized.length - 1];
-        let nearestIndex = 0;
-        let minDistance = Infinity;
-        
-        remaining.forEach((dest, index) => {
-            const distance = calculateDistance(
-                { lat: last.lat || 0, lng: last.lng || 0 },
-                { lat: dest.lat || 0, lng: dest.lng || 0 }
+    // Tạo ma trận khoảng cách
+    const n = destinations.length;
+    const distanceMatrix = Array(n).fill(null).map(() => Array(n).fill(0));
+    
+    for (let i = 0; i < n; i++) {
+        for (let j = i + 1; j < n; j++) {
+            const dist = calculateDistance(
+                { lat: destinations[i].lat || 0, lng: destinations[i].lng || 0 },
+                { lat: destinations[j].lat || 0, lng: destinations[j].lng || 0 }
             );
-            if (distance < minDistance) {
-                minDistance = distance;
-                nearestIndex = index;
-            }
-        });
-        
-        optimized.push(remaining.splice(nearestIndex, 1)[0]);
+            distanceMatrix[i][j] = dist;
+            distanceMatrix[j][i] = dist;
+        }
     }
     
-    return optimized;
+    // Nearest Neighbor từ điểm đầu tiên
+    const visited = new Set();
+    const optimized = [];
+    let current = 0;
+    
+    visited.add(current);
+    optimized.push(destinations[current]);
+    
+    while (visited.size < n) {
+        let nearest = -1;
+        let minDist = Infinity;
+        
+        for (let i = 0; i < n; i++) {
+            if (!visited.has(i) && distanceMatrix[current][i] < minDist) {
+                minDist = distanceMatrix[current][i];
+                nearest = i;
+            }
+        }
+        
+        if (nearest !== -1) {
+            visited.add(nearest);
+            optimized.push(destinations[nearest]);
+            current = nearest;
+        }
+    }
+    
+    // Áp dụng 2-opt để cải thiện thêm
+    const finalRoute = apply2OptLocal(optimized, distanceMatrix, destinations);
+    
+    const originalDist = calculateTotalDistance(destinations);
+    const optimizedDist = calculateTotalDistance(finalRoute);
+    const saved = ((originalDist - optimizedDist) / originalDist * 100).toFixed(1);
+    
+    console.log(`✅ Route optimized! Distance saved: ${saved}%`);
+    console.log(`   Route: ${finalRoute.map(d => d.name).join(' → ')}`);
+    
+    return finalRoute;
+};
+
+/**
+ * 2-opt optimization cục bộ
+ */
+const apply2OptLocal = (route, distanceMatrix, originalDestinations) => {
+    if (route.length <= 3) return route;
+    
+    let improved = true;
+    let optimizedRoute = [...route];
+    let iterations = 0;
+    
+    while (improved && iterations < 50) {
+        improved = false;
+        iterations++;
+        
+        for (let i = 1; i < optimizedRoute.length - 2; i++) {
+            for (let j = i + 1; j < optimizedRoute.length - 1; j++) {
+                const idx_i = originalDestinations.indexOf(optimizedRoute[i]);
+                const idx_i_prev = originalDestinations.indexOf(optimizedRoute[i - 1]);
+                const idx_j = originalDestinations.indexOf(optimizedRoute[j]);
+                const idx_j_next = originalDestinations.indexOf(optimizedRoute[j + 1]);
+                
+                if (idx_i === -1 || idx_i_prev === -1 || idx_j === -1 || idx_j_next === -1) continue;
+                
+                const currentDist = distanceMatrix[idx_i_prev][idx_i] + distanceMatrix[idx_j][idx_j_next];
+                const newDist = distanceMatrix[idx_i_prev][idx_j] + distanceMatrix[idx_i][idx_j_next];
+                
+                if (newDist < currentDist - 0.01) { // Threshold để tránh floating point issues
+                    const newRoute = [
+                        ...optimizedRoute.slice(0, i),
+                        ...optimizedRoute.slice(i, j + 1).reverse(),
+                        ...optimizedRoute.slice(j + 1)
+                    ];
+                    optimizedRoute = newRoute;
+                    improved = true;
+                }
+            }
+        }
+    }
+    
+    return optimizedRoute;
 };
 
 const calculateDistance = (point1, point2) => {
@@ -2876,8 +2988,8 @@ const findRealDestinationsForDay = async (dayNumber, destination, coord, interes
                         
                         googlePlacesDestinations.push(...formattedResults);
                         
-                        // Lấy đủ địa điểm cho mỗi ngày
-                        if (googlePlacesDestinations.length >= 10) {
+                        // Lấy nhiều địa điểm hơn để có nhiều lựa chọn cho route optimization
+                        if (googlePlacesDestinations.length >= 20) {
                             break;
                         }
                     }
@@ -2990,9 +3102,9 @@ const diversifyDestinations = (destinations, dayNumber) => {
         byCategory[category].push(dest);
     });
 
-    // Chọn đa dạng theo ngày - tăng số lượng địa điểm
+    // Chọn đa dạng theo ngày - tăng số lượng địa điểm lên 5-6
     const selected = [];
-    const targetCount = Math.min(dayNumber === 1 ? 3 : 4, availableDestinations.length);
+    const targetCount = Math.min(dayNumber === 1 ? 4 : 6, availableDestinations.length);
     
     // Shuffle để tăng tính ngẫu nhiên
     const shuffled = [...availableDestinations].sort(() => 0.5 - Math.random());
@@ -4299,119 +4411,323 @@ const generateEnhancedDayTheme = (dayNumber, destinations, interests, destinatio
  * @param {string} departureTime - Giờ bắt đầu (giả định đã đến nơi)
  * @param {Object} specialActivities - Hoạt động đặc biệt
  */
+/**
+ * Tạo lịch trình theo giờ với thời gian động và hợp lý
+ * Ngày 1: Dùng departureTime (giờ bắt đầu hành trình)
+ * Ngày 2+: Bắt đầu từ 7:00 (ăn sáng)
+ */
 const generateEnhancedHourlySchedule = (dayNumber, destinations, restaurants, interests, departureTime = '08:00', specialActivities = {}) => {
     const schedule = [];
+    let currentTime = '';
     
-    // Giả định người dùng đã đến nơi, bắt đầu từ departureTime
+    // ===== NGÀY 1: Logic đặc biệt =====
     if (dayNumber === 1) {
-        // Ngày đầu - Check-in
-        schedule.push({
-            time: departureTime,
-            activity: `Check-in khách sạn, chuẩn bị`,
-            type: 'accommodation',
-            duration: '30 phút',
-            notes: ['Nhận phòng', 'Để hành lý', 'Nghỉ ngơi ngắn'],
-            realData: true
-        });
-    } else {
-        // Ngày 2+ - Ăn sáng
+        // Bắt đầu hành trình từ departureTime
+        currentTime = departureTime;
+        const [startHour] = departureTime.split(':').map(Number);
+        
+        // Nếu đến sớm (< 12:00), tham quan trước khi check-in
+        if (startHour < 12) {
+            // Ăn sáng nếu đến trước 10:00
+            if (startHour < 10 && restaurants.breakfast) {
+                schedule.push({
+                    time: currentTime,
+                    activity: `Ăn sáng tại ${restaurants.breakfast.name}`,
+                    type: 'meal',
+                    duration: '45 phút',
+                    location: restaurants.breakfast,
+                    specialty: restaurants.breakfast.specialty,
+                    estimatedCost: restaurants.breakfast.estimatedCost,
+                    notes: ['Bắt đầu hành trình với bữa sáng ngon'],
+                    realData: true
+                });
+                currentTime = calculateNextTime(currentTime, '45 phút');
+            }
+            
+            // Tham quan 1-2 địa điểm trước check-in
+            const morningDests = destinations.slice(0, Math.min(2, destinations.length));
+            morningDests.forEach(dest => {
+                schedule.push({
+                    time: currentTime,
+                    activity: `Tham quan ${dest.name}`,
+                    type: 'sightseeing',
+                    duration: dest.estimatedDuration || '1-2 giờ',
+                    location: dest,
+                    entryFee: dest.entryFee,
+                    notes: ['Khám phá trước khi check-in'],
+                    realData: true
+                });
+                currentTime = calculateNextTime(currentTime, dest.estimatedDuration || '1.5 giờ');
+            });
+            
+            // Check-in khách sạn lúc 12:30
+            schedule.push({
+                time: '12:30',
+                activity: 'Check-in khách sạn',
+                type: 'accommodation',
+                duration: '30 phút',
+                notes: ['Nhận phòng', 'Để hành lý', 'Nghỉ ngơi'],
+                realData: true
+            });
+            currentTime = '13:00';
+            
+            // Ăn trưa
+            const lunchVenue = (restaurants.localFood && restaurants.localFood.length > 0) 
+                ? restaurants.localFood[0] 
+                : restaurants.lunch;
+            
+            if (lunchVenue) {
+                schedule.push({
+                    time: currentTime,
+                    activity: `Ăn trưa tại ${lunchVenue.name}`,
+                    type: 'meal',
+                    duration: '1 giờ',
+                    location: lunchVenue,
+                    specialty: lunchVenue.specialty,
+                    estimatedCost: lunchVenue.estimatedCost,
+                    realData: true
+                });
+                currentTime = '14:00';
+            }
+            
+            // Tham quan các địa điểm còn lại buổi chiều
+            const afternoonDests = destinations.slice(morningDests.length);
+            afternoonDests.forEach((dest, index) => {
+                schedule.push({
+                    time: currentTime,
+                    activity: `Tham quan ${dest.name}`,
+                    type: 'sightseeing',
+                    duration: dest.estimatedDuration || '1-2 giờ',
+                    location: dest,
+                    entryFee: dest.entryFee,
+                    realData: true
+                });
+                currentTime = calculateNextTime(currentTime, dest.estimatedDuration || '1.5 giờ');
+                
+                // Nghỉ giữa các điểm
+                if (index < afternoonDests.length - 1) {
+                    currentTime = calculateNextTime(currentTime, '15 phút');
+                }
+            });
+        } else {
+            // Đến trễ (>= 12:00), check-in ngay
+            schedule.push({
+                time: currentTime,
+                activity: 'Check-in khách sạn',
+                type: 'accommodation',
+                duration: '30 phút',
+                notes: ['Nhận phòng', 'Để hành lý', 'Nghỉ ngơi'],
+                realData: true
+            });
+            currentTime = calculateNextTime(currentTime, '30 phút');
+            
+            // Ăn trưa nếu chưa quá 14:00
+            const [currentHour] = currentTime.split(':').map(Number);
+            if (currentHour < 14) {
+                const lunchVenue = (restaurants.localFood && restaurants.localFood.length > 0) 
+                    ? restaurants.localFood[0] 
+                    : restaurants.lunch;
+                
+                if (lunchVenue) {
+                    schedule.push({
+                        time: currentTime,
+                        activity: `Ăn trưa tại ${lunchVenue.name}`,
+                        type: 'meal',
+                        duration: '1 giờ',
+                        location: lunchVenue,
+                        specialty: lunchVenue.specialty,
+                        estimatedCost: lunchVenue.estimatedCost,
+                        realData: true
+                    });
+                    currentTime = calculateNextTime(currentTime, '1 giờ');
+                }
+            }
+            
+            // Tham quan các địa điểm buổi chiều
+            destinations.forEach((dest, index) => {
+                schedule.push({
+                    time: currentTime,
+                    activity: `Tham quan ${dest.name}`,
+                    type: 'sightseeing',
+                    duration: dest.estimatedDuration || '1-2 giờ',
+                    location: dest,
+                    entryFee: dest.entryFee,
+                    realData: true
+                });
+                currentTime = calculateNextTime(currentTime, dest.estimatedDuration || '1.5 giờ');
+                
+                // Nghỉ giữa các điểm
+                if (index < destinations.length - 1) {
+                    currentTime = calculateNextTime(currentTime, '15 phút');
+                }
+            });
+        }
+    } 
+    // ===== NGÀY 2+: Logic chuẩn =====
+    else {
+        // Bắt đầu từ 7:00 - Ăn sáng
+        currentTime = '07:00';
+        
         if (restaurants.breakfast) {
             schedule.push({
-                time: departureTime,
+                time: currentTime,
                 activity: `Ăn sáng tại ${restaurants.breakfast.name}`,
                 type: 'meal',
                 duration: '45 phút',
                 location: restaurants.breakfast,
                 specialty: restaurants.breakfast.specialty,
                 estimatedCost: restaurants.breakfast.estimatedCost,
-                notes: restaurants.breakfast.isOpen === false ? ['Kiểm tra giờ mở cửa'] : ['Thử món đặc sản địa phương'],
+                notes: ['Bắt đầu ngày mới với năng lượng'],
                 realData: true
             });
+            currentTime = '07:45';
         }
+        
+        // Chia destinations thành buổi sáng và buổi chiều
+        const morningDestCount = Math.ceil(destinations.length / 2);
+        const morningDests = destinations.slice(0, morningDestCount);
+        const afternoonDests = destinations.slice(morningDestCount);
+        
+        // Tham quan buổi sáng từ 8:00
+        currentTime = '08:00';
+        morningDests.forEach((dest, index) => {
+            schedule.push({
+                time: currentTime,
+                activity: `Tham quan ${dest.name}`,
+                type: 'sightseeing',
+                duration: dest.estimatedDuration || '1-2 giờ',
+                location: dest,
+                entryFee: dest.entryFee,
+                notes: dest.notes || [],
+                realData: true
+            });
+            currentTime = calculateNextTime(currentTime, dest.estimatedDuration || '1.5 giờ');
+            
+            // Nghỉ giữa các điểm (15 phút di chuyển)
+            if (index < morningDests.length - 1) {
+                currentTime = calculateNextTime(currentTime, '15 phút');
+            }
+        });
+        
+        // Ăn trưa trong khung 11:30-12:30
+        const [lunchHour] = currentTime.split(':').map(Number);
+        if (lunchHour < 11) {
+            currentTime = '11:30';
+        } else if (lunchHour > 13) {
+            currentTime = '12:00';
+        }
+        
+        const lunchVenue = (restaurants.localFood && restaurants.localFood.length > 0) 
+            ? restaurants.localFood[0] 
+            : restaurants.lunch;
+        
+        if (lunchVenue) {
+            schedule.push({
+                time: currentTime,
+                activity: `Ăn trưa tại ${lunchVenue.name}`,
+                type: 'meal',
+                duration: '1 giờ',
+                location: lunchVenue,
+                specialty: lunchVenue.specialty,
+                estimatedCost: lunchVenue.estimatedCost,
+                priceRange: lunchVenue.priceRange,
+                popularDishes: lunchVenue.popularDishes,
+                notes: ['Nghỉ ngơi, thưởng thức ẩm thực địa phương'],
+                realData: true
+            });
+            currentTime = calculateNextTime(currentTime, '1 giờ');
+        }
+        
+        // Tham quan buổi chiều (tiếp tục các địa điểm còn lại)
+        afternoonDests.forEach((dest, index) => {
+            schedule.push({
+                time: currentTime,
+                activity: `Tham quan ${dest.name}`,
+                type: 'sightseeing',
+                duration: dest.estimatedDuration || '1-2 giờ',
+                location: dest,
+                entryFee: dest.entryFee,
+                notes: dest.notes || [],
+                realData: true
+            });
+            currentTime = calculateNextTime(currentTime, dest.estimatedDuration || '1.5 giờ');
+            
+            // Nghỉ giữa các điểm
+            if (index < afternoonDests.length - 1) {
+                currentTime = calculateNextTime(currentTime, '15 phút');
+            }
+        });
     }
 
-    // Tính thời gian bắt đầu tham quan
-    const [hours, minutes] = departureTime.split(':').map(Number);
-    const startMinutes = hours * 60 + minutes + (dayNumber === 1 ? 30 : 45); // +30 phút check-in hoặc +45 phút ăn sáng
-    const startHours = Math.floor(startMinutes / 60);
-    const startMins = startMinutes % 60;
-    let currentTime = `${startHours.toString().padStart(2, '0')}:${startMins.toString().padStart(2, '0')}`;
+    // Hoạt động chiều - chỉ thêm nếu còn thời gian trước bữa tối
+    const [currentHour] = currentTime.split(':').map(Number);
     
-    destinations.forEach((dest, index) => {
-        const openingNote = dest.isOpen === false ? 'Hiện tại đóng cửa - kiểm tra giờ mở' : '';
-        const crowdNote = dest.currentCrowdLevel === 'high' ? 'Dự báo đông đúc - đến sớm' : '';
-        const photoNote = interests.includes('photography') ? 'Điểm chụp ảnh đẹp' : '';
-        
+    // Nếu còn thời gian (< 17:00) và user quan tâm food
+    if (currentHour < 17 && interests.includes('food')) {
+        if (restaurants.localFood && restaurants.localFood.length >= 3) {
+            // Food tour
+            schedule.push({
+                time: currentTime,
+                activity: 'Khám phá ẩm thực địa phương',
+                type: 'food_tour',
+                duration: '1 giờ',
+                suggestions: restaurants.localFood.slice(1, 4).map(venue => ({
+                    name: venue.name,
+                    specialty: venue.specialty,
+                    priceRange: venue.priceRange,
+                    rating: venue.rating
+                })),
+                notes: [
+                    'Thử các món ăn đường phố',
+                    'Trải nghiệm văn hóa ẩm thực địa phương',
+                    'Mang theo tiền mặt'
+                ],
+                estimatedCost: 100000,
+                realData: true
+            });
+            currentTime = calculateNextTime(currentTime, '1 giờ');
+        } else if (restaurants.streetFood && restaurants.streetFood.length > 0) {
+            // Street food
+            schedule.push({
+                time: currentTime,
+                activity: `Thử street food: ${restaurants.streetFood[0].name}`,
+                type: 'street_food',
+                duration: '30 phút',
+                location: restaurants.streetFood[0],
+                specialty: restaurants.streetFood[0].specialty,
+                estimatedCost: restaurants.streetFood[0].estimatedCost,
+                notes: ['Trải nghiệm ẩm thực đường phố', 'Giá rẻ, ngon'],
+                realData: true
+            });
+            currentTime = calculateNextTime(currentTime, '30 phút');
+        }
+    }
+    
+    // Nếu vẫn còn thời gian trống trước bữa tối, thêm hoạt động thư giãn
+    const [predinnerHour] = currentTime.split(':').map(Number);
+    if (predinnerHour < 18) {
         schedule.push({
             time: currentTime,
-            activity: `Tham quan ${dest.name}`,
-            type: 'sightseeing',
-            duration: dest.estimatedDuration || '1-2 giờ',
-            location: dest,
-            entryFee: dest.entryFee,
-            crowdLevel: dest.currentCrowdLevel,
-            bestTime: dest.bestTimeToVisit,
-            notes: [openingNote, crowdNote, photoNote, ...(dest.notes || [])].filter(Boolean),
-            realData: true,
-            apiSource: dest.dataSource,
-            category: dest.category
-        });
-        
-        // Thêm break time giữa các điểm
-        if (index < destinations.length - 1) {
-            const [hours, minutes] = currentTime.split(':').map(Number);
-            const breakTime = `${(hours + 1).toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
-            
-            schedule.push({
-                time: breakTime,
-                activity: 'Nghỉ ngơi, di chuyển',
-                type: 'break',
-                duration: '15-30 phút',
-                notes: ['Uống nước', 'Chụp ảnh', 'Mua đồ lưu niệm nhỏ'],
-                realData: false
-            });
-        }
-        
-        // Tính thời gian tiếp theo
-        const [hours, minutes] = currentTime.split(':').map(Number);
-        const nextHour = hours + 2 + (index * 0.5);
-        currentTime = `${Math.floor(nextHour).toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
-    });
-
-    // Lunch đa dạng
-    if (restaurants.lunch) {
-        schedule.push({
-            time: '12:00',
-            activity: `Ăn trưa tại ${restaurants.lunch.name}`,
-            type: 'meal',
-            duration: '1 giờ',
-            location: restaurants.lunch,
-            specialty: restaurants.lunch.specialty,
-            estimatedCost: restaurants.lunch.estimatedCost,
-            notes: ['Thử món đặc sản', 'Nghỉ ngơi sau buổi sáng'],
-            realData: true
+            activity: 'Thư giãn, dạo phố, mua sắm',
+            type: 'free_time',
+            duration: '30 phút - 1 giờ',
+            suggestions: ['Dạo chợ địa phương', 'Uống cà phê', 'Mua quà lưu niệm'],
+            notes: ['Nghỉ ngơi trước bữa tối'],
+            realData: false
         });
     }
-
-    // Thêm street food nếu có
-    if (restaurants.streetFood && restaurants.streetFood.length > 0) {
-        schedule.push({
-            time: '15:30',
-            activity: `Thử street food: ${restaurants.streetFood[0].name}`,
-            type: 'street_food',
-            duration: '30 phút',
-            location: restaurants.streetFood[0],
-            specialty: restaurants.streetFood[0].specialty,
-            estimatedCost: restaurants.streetFood[0].estimatedCost,
-            notes: ['Trải nghiệm ẩm thực đường phố', 'Giá rẻ, ngon'],
-            realData: true
-        });
+    
+    // Ăn tối trong khung 18:00-19:00
+    const [dinnerHour] = currentTime.split(':').map(Number);
+    if (dinnerHour < 18) {
+        currentTime = '18:30';
+    } else if (dinnerHour > 19) {
+        currentTime = '18:30';
     }
-
-    // Dinner đa dạng
+    
     if (restaurants.dinner) {
         schedule.push({
-            time: '18:30',
+            time: currentTime,
             activity: `Ăn tối tại ${restaurants.dinner.name}`,
             type: 'meal',
             duration: '1.5 giờ',
@@ -4421,6 +4737,7 @@ const generateEnhancedHourlySchedule = (dayNumber, destinations, restaurants, in
             notes: ['Bữa tối thịnh soạn', 'Thưởng thức đặc sản địa phương'],
             realData: true
         });
+        currentTime = calculateNextTime(currentTime, '1.5 giờ');
     }
 
     // Hoạt động tối đa dạng

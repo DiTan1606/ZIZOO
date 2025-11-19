@@ -41,8 +41,8 @@ const getRealDistance = async (origin, destination) => {
 };
 
 /**
- * Thuật toán A* để tìm đường đi ngắn nhất qua tất cả các điểm
- * Sử dụng Nearest Neighbor heuristic
+ * Thuật toán Nearest Neighbor để tìm đường đi ngắn nhất qua tất cả các điểm
+ * Cải tiến: Thử nhiều điểm xuất phát và chọn route tốt nhất
  */
 export const optimizeRouteWithAStar = async (locations) => {
     if (!locations || locations.length <= 2) {
@@ -67,13 +67,41 @@ export const optimizeRouteWithAStar = async (locations) => {
         }
     }
 
-    // Nearest Neighbor Algorithm (greedy approach for TSP)
+    // Thử Nearest Neighbor từ nhiều điểm xuất phát khác nhau
+    let bestRoute = null;
+    let bestDistance = Infinity;
+    
+    // Thử từ 3 điểm đầu tiên (hoặc tất cả nếu < 3)
+    const startPoints = Math.min(3, n);
+    
+    for (let startIdx = 0; startIdx < startPoints; startIdx++) {
+        const route = nearestNeighborFromStart(locations, distanceMatrix, startIdx);
+        const distance = calculateTotalDistance(route, distanceMatrix, locations);
+        
+        if (distance < bestDistance) {
+            bestDistance = distance;
+            bestRoute = route;
+        }
+    }
+
+    // Áp dụng 2-opt optimization để cải thiện thêm
+    const optimizedRoute = twoOptOptimization(bestRoute, distanceMatrix, locations);
+    
+    console.log(`✅ Route optimized! Total distance: ${bestDistance.toFixed(2)} km`);
+    return optimizedRoute;
+};
+
+/**
+ * Nearest Neighbor từ một điểm xuất phát cụ thể
+ */
+const nearestNeighborFromStart = (locations, distanceMatrix, startIdx) => {
+    const n = locations.length;
     const visited = new Set();
-    const optimizedRoute = [];
-    let current = 0; // Bắt đầu từ điểm đầu tiên
+    const route = [];
+    let current = startIdx;
     
     visited.add(current);
-    optimizedRoute.push(locations[current]);
+    route.push(locations[current]);
 
     while (visited.size < n) {
         let nearest = -1;
@@ -89,12 +117,76 @@ export const optimizeRouteWithAStar = async (locations) => {
         
         if (nearest !== -1) {
             visited.add(nearest);
-            optimizedRoute.push(locations[nearest]);
+            route.push(locations[nearest]);
             current = nearest;
         }
     }
+    
+    return route;
+};
 
-    console.log(`✅ Route optimized! Total distance reduced.`);
+/**
+ * Tính tổng khoảng cách của route
+ */
+const calculateTotalDistance = (route, distanceMatrix, locations) => {
+    let total = 0;
+    for (let i = 0; i < route.length - 1; i++) {
+        const idx1 = locations.indexOf(route[i]);
+        const idx2 = locations.indexOf(route[i + 1]);
+        total += distanceMatrix[idx1][idx2];
+    }
+    return total;
+};
+
+/**
+ * 2-opt optimization: Cải thiện route bằng cách swap các cạnh
+ * Thuật toán này giúp loại bỏ các đường đi chéo nhau
+ */
+const twoOptOptimization = (route, distanceMatrix, originalLocations) => {
+    if (route.length <= 3) return route;
+    
+    let improved = true;
+    let optimizedRoute = [...route];
+    let iterations = 0;
+    const maxIterations = 100; // Giới hạn số lần lặp
+    
+    while (improved && iterations < maxIterations) {
+        improved = false;
+        iterations++;
+        
+        for (let i = 1; i < optimizedRoute.length - 2; i++) {
+            for (let j = i + 1; j < optimizedRoute.length - 1; j++) {
+                // Tính khoảng cách hiện tại
+                const idx_i = originalLocations.indexOf(optimizedRoute[i]);
+                const idx_i_prev = originalLocations.indexOf(optimizedRoute[i - 1]);
+                const idx_j = originalLocations.indexOf(optimizedRoute[j]);
+                const idx_j_next = originalLocations.indexOf(optimizedRoute[j + 1]);
+                
+                const currentDist = 
+                    distanceMatrix[idx_i_prev][idx_i] + 
+                    distanceMatrix[idx_j][idx_j_next];
+                
+                // Tính khoảng cách sau khi swap
+                const newDist = 
+                    distanceMatrix[idx_i_prev][idx_j] + 
+                    distanceMatrix[idx_i][idx_j_next];
+                
+                // Nếu swap tốt hơn, thực hiện swap
+                if (newDist < currentDist) {
+                    // Reverse đoạn từ i đến j
+                    const newRoute = [
+                        ...optimizedRoute.slice(0, i),
+                        ...optimizedRoute.slice(i, j + 1).reverse(),
+                        ...optimizedRoute.slice(j + 1)
+                    ];
+                    optimizedRoute = newRoute;
+                    improved = true;
+                }
+            }
+        }
+    }
+    
+    console.log(`🔄 2-opt completed after ${iterations} iterations`);
     return optimizedRoute;
 };
 

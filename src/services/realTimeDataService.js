@@ -5,6 +5,9 @@ import { searchPlacesByText, searchNearbyPlaces } from './placesService';
 import { CACHE_DURATION, PHOTOGRAPHY_KEYWORDS } from '../constants';
 import { calculateDistance, estimateEntryFee, estimateVisitDuration } from '../utils/commonUtils';
 
+// Alias cho calculateDistance
+const calculateHaversineDistance = calculateDistance;
+
 /**
  * Service tích hợp dữ liệu đa nguồn thời gian thực
  * Google Maps, OpenWeatherMap, TripAdvisor, Events...
@@ -764,16 +767,214 @@ export const findRealRestaurants = async (destination, coord, travelStyle, mealT
         });
         restaurants.push(...nearbyRestaurants);
 
-        // Process restaurants
-        const processedRestaurants = await processRestaurantData(restaurants, travelStyle, mealType);
+        // Process restaurants và lọc theo vùng
+        const processedRestaurants = await processRestaurantData(restaurants, travelStyle, mealType, destination, coord);
         
-        console.log(`✅ Found ${processedRestaurants.length} real restaurants`);
+        console.log(`✅ Found ${processedRestaurants.length} real restaurants in ${destination}`);
         return processedRestaurants;
 
     } catch (error) {
         console.error('Error finding real restaurants:', error);
         return [];
     }
+};
+
+/**
+ * Tìm quán ăn địa phương đặc trưng với giá cả thực tế
+ */
+export const findLocalFoodVenues = async (destination, coord, travelStyle = 'standard') => {
+    console.log(`🍜 Finding LOCAL food venues in ${destination}...`);
+
+    const localFoodQueries = [
+        `quán ăn ngon ${destination}`,
+        `đặc sản ${destination}`,
+        `món địa phương ${destination}`,
+        `street food ${destination}`,
+        `quán bình dân ${destination}`,
+        'cơm bình dân',
+        'phở',
+        'bún',
+        'bánh mì'
+    ];
+
+    let venues = [];
+
+    try {
+        // Search bằng text queries
+        for (const query of localFoodQueries) {
+            const results = await searchPlacesByText(
+                query,
+                coord,
+                8000 // 8km radius
+            );
+            venues.push(...results);
+        }
+
+        // Search nearby restaurants
+        const nearbyFood = await searchNearbyPlaces({
+            location: coord,
+            radius: 5000,
+            type: 'restaurant'
+        });
+        venues.push(...nearbyFood);
+
+        // Remove duplicates
+        const uniqueVenues = [];
+        const seenIds = new Set();
+        
+        for (const venue of venues) {
+            if (!seenIds.has(venue.place_id)) {
+                seenIds.add(venue.place_id);
+                uniqueVenues.push(venue);
+            }
+        }
+
+        // Process venues với thông tin chi tiết
+        const processedVenues = await Promise.all(
+            uniqueVenues
+                .filter(venue => {
+                    const rating = venue.rating || 0;
+                    const userRatings = venue.user_ratings_total || 0;
+                    // Ưu tiên quán có rating tốt và nhiều reviews
+                    return rating >= 3.8 && userRatings >= 30;
+                })
+                .slice(0, 20) // Lấy top 20 để xử lý
+                .map(async venue => {
+                    try {
+                        const details = await getRealTimePlaceData(venue.place_id);
+                        const priceInfo = extractPriceFromReviews(details?.reviews);
+                        const priceLevel = venue.price_level !== undefined ? venue.price_level : 1;
+                        
+                        return {
+                            name: venue.name,
+                            address: venue.formatted_address || venue.vicinity,
+                            rating: venue.rating,
+                            userRatingsTotal: venue.user_ratings_total,
+                            priceLevel: priceLevel,
+                            location: venue.geometry?.location,
+                            placeId: venue.place_id,
+                            openingHours: details?.opening_hours?.weekday_text || [],
+                            isOpen: details?.opening_hours?.open_now !== false,
+                            phoneNumber: details?.formatted_phone_number,
+                            photos: venue.photos,
+                            estimatedCost: estimateRestaurantCost(priceLevel, travelStyle, 'lunch'),
+                            priceRange: getPriceRangeText(priceLevel),
+                            averagePriceFromReviews: priceInfo.averagePrice,
+                            popularDishes: priceInfo.dishes,
+                            specialty: generateLocalSpecialty(venue, destination),
+                            cuisine: detectCuisineType(venue),
+                            isLocal: isLocalVenue(venue, destination),
+                            dataSource: 'google_places_api'
+                        };
+                    } catch (error) {
+                        console.error(`Error processing venue ${venue.name}:`, error);
+                        return null;
+                    }
+                })
+        );
+
+        // Filter theo khoảng cách và địa chỉ
+        const filteredVenues = processedVenues
+            .filter(v => {
+                if (!v) return false;
+                
+                // Kiểm tra khoảng cách
+                if (v.location && v.location.lat && v.location.lng) {
+                    const distance = calculateHaversineDistance(
+                        coord.lat, coord.lng,
+                        v.location.lat, v.location.lng
+                    );
+                    
+                    if (distance > 20) {
+                        console.log(`⚠️ Filtered out ${v.name} - too far (${distance.toFixed(1)}km)`);
+                        return false;
+                    }
+                }
+                
+                // Kiểm tra địa chỉ có chứa destination
+                if (v.address) {
+                    const addressLower = v.address.toLowerCase();
+                    const destLower = destination.toLowerCase();
+                    const isInDestination = addressLower.includes(destLower) || 
+                                           addressLower.includes(destLower.replace(/\s+/g, ''));
+                    
+                    if (!isInDestination) {
+                        console.log(`⚠️ Filtered out ${v.name} - not in ${destination} (address: ${v.address})`);
+                        return false;
+                    }
+                }
+                
+                return true;
+            })
+            .sort((a, b) => {
+                // Ưu tiên quán địa phương
+                if (a.isLocal && !b.isLocal) return -1;
+                if (!a.isLocal && b.isLocal) return 1;
+                
+                // Sau đó sort theo rating và số reviews
+                const scoreA = (a.rating || 0) * Math.log(a.userRatingsTotal || 1);
+                const scoreB = (b.rating || 0) * Math.log(b.userRatingsTotal || 1);
+                return scoreB - scoreA;
+            })
+            .slice(0, 15); // Top 15 venues
+
+        console.log(`✅ Found ${filteredVenues.length} local food venues in ${destination}`);
+        return filteredVenues;
+
+    } catch (error) {
+        console.error('Error finding local food venues:', error);
+        return [];
+    }
+};
+
+/**
+ * Kiểm tra xem venue có phải quán địa phương không
+ */
+const isLocalVenue = (venue, destination) => {
+    const name = (venue.name || '').toLowerCase();
+    const types = venue.types || [];
+    
+    // Loại trừ chuỗi quốc tế
+    const internationalChains = ['kfc', 'mcdonald', 'lotteria', 'pizza hut', 'domino', 'starbucks', 'highland'];
+    if (internationalChains.some(chain => name.includes(chain))) {
+        return false;
+    }
+    
+    // Ưu tiên quán có tên địa phương
+    const localKeywords = ['quán', 'nhà hàng', 'cơm', 'phở', 'bún', 'bánh', destination.toLowerCase()];
+    return localKeywords.some(keyword => name.includes(keyword));
+};
+
+/**
+ * Tạo specialty cho quán ăn địa phương
+ */
+const generateLocalSpecialty = (venue, destination) => {
+    const name = (venue.name || '').toLowerCase();
+    const types = venue.types || [];
+    
+    // Detect từ tên
+    if (name.includes('phở')) return 'Phở truyền thống';
+    if (name.includes('bún')) return 'Bún đặc sản';
+    if (name.includes('cơm')) return 'Cơm bình dân';
+    if (name.includes('bánh mì')) return 'Bánh mì Việt Nam';
+    if (name.includes('bánh xèo')) return 'Bánh xèo miền Trung';
+    if (name.includes('hủ tiếu')) return 'Hủ tiếu Nam Vang';
+    if (name.includes('cao lầu')) return 'Cao lầu Hội An';
+    if (name.includes('mì quảng')) return 'Mì Quảng';
+    
+    // Theo destination
+    const destinationSpecialties = {
+        'Hà Nội': 'Phở Hà Nội, Bún chả',
+        'Hồ Chí Minh': 'Hủ tiếu, Bánh mì Sài Gòn',
+        'Đà Nẵng': 'Mì Quảng, Bánh xèo',
+        'Hội An': 'Cao lầu, Bánh bao bánh vạc',
+        'Huế': 'Bún bò Huế, Cơm hến',
+        'Nha Trang': 'Bún chả cá, Nem nướng',
+        'Đà Lạt': 'Lẩu gà lá é, Bánh tráng nướng',
+        'Phú Quốc': 'Hải sản tươi sống, Gỏi cá trích'
+    };
+    
+    return destinationSpecialties[destination] || 'Món ăn địa phương';
 };
 
 /**
@@ -836,8 +1037,45 @@ export const findNightlifeVenues = async (destination, coord, travelStyle = 'sta
             .filter(venue => {
                 const rating = venue.rating || 0;
                 const userRatings = venue.user_ratings_total || 0;
-                // Chỉ lấy venues có rating tốt
-                return rating >= 3.5 && userRatings >= 10;
+                const hasQuality = rating >= 3.5 && userRatings >= 10;
+                
+                // Lọc theo khoảng cách
+                if (venue.geometry?.location) {
+                    const venueLat = typeof venue.geometry.location.lat === 'function' 
+                        ? venue.geometry.location.lat() 
+                        : venue.geometry.location.lat;
+                    const venueLng = typeof venue.geometry.location.lng === 'function' 
+                        ? venue.geometry.location.lng() 
+                        : venue.geometry.location.lng;
+                    
+                    if (venueLat && venueLng) {
+                        const distance = calculateHaversineDistance(
+                            coord.lat, coord.lng,
+                            venueLat, venueLng
+                        );
+                        
+                        if (distance > 15) {
+                            console.log(`⚠️ Filtered out nightlife ${venue.name} - too far (${distance.toFixed(1)}km)`);
+                            return false;
+                        }
+                    }
+                }
+                
+                // Lọc theo địa chỉ
+                const address = venue.formatted_address || venue.vicinity || '';
+                if (address) {
+                    const addressLower = address.toLowerCase();
+                    const destLower = destination.toLowerCase();
+                    const isInDestination = addressLower.includes(destLower) || 
+                                           addressLower.includes(destLower.replace(/\s+/g, ''));
+                    
+                    if (!isInDestination) {
+                        console.log(`⚠️ Filtered out nightlife ${venue.name} - not in ${destination}`);
+                        return false;
+                    }
+                }
+                
+                return hasQuality;
             })
             .map(venue => ({
                 name: venue.name,
@@ -863,7 +1101,7 @@ export const findNightlifeVenues = async (destination, coord, travelStyle = 'sta
             })
             .slice(0, 10); // Top 10 venues
 
-        console.log(`✅ Found ${processedVenues.length} nightlife venues`);
+        console.log(`✅ Found ${processedVenues.length} nightlife venues in ${destination}`);
         return processedVenues;
 
     } catch (error) {
@@ -992,9 +1230,9 @@ const processRealPlacesData = async (rawPlaces, category, centerCoord) => {
                place.place_id;
     });
 
-    // Enhance với dữ liệu thời gian thực
+    // Enhance với dữ liệu thời gian thực - tăng lên 30 địa điểm
     const enhancedPlaces = await Promise.all(
-        qualityPlaces.slice(0, 15).map(async (place) => {
+        qualityPlaces.slice(0, 30).map(async (place) => {
             try {
                 return await enhanceRealPlaceData(place, category, centerCoord);
             } catch (error) {
@@ -1009,7 +1247,8 @@ const processRealPlacesData = async (rawPlaces, category, centerCoord) => {
         .filter(place => place !== null)
         .sort((a, b) => b.relevanceScore - a.relevanceScore);
 
-    return sortedPlaces.slice(0, 8);
+    // Trả về 15 địa điểm tốt nhất thay vì 8
+    return sortedPlaces.slice(0, 15);
 };
 
 const enhanceRealPlaceData = async (place, category, centerCoord) => {
@@ -1093,7 +1332,7 @@ const enhanceBasicPlaceData = (place, category) => {
     };
 };
 
-const processRestaurantData = async (rawRestaurants, travelStyle, mealType) => {
+const processRestaurantData = async (rawRestaurants, travelStyle, mealType, destination = null, centerCoord = null) => {
     // Remove duplicates
     const uniqueRestaurants = Array.from(
         new Map(rawRestaurants.map(r => [r.place_id, r])).values()
@@ -1101,11 +1340,25 @@ const processRestaurantData = async (rawRestaurants, travelStyle, mealType) => {
 
     // Filter by quality and style
     const minRating = travelStyle === 'luxury' ? 4.2 : travelStyle === 'comfort' ? 4.0 : 3.5;
-    const qualityRestaurants = uniqueRestaurants.filter(r => 
-        r.rating >= minRating && 
-        r.user_ratings_total >= 20 &&
-        r.types?.includes('restaurant')
-    );
+    const qualityRestaurants = uniqueRestaurants.filter(r => {
+        const hasQuality = r.rating >= minRating && 
+                          r.user_ratings_total >= 20 &&
+                          r.types?.includes('restaurant');
+        
+        // Lọc theo địa chỉ nếu có destination
+        if (destination && r.vicinity) {
+            const address = r.vicinity.toLowerCase();
+            const destLower = destination.toLowerCase();
+            
+            // Kiểm tra địa chỉ có chứa tên destination
+            const isInDestination = address.includes(destLower) || 
+                                   address.includes(destLower.replace(/\s+/g, ''));
+            
+            return hasQuality && isInDestination;
+        }
+        
+        return hasQuality;
+    });
 
     // Enhance with real data
     const enhancedRestaurants = await Promise.all(
@@ -1113,23 +1366,30 @@ const processRestaurantData = async (rawRestaurants, travelStyle, mealType) => {
             try {
                 const details = await getRealTimePlaceData(restaurant.place_id);
                 
+                // Lấy thông tin giá từ reviews nếu có
+                const priceInfo = extractPriceFromReviews(details?.reviews);
+                const priceLevel = restaurant.price_level !== undefined ? restaurant.price_level : 2;
+                
                 return {
                     place_id: restaurant.place_id,
                     name: restaurant.name,
-                    address: restaurant.vicinity,
+                    address: restaurant.vicinity || details?.formatted_address,
                     lat: restaurant.geometry.location.lat,
                     lng: restaurant.geometry.location.lng,
                     rating: restaurant.rating,
                     userRatingsTotal: restaurant.user_ratings_total,
-                    priceLevel: restaurant.price_level,
+                    priceLevel: priceLevel,
                     cuisine: detectCuisineType(restaurant),
                     specialty: generateSpecialty(restaurant, mealType),
-                    isOpen: true, // Assume open during business hours
+                    isOpen: details?.opening_hours?.open_now !== false,
                     openingHours: details?.opening_hours?.weekday_text || [],
                     phoneNumber: details?.formatted_phone_number,
                     website: details?.website,
                     photos: restaurant.photos?.slice(0, 2) || [],
-                    estimatedCost: estimateRestaurantCost(restaurant.price_level, travelStyle),
+                    estimatedCost: estimateRestaurantCost(priceLevel, travelStyle, mealType),
+                    priceRange: getPriceRangeText(priceLevel),
+                    averagePriceFromReviews: priceInfo.averagePrice,
+                    popularDishes: priceInfo.dishes,
                     mealType: mealType,
                     lastUpdated: new Date(),
                     dataSource: 'google_places_api'
@@ -1148,8 +1408,37 @@ const processRestaurantData = async (rawRestaurants, travelStyle, mealType) => {
         })
     );
 
-    return enhancedRestaurants
-        .filter(r => r !== null)
+    // Lọc thêm theo khoảng cách nếu có centerCoord
+    let filteredRestaurants = enhancedRestaurants.filter(r => r !== null);
+    
+    if (centerCoord && destination) {
+        filteredRestaurants = filteredRestaurants.filter(r => {
+            if (!r.lat || !r.lng) return true; // Giữ lại nếu không có tọa độ
+            
+            // Tính khoảng cách
+            const distance = calculateHaversineDistance(
+                centerCoord.lat, centerCoord.lng,
+                r.lat, r.lng
+            );
+            
+            // Chỉ lấy nhà hàng trong bán kính 20km
+            const isNearby = distance <= 20;
+            
+            // Kiểm tra địa chỉ có chứa tên destination
+            const addressMatch = r.address && (
+                r.address.toLowerCase().includes(destination.toLowerCase()) ||
+                r.address.toLowerCase().includes(destination.toLowerCase().replace(/\s+/g, ''))
+            );
+            
+            if (!isNearby) {
+                console.log(`⚠️ Filtered out ${r.name} - too far (${distance.toFixed(1)}km)`);
+            }
+            
+            return isNearby && (addressMatch || distance <= 10); // Ưu tiên địa chỉ match hoặc rất gần
+        });
+    }
+    
+    return filteredRestaurants
         .sort((a, b) => b.rating - a.rating)
         .slice(0, 5);
 };
@@ -1263,16 +1552,124 @@ const generateSpecialty = (restaurant, mealType) => {
     return options[Math.floor(Math.random() * options.length)];
 };
 
-const estimateRestaurantCost = (priceLevel, travelStyle) => {
-    const baseCosts = {
-        budget: [30000, 50000, 80000, 120000, 200000],
-        standard: [50000, 80000, 120000, 180000, 300000],
-        comfort: [80000, 120000, 180000, 250000, 400000],
-        luxury: [150000, 250000, 400000, 600000, 1000000]
+/**
+ * Ước tính chi phí nhà hàng dựa trên price_level từ Google Places API
+ * price_level: 0 (Free), 1 (Inexpensive), 2 (Moderate), 3 (Expensive), 4 (Very Expensive)
+ */
+const estimateRestaurantCost = (priceLevel, travelStyle, mealType = 'lunch') => {
+    // Chi phí cơ bản theo price_level của Google (VNĐ/người)
+    const baseCostsByPriceLevel = {
+        0: 20000,   // Free/Very cheap (street food)
+        1: 50000,   // Inexpensive (quán bình dân)
+        2: 120000,  // Moderate (nhà hàng trung bình)
+        3: 250000,  // Expensive (nhà hàng cao cấp)
+        4: 500000   // Very Expensive (fine dining)
     };
     
-    const costs = baseCosts[travelStyle] || baseCosts.standard;
-    return costs[priceLevel || 1];
+    // Điều chỉnh theo loại bữa ăn
+    const mealMultipliers = {
+        breakfast: 0.6,  // Bữa sáng rẻ hơn
+        lunch: 1.0,      // Bữa trưa chuẩn
+        dinner: 1.3      // Bữa tối đắt hơn
+    };
+    
+    // Điều chỉnh theo travel style
+    const styleMultipliers = {
+        budget: 0.8,
+        standard: 1.0,
+        comfort: 1.2,
+        premium: 1.5,
+        luxury: 2.0
+    };
+    
+    const level = priceLevel !== undefined ? priceLevel : 2; // Default moderate
+    let cost = baseCostsByPriceLevel[level] || 100000;
+    
+    // Áp dụng multipliers
+    cost *= mealMultipliers[mealType] || 1.0;
+    cost *= styleMultipliers[travelStyle] || 1.0;
+    
+    // Round to nearest 10,000
+    return Math.round(cost / 10000) * 10000;
+};
+
+/**
+ * Trích xuất thông tin giá và món ăn từ reviews
+ */
+const extractPriceFromReviews = (reviews) => {
+    if (!reviews || reviews.length === 0) {
+        return { averagePrice: null, dishes: [] };
+    }
+    
+    const prices = [];
+    const dishes = new Set();
+    
+    // Regex patterns để tìm giá trong reviews
+    const pricePatterns = [
+        /(\d{1,3}[,.]?\d{0,3})\s*k/gi,           // 50k, 100k
+        /(\d{1,3}[,.]?\d{0,3})\s*ngàn/gi,        // 50 ngàn
+        /(\d{2,3}[,.]?\d{0,3})\s*đồng/gi,        // 50000 đồng
+        /giá\s*(\d{1,3}[,.]?\d{0,3})/gi,         // giá 50
+        /khoảng\s*(\d{1,3}[,.]?\d{0,3})/gi       // khoảng 50
+    ];
+    
+    // Patterns để tìm món ăn
+    const dishKeywords = ['phở', 'bún', 'cơm', 'bánh', 'nem', 'chả', 'gỏi', 'canh', 'lẩu', 'nướng', 'xào'];
+    
+    reviews.forEach(review => {
+        const text = review.text || '';
+        
+        // Tìm giá
+        pricePatterns.forEach(pattern => {
+            const matches = text.matchAll(pattern);
+            for (const match of matches) {
+                let price = parseFloat(match[1].replace(',', '.'));
+                // Convert k to thousands
+                if (match[0].includes('k') || match[0].includes('ngàn')) {
+                    price *= 1000;
+                }
+                if (price >= 10000 && price <= 1000000) { // Reasonable range
+                    prices.push(price);
+                }
+            }
+        });
+        
+        // Tìm món ăn
+        dishKeywords.forEach(keyword => {
+            const regex = new RegExp(`(\\w*${keyword}\\w*)`, 'gi');
+            const matches = text.match(regex);
+            if (matches) {
+                matches.forEach(dish => {
+                    if (dish.length > 2 && dish.length < 30) {
+                        dishes.add(dish.toLowerCase());
+                    }
+                });
+            }
+        });
+    });
+    
+    const averagePrice = prices.length > 0 
+        ? Math.round(prices.reduce((a, b) => a + b, 0) / prices.length / 10000) * 10000
+        : null;
+    
+    return {
+        averagePrice,
+        dishes: Array.from(dishes).slice(0, 5) // Top 5 dishes
+    };
+};
+
+/**
+ * Lấy text mô tả khoảng giá
+ */
+const getPriceRangeText = (priceLevel) => {
+    const ranges = {
+        0: '< 50,000đ',
+        1: '50,000 - 100,000đ',
+        2: '100,000 - 200,000đ',
+        3: '200,000 - 400,000đ',
+        4: '> 400,000đ'
+    };
+    return ranges[priceLevel] || '100,000 - 200,000đ';
 };
 
 const generateWeatherRecommendations = (weather) => {
