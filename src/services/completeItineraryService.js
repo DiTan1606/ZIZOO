@@ -27,10 +27,16 @@ export const createCompleteItinerary = async (preferences, userId) => {
         budget,
         travelStyle = 'standard',
         interests = [],
-        departureCity = 'Hà Nội'
+        departureCity = 'Hà Nội',
+        startTime = '08:00', // Giờ bắt đầu tham quan (từ UI)
+        specialActivities = {}
     } = preferences;
+    
+    // Map startTime thành departureTime để dùng trong code
+    const departureTime = startTime;
 
     console.log('🗺️ Bắt đầu tạo lịch trình hoàn chỉnh...');
+    console.log(`⏰ Giờ bắt đầu tham quan: ${departureTime}`);
 
     try {
         // Reset destination tracking for new itinerary
@@ -183,8 +189,21 @@ const generateTripHeader = async (preferences) => {
  * 2. TẠO LỊCH TRÌNH CHI TIẾT THEO TỪNG NGÀY
  */
 const generateDailyItinerary = async (preferences) => {
-    const { destination, startDate, duration, interests, travelStyle, budget, travelers } = preferences;
+    const { 
+        destination, 
+        startDate, 
+        duration, 
+        interests, 
+        travelStyle, 
+        budget, 
+        travelers,
+        startTime = '08:00', // Giờ bắt đầu
+        specialActivities = {}
+    } = preferences;
     const coord = provinceCoords[destination] || { lat: 16.047, lng: 108.220 };
+    
+    // Map startTime thành departureTime
+    const departureTime = startTime;
     
     // Tính ngân sách hàng ngày
     const dailyBudget = budget ? (budget * 0.6) / (duration * travelers) : 500000; // 60% budget cho activities
@@ -195,8 +214,22 @@ const generateDailyItinerary = async (preferences) => {
         const currentDate = new Date(startDate);
         currentDate.setDate(currentDate.getDate() + day);
 
-        // Tạo kế hoạch cho từng ngày với ngân sách
-        const dayPlan = await generateSingleDayPlan(day + 1, currentDate, destination, coord, interests, travelStyle, dailyBudget);
+        // Tạo kế hoạch cho từng ngày với ngân sách và departureTime
+        const dayPlan = await generateSingleDayPlan(
+            day + 1, 
+            currentDate, 
+            destination, 
+            coord, 
+            interests, 
+            travelStyle, 
+            dailyBudget,
+            budget,
+            travelers,
+            departureTime,
+            specialActivities,
+            [],
+            duration
+        );
         dailyPlans.push(dayPlan);
     }
 
@@ -206,18 +239,46 @@ const generateDailyItinerary = async (preferences) => {
 /**
  * Tạo kế hoạch cho một ngày cụ thể - CẢI THIỆN ĐA DẠNG
  */
-const generateSingleDayPlan = async (dayNumber, date, destination, coord, interests, travelStyle, dailyBudget = 500000) => {
+const generateSingleDayPlan = async (
+    dayNumber, 
+    date, 
+    destination, 
+    coord, 
+    interests, 
+    travelStyle, 
+    dailyBudget = 500000,
+    budget = 5000000,
+    travelers = 2,
+    departureTime = '08:00',
+    specialActivities = {},
+    customDestinations = [],
+    duration = 3
+) => {
     try {
         console.log(`📅 Generating DIVERSE day plan for Day ${dayNumber} in ${destination}...`);
 
         // Tìm địa điểm tham quan ĐA DẠNG (truyền thêm travelStyle và dailyBudget)
-        const destinations = await findRealDestinationsForDay(dayNumber, destination, coord, interests, travelStyle, dailyBudget);
+        let destinations = await findRealDestinationsForDay(dayNumber, destination, coord, interests, travelStyle, dailyBudget);
+        
+        // ✨ TỐI ƯU ROUTE: Sắp xếp địa điểm theo khoảng cách gần nhất (Nearest Neighbor)
+        if (destinations.length > 1) {
+            console.log(`🗺️ Optimizing route for ${destinations.length} destinations...`);
+            destinations = optimizeDayRoute(destinations);
+            console.log(`✅ Route optimized:`, destinations.map(d => d.name).join(' → '));
+        }
         
         // Tìm nhà hàng ĐA DẠNG
         const restaurants = await findRealRestaurantsForDay(destination, coord, travelStyle);
         
         // Tạo lịch trình theo giờ phong phú
-        const hourlySchedule = generateEnhancedHourlySchedule(dayNumber, destinations, restaurants, interests);
+        const hourlySchedule = generateEnhancedHourlySchedule(
+            dayNumber, 
+            destinations, 
+            restaurants, 
+            interests,
+            departureTime,
+            specialActivities // Sử dụng specialActivities từ parameter
+        );
 
         // Lấy thời tiết thực tế với dự báo rủi ro (fallback nếu API key không có)
         const realWeather = await getRealWeatherForDay(destination, coord, date).catch(error => {
@@ -4214,34 +4275,28 @@ const generateEnhancedDayTheme = (dayNumber, destinations, interests, destinatio
 
 /**
  * Tạo lịch trình theo giờ phong phú
+ * @param {string} departureTime - Giờ bắt đầu (giả định đã đến nơi)
+ * @param {Object} specialActivities - Hoạt động đặc biệt
  */
-const generateEnhancedHourlySchedule = (dayNumber, destinations, restaurants, interests) => {
+const generateEnhancedHourlySchedule = (dayNumber, destinations, restaurants, interests, departureTime = '08:00', specialActivities = {}) => {
     const schedule = [];
     
+    // Giả định người dùng đã đến nơi, bắt đầu từ departureTime
     if (dayNumber === 1) {
-        // Ngày đầu - có di chuyển
+        // Ngày đầu - Check-in
         schedule.push({
-            time: '06:30',
-            activity: 'Khởi hành từ điểm xuất phát',
-            type: 'transport',
-            duration: '30 phút',
-            notes: ['Chuẩn bị hành lý', 'Kiểm tra giấy tờ', 'Mang theo đồ ăn nhẹ'],
-            realData: true
-        });
-        
-        schedule.push({
-            time: '12:30',
-            activity: `Đến điểm đến, nhận phòng`,
+            time: departureTime,
+            activity: `Check-in khách sạn, chuẩn bị`,
             type: 'accommodation',
-            duration: '45 phút',
-            notes: ['Check-in khách sạn', 'Nghỉ ngơi', 'Ăn trưa nhẹ'],
+            duration: '30 phút',
+            notes: ['Nhận phòng', 'Để hành lý', 'Nghỉ ngơi ngắn'],
             realData: true
         });
     } else {
-        // Breakfast đa dạng
+        // Ngày 2+ - Ăn sáng
         if (restaurants.breakfast) {
             schedule.push({
-                time: '07:30',
+                time: departureTime,
                 activity: `Ăn sáng tại ${restaurants.breakfast.name}`,
                 type: 'meal',
                 duration: '45 phút',
@@ -4254,8 +4309,12 @@ const generateEnhancedHourlySchedule = (dayNumber, destinations, restaurants, in
         }
     }
 
-    // Thêm các hoạt động tham quan đa dạng
-    let currentTime = dayNumber === 1 ? '14:00' : '09:00';
+    // Tính thời gian bắt đầu tham quan
+    const [hours, minutes] = departureTime.split(':').map(Number);
+    const startMinutes = hours * 60 + minutes + (dayNumber === 1 ? 30 : 45); // +30 phút check-in hoặc +45 phút ăn sáng
+    const startHours = Math.floor(startMinutes / 60);
+    const startMins = startMinutes % 60;
+    let currentTime = `${startHours.toString().padStart(2, '0')}:${startMins.toString().padStart(2, '0')}`;
     
     destinations.forEach((dest, index) => {
         const openingNote = dest.isOpen === false ? 'Hiện tại đóng cửa - kiểm tra giờ mở' : '';

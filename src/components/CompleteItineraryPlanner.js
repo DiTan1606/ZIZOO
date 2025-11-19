@@ -312,6 +312,20 @@ const CompleteItineraryPlanner = () => {
                             </div>
 
                             <div className="form-group">
+                                <label>Giờ bắt đầu tham quan</label>
+                                <input 
+                                    type="time"
+                                    value={preferences.startTime}
+                                    onChange={(e) => handleInputChange('startTime', e.target.value)}
+                                />
+                                <div className="input-helper">
+                                    Giờ bắt đầu hành trình (giả định đã đến nơi)
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="form-row">
+                            <div className="form-group">
                                 <label>Số ngày</label>
                                 <div className="number-input-container">
                                     <input 
