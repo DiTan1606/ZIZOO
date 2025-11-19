@@ -68,7 +68,8 @@ const CompleteItineraryPlanner = () => {
         { value: 'photography', name: 'Chụp ảnh', icon: '📸' },
         { value: 'adventure', name: 'Mạo hiểm', icon: '🏔️' },
         { value: 'relaxation', name: 'Thư giãn', icon: '🏖️' },
-        { value: 'shopping', name: 'Mua sắm', icon: '🛍️' }
+        { value: 'shopping', name: 'Mua sắm', icon: '🛍️' },
+        { value: 'nightlife', name: 'Cuộc sống đêm', icon: '🌃' },
     ];
 
     const handleInputChange = (field, value) => {

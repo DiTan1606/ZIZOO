@@ -777,6 +777,156 @@ export const findRealRestaurants = async (destination, coord, travelStyle, mealT
 };
 
 /**
+ * Tìm địa điểm nightlife thực tế (bar, club, rooftop, night market)
+ */
+export const findNightlifeVenues = async (destination, coord, travelStyle = 'standard') => {
+    console.log(`🌃 Finding REAL nightlife venues in ${destination}...`);
+
+    const nightlifeQueries = [
+        'rooftop bar',
+        'night club',
+        'bar',
+        'pub',
+        'live music',
+        'night market',
+        'chợ đêm'
+    ];
+
+    let venues = [];
+
+    try {
+        // Search bằng text queries
+        for (const query of nightlifeQueries) {
+            const results = await searchPlacesByText(
+                `${query} ${destination}`,
+                coord,
+                10000 // 10km radius
+            );
+            venues.push(...results);
+        }
+
+        // Search bằng nearby types
+        const nearbyBars = await searchNearbyPlaces({
+            location: coord,
+            radius: 8000,
+            type: 'bar'
+        });
+        venues.push(...nearbyBars);
+
+        const nearbyNightClubs = await searchNearbyPlaces({
+            location: coord,
+            radius: 8000,
+            type: 'night_club'
+        });
+        venues.push(...nearbyNightClubs);
+
+        // Remove duplicates
+        const uniqueVenues = [];
+        const seenIds = new Set();
+        
+        for (const venue of venues) {
+            if (!seenIds.has(venue.place_id)) {
+                seenIds.add(venue.place_id);
+                uniqueVenues.push(venue);
+            }
+        }
+
+        // Process and filter venues
+        const processedVenues = uniqueVenues
+            .filter(venue => {
+                const rating = venue.rating || 0;
+                const userRatings = venue.user_ratings_total || 0;
+                // Chỉ lấy venues có rating tốt
+                return rating >= 3.5 && userRatings >= 10;
+            })
+            .map(venue => ({
+                name: venue.name,
+                address: venue.formatted_address || venue.vicinity,
+                rating: venue.rating,
+                userRatingsTotal: venue.user_ratings_total,
+                priceLevel: venue.price_level,
+                types: venue.types || [],
+                location: venue.geometry?.location,
+                placeId: venue.place_id,
+                openingHours: venue.opening_hours,
+                isOpen: venue.opening_hours?.open_now,
+                photos: venue.photos,
+                estimatedCost: estimateNightlifeCost(venue, travelStyle),
+                venueType: determineVenueType(venue),
+                dataSource: 'google_places_api'
+            }))
+            .sort((a, b) => {
+                // Ưu tiên rating cao và nhiều reviews
+                const scoreA = (a.rating || 0) * Math.log(a.userRatingsTotal || 1);
+                const scoreB = (b.rating || 0) * Math.log(b.userRatingsTotal || 1);
+                return scoreB - scoreA;
+            })
+            .slice(0, 10); // Top 10 venues
+
+        console.log(`✅ Found ${processedVenues.length} nightlife venues`);
+        return processedVenues;
+
+    } catch (error) {
+        console.error('Error finding nightlife venues:', error);
+        return [];
+    }
+};
+
+/**
+ * Xác định loại venue nightlife
+ */
+const determineVenueType = (venue) => {
+    const types = venue.types || [];
+    const name = (venue.name || '').toLowerCase();
+
+    if (types.includes('night_club') || name.includes('club')) return 'night_club';
+    if (name.includes('rooftop') || name.includes('sky bar')) return 'rooftop_bar';
+    if (types.includes('bar') || name.includes('bar') || name.includes('pub')) return 'bar';
+    if (name.includes('live music') || name.includes('nhạc sống')) return 'live_music';
+    if (name.includes('market') || name.includes('chợ')) return 'night_market';
+    
+    return 'bar'; // default
+};
+
+/**
+ * Ước tính chi phí nightlife venue
+ */
+const estimateNightlifeCost = (venue, travelStyle) => {
+    const priceLevel = venue.price_level || 2;
+    const name = (venue.name || '').toLowerCase();
+    
+    // Base cost theo price level
+    const baseCosts = {
+        1: 100000,  // Budget
+        2: 200000,  // Standard
+        3: 350000,  // Premium
+        4: 500000   // Luxury
+    };
+    
+    let cost = baseCosts[priceLevel] || 200000;
+    
+    // Điều chỉnh theo venue type
+    if (name.includes('rooftop') || name.includes('sky')) {
+        cost *= 1.5; // Rooftop thường đắt hơn
+    }
+    if (name.includes('club')) {
+        cost *= 1.3; // Club có cover charge
+    }
+    
+    // Điều chỉnh theo travel style
+    const styleMultipliers = {
+        budget: 0.7,
+        standard: 1.0,
+        premium: 1.3,
+        luxury: 1.8
+    };
+    
+    cost *= styleMultipliers[travelStyle] || 1.0;
+    
+    return Math.round(cost / 10000) * 10000; // Round to 10k
+};
+
+/**
  * Lấy dữ liệu thời tiết thực tế cho lịch trình
  */
 export const getRealWeatherForItinerary = async (destination, coord, startDate, duration) => {

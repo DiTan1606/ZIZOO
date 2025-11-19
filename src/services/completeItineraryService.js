@@ -3,7 +3,7 @@ import { db } from '../firebase';
 import { collection, addDoc, getDocs, query, where, orderBy, getDoc, doc, deleteDoc } from 'firebase/firestore';
 import { searchPlacesByText, searchNearbyPlaces } from './placesService';
 import { get7DayWeatherForecast } from './weatherService';
-import { findRealPlacesByCategory, findRealRestaurants, getRealWeatherForItinerary } from './realTimeDataService';
+import { findRealPlacesByCategory, findRealRestaurants, getRealWeatherForItinerary, findNightlifeVenues } from './realTimeDataService';
 import { startItineraryMonitoring } from './alertsAndAdjustmentsService';
 import provinceCoords from '../assets/provinceCoord.json';
 import { TRAVEL_STYLES, ACCOMMODATION_TYPES, TRANSPORT_OPTIONS, MEAL_COSTS } from '../constants';
@@ -269,6 +269,16 @@ const generateSingleDayPlan = async (
         
         // Tìm nhà hàng ĐA DẠNG
         const restaurants = await findRealRestaurantsForDay(destination, coord, travelStyle);
+        
+        // Tìm nightlife venues nếu user quan tâm
+        let nightlifeVenues = [];
+        if (interests.includes('nightlife')) {
+            nightlifeVenues = await findNightlifeVenues(destination, coord, travelStyle);
+            console.log(`🌃 Found ${nightlifeVenues.length} nightlife venues for day ${dayNumber}`);
+        }
+        
+        // Thêm nightlife venues vào restaurants object
+        restaurants.nightlife = nightlifeVenues;
         
         // Tạo lịch trình theo giờ phong phú
         const hourlySchedule = generateEnhancedHourlySchedule(
@@ -1866,6 +1876,10 @@ const getOptionalItems = (interests, destination, style) => {
         items.push('Thuốc tiêu hóa', 'Probiotics', 'Nước súc miệng');
     }
 
+    if (interests.includes('nightlife')) {
+        items.push('Trang phục dạo phố/đi bar', 'Giày/sandal thoải mái', 'Túi nhỏ đựng đồ cá nhân', 'Pin dự phòng');
+    }
+
     if (['Đà Lạt', 'Sapa'].includes(destination)) {
         items.push('Áo khoác dày', 'Găng tay', 'Khăn quàng cổ');
     }
@@ -2066,7 +2080,9 @@ const generateFreeTimeActivities = (destination, interests) => {
         activities.push('Thử street food, tìm hiểu ẩm thực địa phương');
     }
 
-
+    if (interests.includes('nightlife')) {
+        activities.push('Khám phá quán bar/pub địa phương', 'Thưởng thức nhạc sống', 'Trải nghiệm rooftop bar với view đẹp');
+    }
 
     // Default activities
     activities.push('Dạo phố, chụp ảnh');
@@ -2690,6 +2706,9 @@ const determineDayCategories = (dayNumber, interests) => {
     }
     if (interests.includes('photography')) {
         categories = [...categories, 'scenic_spot', 'viewpoint', 'landmark'];
+    }
+    if (interests.includes('nightlife')) {
+        categories = [...categories, 'night_club', 'bar', 'live_music', 'rooftop_bar', 'night_market'];
     }
 
     return [...new Set(categories)]; // Remove duplicates
@@ -4266,6 +4285,8 @@ const generateEnhancedDayTheme = (dayNumber, destinations, interests, destinatio
         baseTheme = 'Khám phá Di sản Văn hóa';
     } else if (interests.includes('adventure') && dayNumber >= 3) {
         baseTheme = 'Mạo hiểm & Khám phá';
+    } else if (interests.includes('nightlife') && dayNumber >= 2) {
+        baseTheme += ' & Cuộc sống đêm';
     } else if (interests.includes('photography')) {
         baseTheme += ' & Săn ảnh đẹp';
     }
@@ -4415,7 +4436,59 @@ const generateEnhancedHourlySchedule = (dayNumber, destinations, restaurants, in
 const generateEveningActivities = (interests, restaurants) => {
     const activities = [];
 
-    if (restaurants.cafes && restaurants.cafes.length > 0) {
+    // Nightlife activities nếu user quan tâm
+    if (interests.includes('nightlife') && restaurants.nightlife && restaurants.nightlife.length > 0) {
+        // Sử dụng nightlife venues thực tế
+        const topVenue = restaurants.nightlife[0];
+        const venueTypeNames = {
+            'rooftop_bar': 'Rooftop Bar',
+            'night_club': 'Night Club',
+            'bar': 'Bar/Pub',
+            'live_music': 'Quán nhạc sống',
+            'night_market': 'Chợ đêm'
+        };
+        
+        activities.push({
+            time: '20:30',
+            activity: `Trải nghiệm ${venueTypeNames[topVenue.venueType] || 'Bar'}: ${topVenue.name}`,
+            type: 'nightlife',
+            duration: '2-3 giờ',
+            location: topVenue,
+            venueType: topVenue.venueType,
+            rating: topVenue.rating,
+            estimatedCost: topVenue.estimatedCost,
+            suggestions: restaurants.nightlife.slice(1, 4).map(v => v.name),
+            notes: [
+                'Giữ an toàn cá nhân',
+                'Uống có trách nhiệm',
+                'Đi theo nhóm',
+                topVenue.isOpen === false ? '⚠️ Kiểm tra giờ mở cửa' : 'Có thể đông vào cuối tuần'
+            ].filter(Boolean),
+            realData: true
+        });
+    } else if (interests.includes('nightlife')) {
+        // Fallback nếu không tìm được venues thực tế
+        activities.push({
+            time: '20:30',
+            activity: 'Khám phá cuộc sống đêm',
+            type: 'nightlife',
+            duration: '2-3 giờ',
+            suggestions: [
+                'Rooftop bar với view thành phố',
+                'Quán bar/pub có nhạc sống',
+                'Chợ đêm sôi động',
+                'Khu phố đi bộ về đêm'
+            ],
+            notes: [
+                'Giữ an toàn cá nhân',
+                'Uống có trách nhiệm',
+                'Đi theo nhóm',
+                'Giữ liên lạc với đồng hành'
+            ],
+            estimatedCost: 200000,
+            realData: false
+        });
+    } else if (restaurants.cafes && restaurants.cafes.length > 0) {
         activities.push({
             time: '20:00',
             activity: `Thư giãn tại ${restaurants.cafes[0].name}`,
@@ -4466,6 +4539,10 @@ const generateEnhancedFreeTimeActivities = (destination, interests, dayNumber) =
 
     if (interests.includes('photography')) {
         activities.push('Săn ảnh golden hour', 'Chụp ảnh street photography');
+    }
+
+    if (interests.includes('nightlife')) {
+        activities.push('Khám phá bar/club địa phương', 'Thưởng thức nhạc sống', 'Trải nghiệm chợ đêm sôi động');
     }
 
     // Destination-specific activities
