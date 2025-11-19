@@ -9,6 +9,7 @@ import {
     generateDestinationFAQ,
     optimizeItinerary
 } from '../services/geminiService';
+import Footer from '../components/Footer';
 
 const GeminiDemo = () => {
     const [loading, setLoading] = useState(false);
@@ -147,6 +148,7 @@ const GeminiDemo = () => {
     };
 
     return (
+        <>
         <div className="max-w-6xl mx-auto p-6">
             <div className="bg-gradient-to-r from-purple-600 to-blue-600 rounded-lg shadow-lg p-8 mb-6 text-white">
                 <h1 className="text-4xl font-bold mb-2">🤖 Gemini AI Demo</h1>
@@ -205,6 +207,8 @@ const GeminiDemo = () => {
                 </ul>
             </div>
         </div>
+        <Footer />
+        </>
     );
 };
 

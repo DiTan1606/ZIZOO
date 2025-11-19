@@ -1835,17 +1835,11 @@ ansport Options Styles */
     border: 1px solid #e2e8f0;
 }
 
-.flights-selection > p {
-    margin: 0 0 15px 0;
-    font-weight: 600;
-    color: #2d3748;
-    font-size: 1.05em;
-}
-
-.flights-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-    gap: 15px;
+/* Interests Grid Four Columns */
+.interests-grid-four-cols {
+    display: grid !important;
+    grid-template-columns: repeat(4, 1fr) !important;
+    gap: 15px !important;
 }
 
 .flight-option-card {

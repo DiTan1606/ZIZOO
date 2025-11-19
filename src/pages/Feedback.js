@@ -24,12 +24,12 @@ const Feedback = () => {
     const [attachments, setAttachments] = useState([]);
 
     const feedbackTypes = [
-        { value: 'bug', label: '⚠ Báo lỗi', description: 'Báo cáo lỗi hoặc sự cố' },
-        { value: 'feature', label: '+ Đề xuất tính năng', description: 'Gợi ý tính năng mới' },
-        { value: 'improvement', label: '↑ Cải thiện', description: 'Đề xuất cải thiện tính năng hiện có' },
-        { value: 'compliment', label: '✓ Khen ngợi', description: 'Chia sẻ trải nghiệm tích cực' },
-        { value: 'complaint', label: '✗ Khiếu nại', description: 'Phản ánh vấn đề dịch vụ' },
-        { value: 'other', label: '• Khác', description: 'Phản hồi khác' }
+        { value: 'bug', label: 'Báo lỗi', description: 'Báo cáo lỗi hoặc sự cố' },
+        { value: 'feature', label: 'Đề xuất tính năng', description: 'Gợi ý tính năng mới' },
+        { value: 'improvement', label: 'Cải thiện', description: 'Đề xuất cải thiện tính năng hiện có' },
+        { value: 'compliment', label: 'Khen ngợi', description: 'Chia sẻ trải nghiệm tích cực' },
+        { value: 'complaint', label: 'Khiếu nại', description: 'Phản ánh vấn đề dịch vụ' },
+        { value: 'other', label: 'Khác', description: 'Phản hồi khác' }
     ];
 
     const severityLevels = [

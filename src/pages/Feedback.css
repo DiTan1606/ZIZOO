@@ -185,6 +185,10 @@
     font-size: 0.9rem;
 }
 
+.feedback-form-section {
+    width: 100%;
+}
+
 .feedback-form {
     background: rgba(255, 255, 255, 0.85);
     backdrop-filter: blur(10px);
@@ -193,6 +197,8 @@
     box-shadow: 0 15px 45px rgba(0,0,0,0.15);
     position: relative;
     border: 1px solid rgba(255, 255, 255, 0.5);
+    width: 100%;
+    max-width: 100%;
 }
 
 .feedback-form h2 {
@@ -202,20 +208,22 @@
     font-size: 2rem;
 }
 
-.form-group {
+.feedback-page .form-group {
     margin-bottom: 25px;
+    width: 100%;
+    box-sizing: border-box;
 }
 
-.form-group label {
+.feedback-page .form-group label {
     display: block;
     margin-bottom: 8px;
     color: #2c3e50;
     font-weight: 600;
 }
 
-.form-group input,
-.form-group select,
-.form-group textarea {
+.feedback-page .form-group input,
+.feedback-page .form-group select,
+.feedback-page .form-group textarea {
     width: 100%;
     padding: 14px 18px;
     border: 2px solid #e8ecf1;
@@ -224,11 +232,12 @@
     transition: all 0.3s ease;
     font-family: inherit;
     background: rgba(255, 255, 255, 0.9);
+    box-sizing: border-box;
 }
 
-.form-group input:focus,
-.form-group select:focus,
-.form-group textarea:focus {
+.feedback-page .form-group input:focus,
+.feedback-page .form-group select:focus,
+.feedback-page .form-group textarea:focus {
     outline: none;
     border-color: #667eea;
     box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.12);
@@ -238,7 +247,7 @@
 
 .feedback-types {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    grid-template-columns: repeat(3, 1fr);
     gap: 15px;
 }
 
@@ -273,10 +282,19 @@
     opacity: 0.8;
 }
 
-.form-row {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 20px;
+.feedback-page .form-row {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 25px !important;
+    margin-bottom: 25px !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+}
+
+.feedback-page .form-row .form-group {
+    margin-bottom: 0 !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
 }
 
 .star-rating {
@@ -394,7 +412,7 @@
         padding: 30px 20px;
     }
     
-    .form-row {
+    .feedback-page .form-row {
         grid-template-columns: 1fr;
     }
     
@@ -484,7 +502,7 @@
 /* Feedback type buttons */
 .feedback-types {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    grid-template-columns: repeat(3, 1fr);
     gap: 12px;
     margin-top: 10px;
 }
@@ -588,3 +606,5 @@
     background: #cc0000;
     transform: scale(1.1);
 }
+
+
