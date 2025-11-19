@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { toast } from 'react-toastify';
+import Footer from '../components/Footer';
 import './Feedback.css';
 
 const Feedback = () => {
@@ -350,12 +351,13 @@ const Feedback = () => {
                                 className="submit-btn"
                                 disabled={loading}
                             >
-                                {loading ? '⟳ Đang gửi...' : '→ Gửi phản hồi'}
+                                {loading ? '⟳ Đang gửi...' : 'Gửi phản hồi'}
                             </button>
                         </form>
                     </div>
                 </div>
             </div>
+            <Footer />
         </div>
     );
 };

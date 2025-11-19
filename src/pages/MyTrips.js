@@ -10,6 +10,7 @@ import {
 import { toast } from 'react-toastify';
 import MapViewer from '../components/MapViewer';
 import ItineraryDetailModal from '../components/ItineraryDetailModal';
+import './MyTrips.css';
 
 export default function MyTrips() {
     const { currentUser } = useAuth();
@@ -242,7 +243,11 @@ export default function MyTrips() {
 
     return (
         <div className="max-w-7xl mx-auto p-4">
-            <h1 className="text-3xl font-bold mb-6 text-indigo-700">Chuyến đi của tôi</h1>
+            {/* Hero Section */}
+            <div className="mytrips-hero">
+                <h1>Chuyến đi của tôi</h1>
+                <p>Quản lý và theo dõi tất cả các chuyến đi của bạn</p>
+            </div>
             
             {/* Tab Navigation */}
             <div className="flex mb-6 bg-gray-100 rounded-lg p-1">
@@ -267,7 +272,7 @@ export default function MyTrips() {
                     }`}
                     onClick={() => setActiveTab('completed')}
                 >
-                    ✅ Đã hoàn thành ({completeTrips.filter(t => getItineraryStatus(t) === 'completed').length})
+                    Đã hoàn thành ({completeTrips.filter(t => getItineraryStatus(t) === 'completed').length})
                 </button>
                 <button
                     className={`flex-1 py-2 px-4 rounded-md font-medium transition-colors ${
@@ -277,7 +282,7 @@ export default function MyTrips() {
                     }`}
                     onClick={() => setActiveTab('cancelled')}
                 >
-                    ❌ Đã hủy ({completeTrips.filter(t => getItineraryStatus(t) === 'cancelled').length})
+                    Đã hủy ({completeTrips.filter(t => getItineraryStatus(t) === 'cancelled').length})
                 </button>
             </div>
 
@@ -291,7 +296,7 @@ export default function MyTrips() {
                                 {activeTab === 'cancelled' && 'Chưa có chuyến đi nào bị hủy.'}
                             </p>
                             <p className="text-sm text-gray-400 mt-2">
-                                Hãy tạo lịch trình mới tại <strong>Complete Itinerary Planner</strong>!
+                                Hãy tạo lịch trình mới tại <strong>Lập kế hoạch</strong>
                             </p>
                         </div>
                     ) : (
@@ -316,10 +321,10 @@ export default function MyTrips() {
                                                     status === 'cancelled' ? 'bg-red-100 text-red-700' :
                                                     'bg-gray-100 text-gray-700'
                                                 }`}>
-                                                    {status === 'ongoing' && '🚀 Đang đi'}
-                                                    {status === 'completed' && '✅ Hoàn thành'}
-                                                    {status === 'cancelled' && '❌ Đã hủy'}
-                                                    {status === 'active' && '📅 Sắp tới'}
+                                                    {status === 'ongoing' && 'Đang đi'}
+                                                    {status === 'completed' && 'Hoàn thành'}
+                                                    {status === 'cancelled' && 'Đã hủy'}
+                                                    {status === 'active' && 'Sắp tới'}
                                                 </span>
                                             </div>
                                             <p className="text-lg text-gray-600 mt-1">
@@ -377,7 +382,7 @@ export default function MyTrips() {
                                                 onClick={() => setSelectedItinerary(trip.fullItinerary || trip)}
                                                 className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
                                             >
-                                                📋 Xem chi tiết
+                                                Xem chi tiết
                                             </button>
                                             
                                             {/* Action buttons based on status */}
@@ -387,13 +392,13 @@ export default function MyTrips() {
                                                         onClick={() => handleMarkCompleted(trip.id)}
                                                         className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
                                                     >
-                                                        ✅ Hoàn thành
+                                                        Hoàn thành
                                                     </button>
                                                     <button
                                                         onClick={() => handleOpenCancelModal(trip)}
                                                         className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
                                                     >
-                                                        ❌ Hủy chuyến
+                                                        Hủy chuyến
                                                     </button>
                                                 </>
                                             )}
@@ -514,7 +519,7 @@ export default function MyTrips() {
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
                     <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6">
                         <h3 className="text-2xl font-bold text-red-600 mb-4">
-                            ❌ Hủy chuyến đi
+                            Hủy chuyến đi
                         </h3>
                         <p className="text-gray-700 mb-4">
                             Bạn có chắc muốn hủy chuyến đi <strong>{tripToCancel?.tripName}</strong>?

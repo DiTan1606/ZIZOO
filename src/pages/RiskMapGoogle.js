@@ -1,5 +1,7 @@
 // src/pages/RiskMapGoogle.js - Bản đồ dự báo bão và ngập lụt
 import React, { useState } from 'react';
+import searchIcon from '../icon/search.png';
+import Footer from '../components/Footer';
 
 const WINDY_API_KEY = process.env.REACT_APP_WINDY_API_KEY;
 
@@ -74,10 +76,10 @@ export default function RiskMapGoogle() {
             {/* Header */}
             <div className="bg-white/10 backdrop-blur-md border-b border-white/20 p-4">
                 <div className="max-w-7xl mx-auto">
-                    <h1 className="text-4xl font-extrabold text-white mb-2 text-center">
-                        🌪️ BẢN ĐỒ DỰ BÁO BÃO VÀ NGẬP LỤT VIỆT NAM
+                    <h1 className="text-4xl font-extrabold text-white mb-2 text-center" style={{ fontFamily: 'system-ui, -apple-system, sans-serif' }}>
+                        BẢN ĐỒ DỰ BÁO BÃO VÀ NGẬP LỤT VIỆT NAM
                     </h1>
-                    <p className="text-white/90 text-center text-lg">
+                    <p className="text-white/90 text-center text-lg" style={{ fontFamily: '"Times New Roman", Times, serif' }}>
                         Theo dõi thời tiết thực tế và dự báo 10 ngày tới
                     </p>
                 </div>
@@ -86,7 +88,7 @@ export default function RiskMapGoogle() {
             {/* Search Location */}
             <div className="max-w-7xl mx-auto p-4">
                 <div className="bg-white/95 backdrop-blur-sm rounded-2xl shadow-2xl p-6 mb-4">
-                    <h3 className="text-xl font-bold text-gray-800 mb-4">🔍 Tìm kiếm địa điểm:</h3>
+                    <h3 className="text-xl font-bold text-gray-800 mb-4">Tìm kiếm địa điểm:</h3>
                     <div className="flex gap-3">
                         <input
                             type="text"
@@ -99,9 +101,16 @@ export default function RiskMapGoogle() {
                         <button
                             onClick={searchLocation}
                             disabled={searching || !searchQuery.trim()}
-                            className="px-8 py-4 bg-gradient-to-r from-blue-600 to-cyan-600 text-white text-lg font-bold rounded-xl hover:shadow-lg transform hover:scale-105 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="px-8 py-4 bg-gradient-to-r from-blue-600 to-cyan-600 text-white text-lg font-bold rounded-xl hover:shadow-lg transform hover:scale-105 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                         >
-                            {searching ? '🔄 Đang tìm...' : '🔍 Tìm kiếm'}
+                            {searching ? (
+                                <>🔄 Đang tìm...</>
+                            ) : (
+                                <>
+                                    <img src={searchIcon} alt="Search" style={{ width: '20px', height: '20px', filter: 'brightness(0) invert(1)' }} />
+                                    Tìm kiếm
+                                </>
+                            )}
                         </button>
                     </div>
                     
@@ -148,7 +157,7 @@ export default function RiskMapGoogle() {
 
                 {/* Info Panel */}
                 <div className="bg-white/95 backdrop-blur-sm rounded-2xl shadow-2xl p-6 mt-4">
-                    <h3 className="text-2xl font-bold text-gray-800 mb-4">📌 Hướng dẫn sử dụng:</h3>
+                    <h3 className="text-2xl font-bold text-gray-800 mb-4"> Hướng dẫn sử dụng:</h3>
                     <div className="grid md:grid-cols-2 gap-6 text-gray-700">
                         <div>
                             <h4 className="font-bold text-lg mb-2">🎯 Điều khiển bản đồ:</h4>
@@ -172,6 +181,7 @@ export default function RiskMapGoogle() {
                     </div>
                 </div>
             </div>
+            <Footer />
         </div>
     );
 }

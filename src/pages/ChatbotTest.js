@@ -1,6 +1,6 @@
 // src/pages/ChatbotTest.js
 import React from 'react';
-import aiIcon from '../icon/AIgoiy.png';
+import aiIcon from '../icon/ai.png';
 import chatIcon from '../icon/livechat.png';
 import sendIcon from '../icon/guitinnhan.png';
 

@@ -82,12 +82,21 @@
     font-size: 14px;
     font-weight: 600;
     transition: all 0.3s;
+    display: flex;
+    align-items: center;
+    gap: 8px;
 }
 
 .add-custom-btn:hover,
 .toggle-all-btn:hover {
     background: white;
     color: #667eea;
+}
+
+.btn-icon {
+    width: 20px;
+    height: 20px;
+    object-fit: contain;
 }
 
 /* Custom Input Panel */
@@ -146,9 +155,8 @@
 }
 
 .cancel-btn,
-.add-btn {
+.add-btn-custom {
     padding: 10px 20px;
-    border: none;
     border-radius: 6px;
     cursor: pointer;
     font-weight: 600;
@@ -158,19 +166,22 @@
 .cancel-btn {
     background: #6c757d;
     color: white;
+    border: none;
 }
 
 .cancel-btn:hover {
     background: #5a6268;
 }
 
-.add-btn {
-    background: #28a745;
-    color: white;
+.add-btn-custom {
+    background: white;
+    color: #667eea;
+    border: 2px solid #667eea;
 }
 
-.add-btn:hover {
-    background: #218838;
+.add-btn-custom:hover {
+    background: #667eea;
+    color: white;
 }
 
 /* Selected Panel */
@@ -259,20 +270,22 @@
     padding-left: 35px;
 }
 
-.remove-btn {
-    background: #dc3545;
-    color: white;
+.remove-btn-text {
+    background: transparent;
+    color: #dc3545;
     border: none;
-    width: 28px;
-    height: 28px;
-    border-radius: 50%;
     cursor: pointer;
-    font-size: 16px;
+    font-size: 18px;
+    font-weight: 700;
     transition: all 0.3s;
+    padding: 5px 10px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
 }
 
-.remove-btn:hover {
-    background: #c82333;
+.remove-btn-text:hover {
+    color: #c82333;
     transform: scale(1.1);
 }
 
@@ -368,23 +381,25 @@
 }
 
 .destination-card {
-    background: white;
-    border: 2px solid #e0e0e0;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border: 2px solid #667eea;
     border-radius: 12px;
     padding: 20px;
     cursor: pointer;
     transition: all 0.3s;
+    color: white;
 }
 
 .destination-card:hover {
-    border-color: #007bff;
+    border-color: #764ba2;
     transform: translateY(-4px);
-    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4);
 }
 
 .destination-card.selected {
-    border-color: #28a745;
-    background: #f0fff4;
+    border-color: #ffd700;
+    background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
+    box-shadow: 0 8px 25px rgba(255, 215, 0, 0.3);
 }
 
 .card-header {
@@ -397,31 +412,34 @@
 .checkbox {
     width: 24px;
     height: 24px;
-    border: 2px solid #007bff;
+    border: 2px solid rgba(255, 255, 255, 0.5);
     border-radius: 6px;
     display: flex;
     align-items: center;
     justify-content: center;
     transition: all 0.3s;
+    background: transparent;
 }
 
 .destination-card.selected .checkbox {
-    background: #28a745;
-    border-color: #28a745;
+    background: white;
+    border-color: white;
 }
 
 .checkbox span {
-    color: white;
+    color: #667eea;
     font-weight: bold;
     font-size: 16px;
 }
 
 .category-badge {
-    background: #e9ecef;
+    background: transparent;
     padding: 4px 12px;
     border-radius: 12px;
-    font-size: 12px;
+    font-size: 16px;
     font-weight: 600;
+    color: rgba(255, 255, 255, 0.9);
+    border: 1px solid rgba(255, 255, 255, 0.3);
 }
 
 .card-body {
@@ -433,14 +451,14 @@
 .destination-name {
     margin: 0;
     font-size: 18px;
-    color: #333;
+    color: white;
     font-weight: 600;
 }
 
 .destination-address {
     margin: 0;
     font-size: 14px;
-    color: #666;
+    color: rgba(255, 255, 255, 0.9);
 }
 
 .destination-info {
@@ -454,37 +472,42 @@
     align-items: center;
     gap: 8px;
     font-size: 14px;
+    padding: 6px 10px;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    background: transparent;
 }
 
 .rating {
-    color: #ffc107;
+    color: #ff9800;
     font-weight: 600;
 }
 
 .reviews {
-    color: #666;
+    color: rgba(255, 255, 255, 0.95);
 }
 
 .price {
-    color: #28a745;
+    color: #4caf50;
     font-weight: 600;
 }
 
 .status {
-    padding: 3px 10px;
+    padding: 6px 12px;
     border-radius: 12px;
     font-size: 12px;
     font-weight: 600;
+    border: 1px solid rgba(255, 255, 255, 0.3);
 }
 
 .status.open {
-    background: #d4edda;
-    color: #155724;
+    background: transparent;
+    color: #4caf50;
 }
 
 .status.closed {
-    background: #f8d7da;
-    color: #721c24;
+    background: transparent;
+    color: #f44336;
 }
 
 /* No Results */

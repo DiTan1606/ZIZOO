@@ -5,7 +5,7 @@ import './TravelChatbot.css';
 
 // Import icons
 import livechatIcon from '../icon/livechat.png';
-import aiIcon from '../icon/AIgoiy.png';
+import aiIcon from '../icon/ai.png';
 import sendIcon from '../icon/guitinnhan.png';
 
 const TravelChatbot = () => {
@@ -201,7 +201,7 @@ const TravelChatbot = () => {
                             disabled={!input.trim() || loading}
                             className="send-btn"
                         >
-                            {loading ? '⏳' : '📤'}
+                            {loading ? '⏳' : <img src={sendIcon} alt="Send" />}
                         </button>
                     </div>
                 </div>

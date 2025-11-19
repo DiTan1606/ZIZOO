@@ -60,22 +60,25 @@
 .desktop-menu {
     display: flex;
     align-items: center;
-    gap: 8px;
+    justify-content: center;
+    gap: 4px;
 }
 
 .nav-link {
     display: flex;
     align-items: center;
+    justify-content: center;
     gap: 8px;
     padding: 10px 16px;
     border-radius: 12px;
     text-decoration: none;
     color: rgba(255, 255, 255, 0.9);
     font-weight: 500;
-    font-size: 0.9rem;
+    font-size: 0.95rem;
     transition: all 0.3s ease;
     position: relative;
     overflow: hidden;
+    height: 44px;
 }
 
 .nav-link::before {
@@ -111,6 +114,10 @@
 
 .nav-text {
     white-space: nowrap;
+    line-height: 1;
+    display: block;
+    margin: 0;
+    padding: 0;
 }
 
 /* User Section */
@@ -130,13 +137,10 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 6px 12px;
-    background: rgba(255, 255, 255, 0.1);
     border-radius: 50px;
     text-decoration: none;
     color: white;
     transition: all 0.3s ease;
-    border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
 .user-profile:hover {
@@ -196,8 +200,8 @@
     align-items: center;
     gap: 6px;
     padding: 8px 12px;
-    background: rgba(255, 107, 107, 0.2);
-    border: 1px solid rgba(255, 107, 107, 0.3);
+    background: transparent;
+    border: 2px solid white;
     border-radius: 12px;
     color: white;
     font-weight: 500;
@@ -207,9 +211,9 @@
 }
 
 .logout-btn:hover {
-    background: rgba(255, 107, 107, 0.3);
+    background: rgba(255, 255, 255, 0.1);
     transform: translateY(-2px);
-    box-shadow: 0 8px 25px rgba(255, 107, 107, 0.2);
+    box-shadow: 0 8px 25px rgba(255, 255, 255, 0.2);
 }
 
 .logout-icon {
@@ -249,14 +253,14 @@
 }
 
 .register-btn {
-    background: linear-gradient(135deg, #feca57, #ff9ff3);
-    color: #2c3e50;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: white;
     font-weight: 700;
 }
 
 .register-btn:hover {
     transform: translateY(-2px);
-    box-shadow: 0 8px 25px rgba(254, 202, 87, 0.4);
+    box-shadow: 0 8px 25px rgba(102, 126, 234, 0.4);
 }
 
 .auth-icon {
@@ -513,8 +517,8 @@
 
 /* Icon images */
 .logo-icon-img {
-    width: 35px;
-    height: 35px;
+    width: 105px;
+    height: 105px;
     object-fit: contain;
 }
 
@@ -524,11 +528,14 @@
 }
 
 .nav-icon-img {
-    width: 18px;
-    height: 18px;
+    width: 22px;
+    height: 22px;
     object-fit: contain;
     filter: brightness(0) invert(1);
     transition: transform 0.3s ease;
+    display: block;
+    flex-shrink: 0;
+    margin: 0;
 }
 
 .nav-link:hover .nav-icon-img,

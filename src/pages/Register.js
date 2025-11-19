@@ -31,7 +31,28 @@ export default function Register() {
     return (
         <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 py-12">
             <div className="max-w-md w-full bg-white p-8 rounded-lg shadow-lg">
-                <h2 className="text-3xl font-bold text-center mb-6 text-gray-800">Đăng Ký Tài Khoản</h2>
+                <div style={{ textAlign: 'center', marginBottom: '24px' }}>
+                    <img 
+                        src="/logo.png" 
+                        alt="ZIZOO Logo" 
+                        style={{ 
+                            width: '120px', 
+                            height: '120px', 
+                            margin: '0 auto 16px',
+                            display: 'block'
+                        }} 
+                    />
+                    <h2 style={{ 
+                        fontFamily: 'sans-serif', 
+                        textAlign: 'center', 
+                        margin: '0',
+                        fontSize: '30px',
+                        fontWeight: '700',
+                        color: '#1f2937',
+                        width: '100%',
+                        display: 'block'
+                    }}>Đăng Ký Tài Khoản</h2>
+                </div>
                 <form onSubmit={handleSubmit}>
                     <div className="mb-4">
                         <input
@@ -65,7 +86,20 @@ export default function Register() {
                     </div>
                     <button
                         type="submit"
-                        className="w-full bg-green-600 text-white py-3 rounded-lg font-bold hover:bg-green-700 transition"
+                        style={{
+                            width: '100%',
+                            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                            color: 'white',
+                            padding: '12px 0',
+                            borderRadius: '9999px',
+                            fontWeight: '700',
+                            border: 'none',
+                            cursor: 'pointer',
+                            transition: 'all 0.3s ease',
+                            fontSize: '16px'
+                        }}
+                        onMouseEnter={(e) => e.target.style.transform = 'translateY(-2px)'}
+                        onMouseLeave={(e) => e.target.style.transform = 'translateY(0)'}
                     >
                         Đăng Ký
                     </button>

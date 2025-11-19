@@ -5,6 +5,11 @@ import { searchPlacesByText, initPlacesService } from '../services/placesService
 import provinceCoords from '../assets/provinceCoord.json';
 import './DestinationSelector.css';
 
+// Import icons
+import tddtcIcon from '../icon/tddtc.png';
+import ctcIcon from '../icon/ctc.png';
+import bctcIcon from '../icon/bctc.png';
+
 const DestinationSelector = ({ preferences, onConfirm, onBack }) => {
     const [loading, setLoading] = useState(true);
     const [destinations, setDestinations] = useState([]);
@@ -308,7 +313,7 @@ const DestinationSelector = ({ preferences, onConfirm, onBack }) => {
     return (
         <div className="destination-selector">
             <div className="selector-header">
-                <h1>📍 Chọn địa điểm bạn muốn đi</h1>
+                <h1><strong>Chọn địa điểm bạn muốn đi</strong></h1>
                 <p>Chọn các địa điểm bạn quan tâm và chỉ định khung giờ (tùy chọn)</p>
                 <div className="selection-summary">
                     <span className="selected-count">
@@ -319,13 +324,15 @@ const DestinationSelector = ({ preferences, onConfirm, onBack }) => {
                             className="add-custom-btn"
                             onClick={() => setShowCustomInput(!showCustomInput)}
                         >
-                            ➕ Thêm địa điểm tùy chỉnh
+                            <img src={tddtcIcon} alt="Thêm" className="btn-icon" />
+                            Thêm địa điểm tùy chỉnh
                         </button>
                         <button 
                             className="toggle-all-btn"
                             onClick={toggleAll}
                         >
-                            {allSelected ? '❌ Bỏ chọn tất cả' : '✅ Chọn tất cả'}
+                            <img src={allSelected ? bctcIcon : ctcIcon} alt={allSelected ? "Bỏ chọn" : "Chọn"} className="btn-icon" />
+                            {allSelected ? 'Bỏ chọn tất cả' : 'Chọn tất cả'}
                         </button>
                     </div>
                 </div>
@@ -334,7 +341,7 @@ const DestinationSelector = ({ preferences, onConfirm, onBack }) => {
             {/* Custom Destination Input */}
             {showCustomInput && (
                 <div className="custom-input-panel">
-                    <h3>➕ Thêm địa điểm tùy chỉnh</h3>
+                    <h3> Thêm địa điểm tùy chỉnh</h3>
                     <div className="custom-form">
                         <div className="form-row">
                             <div className="form-group">
@@ -439,10 +446,10 @@ const DestinationSelector = ({ preferences, onConfirm, onBack }) => {
                                 Hủy
                             </button>
                             <button 
-                                className="add-btn"
+                                className="add-btn-custom"
                                 onClick={addCustomDestination}
                             >
-                                ✅ Thêm địa điểm
+                                 Thêm địa điểm
                             </button>
                         </div>
                     </div>
@@ -471,11 +478,11 @@ const DestinationSelector = ({ preferences, onConfirm, onBack }) => {
                                         </span>
                                     )}
                                     <button 
-                                        className="remove-btn"
+                                        className="remove-btn-text"
                                         onClick={() => removeDestination(dest.id)}
                                         title="Xóa"
                                     >
-                                        ✕
+                                        ✕ Xóa
                                     </button>
                                 </div>
                                 {dest.address && (
@@ -614,14 +621,14 @@ const DestinationSelector = ({ preferences, onConfirm, onBack }) => {
                     className="back-btn"
                     onClick={onBack}
                 >
-                    ← Quay lại
+                     Quay lại
                 </button>
                 <button 
                     className="confirm-btn"
                     onClick={handleConfirm}
                     disabled={selectedDestinations.length === 0}
                 >
-                    Tiếp tục với {selectedDestinations.length} địa điểm đã chọn →
+                    Tiếp tục với {selectedDestinations.length} địa điểm đã chọn 
                 </button>
             </div>
         </div>

@@ -134,13 +134,13 @@ const PersonalizedRecommendations = () => {
     return (
         <div className="personalized-recommendations">
             <div className="header">
-                <h2>🤖 Gợi ý cá nhân hóa bằng AI</h2>
+                <h2>Gợi ý cá nhân hóa bằng AI</h2>
                 <p>Hệ thống AI phân tích sở thích và lịch sử của bạn để tạo lịch trình hoàn hảo</p>
             </div>
 
             {/* Preferences Form */}
             <div className="preferences-form">
-                <h3>Thiết lập sở thích</h3>
+                <h3 style={{ fontWeight: 700 }}>Thiết lập sở thích</h3>
                 
                 <div className="form-row">
                     <div className="form-group">
@@ -258,7 +258,7 @@ const PersonalizedRecommendations = () => {
                     onClick={generateRecommendations}
                     disabled={loading}
                 >
-                    {loading ? '🤖 AI đang phân tích...' : '✨ Tạo gợi ý cá nhân hóa'}
+                    {loading ? 'AI đang phân tích...' : 'Tạo gợi ý cá nhân hóa'}
                 </button>
             </div>
 

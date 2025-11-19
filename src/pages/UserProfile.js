@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { toast } from 'react-toastify';
+import Footer from '../components/Footer';
 import './UserProfile.css';
 import {
     getUserProfile,
@@ -14,10 +15,11 @@ import {
 } from '../services/userProfileService';
 
 // Import icons
-import profileIcon from '../icon/thongtincanhan.png';
+import profileIcon from '../icon/ttcn.png';
 import saveIcon from '../icon/luuthaydoi.png';
-import securityIcon from '../icon/baomat.png';
-import optionsIcon from '../icon/tuychon.png';
+import securityIcon from '../icon/bm.png';
+import optionsIcon from '../icon/tc.png';
+import cameraIcon from '../icon/cam.png';
 
 const UserProfile = () => {
     const { currentUser } = useAuth();
@@ -25,6 +27,8 @@ const UserProfile = () => {
     const [activeTab, setActiveTab] = useState('profile');
     const [avatarFile, setAvatarFile] = useState(null);
     const [avatarPreview, setAvatarPreview] = useState(null);
+    const [showAvatarMenu, setShowAvatarMenu] = useState(false);
+    const [showAvatarModal, setShowAvatarModal] = useState(false);
     const fileInputRef = useRef(null);
     
     const [profileData, setProfileData] = useState({
@@ -146,6 +150,8 @@ const UserProfile = () => {
                 setAvatarPreview(result.avatarURL);
                 setAvatarFile(null);
                 await loadUserProfile();
+                // Notify Navbar to update avatar
+                window.dispatchEvent(new Event('avatarUpdated'));
             } else {
                 toast.error(result.error || 'Lỗi khi upload ảnh');
             }
@@ -167,6 +173,8 @@ const UserProfile = () => {
                 toast.success('Đã xóa ảnh đại diện');
                 setAvatarPreview(null);
                 await loadUserProfile();
+                // Notify Navbar to update avatar
+                window.dispatchEvent(new Event('avatarUpdated'));
             } else {
                 toast.error(result.error || 'Lỗi khi xóa ảnh');
             }
@@ -374,7 +382,11 @@ const UserProfile = () => {
             <div className="container">
                 <div className="profile-header">
                     <div className="profile-avatar">
-                        <div className="avatar-circle">
+                        <div 
+                            className="avatar-circle clickable"
+                            onClick={() => setShowAvatarMenu(!showAvatarMenu)}
+                            title="Nhấn để xem tùy chọn"
+                        >
                             {avatarPreview ? (
                                 <img src={avatarPreview} alt="Avatar" />
                             ) : (
@@ -388,13 +400,47 @@ const UserProfile = () => {
                             onChange={handleAvatarChange}
                             style={{ display: 'none' }}
                         />
-                        <button 
-                            className="change-avatar-btn"
-                            onClick={() => fileInputRef.current?.click()}
-                            title="Thay đổi ảnh đại diện"
-                        >
-                            📷
-                        </button>
+                        
+                        {showAvatarMenu && (
+                            <>
+                                <div className="avatar-menu-overlay" onClick={() => setShowAvatarMenu(false)} />
+                                <div className="avatar-menu">
+                                    {avatarPreview && (
+                                        <button 
+                                            className="avatar-menu-item"
+                                            onClick={() => {
+                                                setShowAvatarModal(true);
+                                                setShowAvatarMenu(false);
+                                            }}
+                                        >
+                                          Xem ảnh đại diện
+                                        </button>
+                                    )}
+                                    <button 
+                                        className="avatar-menu-item"
+                                        onClick={() => {
+                                            fileInputRef.current?.click();
+                                            setShowAvatarMenu(false);
+                                        }}
+                                    >
+                                         Chọn ảnh trên máy
+                                    </button>
+                                    {avatarPreview && (
+                                        <button 
+                                            className="avatar-menu-item danger"
+                                            onClick={() => {
+                                                setShowAvatarMenu(false);
+                                                handleAvatarDelete();
+                                            }}
+                                            disabled={loading}
+                                        >
+                                         Xóa ảnh đại diện
+                                        </button>
+                                    )}
+                                </div>
+                            </>
+                        )}
+                        
                         {avatarFile && (
                             <div className="avatar-actions">
                                 <button 
@@ -414,14 +460,6 @@ const UserProfile = () => {
                                     ✗ Hủy
                                 </button>
                             </div>
-                        )}
-                        {avatarPreview && !avatarFile && (
-                            <button 
-                                className="btn-delete-avatar"
-                                onClick={handleAvatarDelete}
-                                disabled={loading}
-                            >
-                            </button>
                         )}
                     </div>
                     <div className="profile-info">
@@ -453,19 +491,22 @@ const UserProfile = () => {
                             className={`tab-btn ${activeTab === 'profile' ? 'active' : ''}`}
                             onClick={() => setActiveTab('profile')}
                         >
-                            👤 Thông tin cá nhân
+                            <img src={profileIcon} alt="" className="tab-icon" />
+                            Thông tin cá nhân
                         </button>
                         <button 
                             className={`tab-btn ${activeTab === 'preferences' ? 'active' : ''}`}
                             onClick={() => setActiveTab('preferences')}
                         >
-                            ⚙️ Tùy chọn
+                            <img src={optionsIcon} alt="" className="tab-icon" />
+                            Tùy chọn
                         </button>
                         <button 
                             className={`tab-btn ${activeTab === 'security' ? 'active' : ''}`}
                             onClick={() => setActiveTab('security')}
                         >
-                            🔒 Bảo mật
+                            <img src={securityIcon} alt="" className="tab-icon" />
+                            Bảo mật
                         </button>
                     </div>
 
@@ -704,25 +745,38 @@ const UserProfile = () => {
                                         <label>Xác nhận mật khẩu mới</label>
                                         <input type="password" placeholder="Nhập lại mật khẩu mới" />
                                     </div>
-                                    <button className="change-password-btn">🔐 Đổi mật khẩu</button>
+                                    <button className="change-password-btn">Đổi mật khẩu</button>
                                 </div>
 
                                 <div className="form-section">
                                     <h3>Xác thực 2 bước</h3>
                                     <p>Tăng cường bảo mật tài khoản với xác thực 2 bước</p>
-                                    <button className="enable-2fa-btn">📱 Kích hoạt 2FA</button>
+                                    <button className="enable-2fa-btn">Kích hoạt 2FA</button>
                                 </div>
 
                                 <div className="form-section danger-zone">
                                     <h3>Vùng nguy hiểm</h3>
                                     <p>Các hành động này không thể hoàn tác</p>
-                                    <button className="delete-account-btn">🗑️  Xóatài khoản</button>
+                                    <button className="delete-account-btn">Xóa tài khoản</button>
                                 </div>
                             </div>
                         )}
                     </div>
                 </div>
             </div>
+            
+            {/* Avatar Modal */}
+            {showAvatarModal && (
+                <div className="avatar-modal" onClick={() => setShowAvatarModal(false)}>
+                    <div className="avatar-modal-content" onClick={(e) => e.stopPropagation()}>
+                        <button className="avatar-modal-close" onClick={() => setShowAvatarModal(false)}>
+                            ✕
+                        </button>
+                        <img src={avatarPreview} alt="Avatar" className="avatar-modal-image" />
+                    </div>
+                </div>
+            )}
+            <Footer />
         </div>
     );
 };
