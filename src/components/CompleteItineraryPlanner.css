@@ -1836,9 +1836,9 @@ ansport Options Styles */
 
 /* Interests Grid Four Columns */
 .interests-grid-four-cols {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 15px;
+    display: grid !important;
+    grid-template-columns: repeat(4, 1fr) !important;
+    gap: 15px !important;
 }
 
 /* Special Activities Grid Two Columns */
