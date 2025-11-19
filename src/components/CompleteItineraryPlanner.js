@@ -8,6 +8,10 @@ import ItineraryAlertsPanel from './ItineraryAlertsPanel';
 import DestinationSelector from './DestinationSelector';
 import './CompleteItineraryPlanner.css';
 
+// Import icons
+import mapIcon from '../icon/map.png';
+import quickIcon from '../icon/quick.png';
+
 const CompleteItineraryPlanner = () => {
     const { currentUser } = useAuth();
     const navigate = useNavigate();
@@ -254,24 +258,25 @@ const CompleteItineraryPlanner = () => {
         return (
             <div className="complete-itinerary-planner">
                 <div className="header">
-                    <h1>🗺️ Tạo Lịch Trình Du Lịch Hoàn Chỉnh</h1>
+                    <h1>Tạo Lịch Trình Du Lịch Hoàn Chỉnh</h1>
                     <p>Lịch trình chi tiết với đầy đủ thông tin: lộ trình, chi phí, lưu trú, phương tiện, đồ đạc...</p>
                     
                     <div className="quick-test-section">
-                        <p>🚀 <strong>Quick Test:</strong> Đã điền sẵn: HCM → Vũng Tàu, ngày mai, 2 người, 3M VNĐ, 3N2Đ</p>
+                        <p><strong>Quick Test:</strong> Đã điền sẵn: HCM → Vũng Tàu, ngày mai, 2 người, 3M VNĐ, 3N2Đ</p>
                         <button 
                             type="button" 
                             className="btn-quick-test"
                             onClick={() => setStep(2)}
                             style={{
-                                background: '#28a745',
+                                background: 'linear-gradient(135deg, #FDB44B 0%, #FF8A5B 100%)',
                                 color: 'white',
                                 border: 'none',
                                 padding: '8px 16px',
                                 borderRadius: '4px',
                                 cursor: 'pointer',
                                 fontSize: '14px',
-                                marginTop: '8px'
+                                marginTop: '8px',
+                                fontWeight: '600'
                             }}
                         >
                             Tạo ngay với thông tin mặc định
@@ -281,8 +286,8 @@ const CompleteItineraryPlanner = () => {
 
                 <div className="form-container">
                     <div className="form-section">
-                        <h3>📍 Thông tin cơ bản</h3>
-                        <div className="form-row">
+                        <h3> Thông tin cơ bản</h3>
+                        <div className="form-row-two-cols">
                             <div className="form-group">
                                 <label>Điểm khởi hành</label>
                                 <input
@@ -297,7 +302,7 @@ const CompleteItineraryPlanner = () => {
                                         <option key={city} value={city}>{city}</option>
                                     ))}
                                 </datalist>
-                                <small>💡 Gợi ý: Hồ Chí Minh, Hà Nội, Đà Nẵng, Cần Thơ, Hải Phòng...</small>
+                                <small> Gợi ý: Hồ Chí Minh, Hà Nội, Đà Nẵng, Cần Thơ, Hải Phòng...</small>
                             </div>
 
                             <div className="form-group">
@@ -314,7 +319,7 @@ const CompleteItineraryPlanner = () => {
                                         <option key={city} value={city}>{city}</option>
                                     ))}
                                 </datalist>
-                                <small>💡 Gợi ý: Vũng Tàu, Đà Lạt, Nha Trang, Phú Quốc, Hội An, Huế...</small>
+                                <small> Gợi ý: Vũng Tàu, Đà Lạt, Nha Trang, Phú Quốc, Hội An, Huế...</small>
                             </div>
                         </div>
 
@@ -433,7 +438,7 @@ const CompleteItineraryPlanner = () => {
                     </div>
 
                     <div className="form-section">
-                        <h3>💼 Phong cách du lịch</h3>
+                        <h3> Phong cách du lịch</h3>
                         <div className="travel-styles">
                             {travelStyles.map(style => (
                                 <div 
@@ -449,8 +454,8 @@ const CompleteItineraryPlanner = () => {
                     </div>
 
                     <div className="form-section">
-                        <h3>🎯 Sở thích & Quan tâm</h3>
-                        <div className="interests-grid">
+                        <h3> Sở thích & Quan tâm</h3>
+                        <div className="interests-grid-four-cols">
                             {interestOptions.map(interest => (
                                 <div 
                                     key={interest.value}
@@ -465,7 +470,7 @@ const CompleteItineraryPlanner = () => {
                     </div>
 
                     <div className="form-section">
-                        <h3>⏰ Giờ bắt đầu hành trình</h3>
+                        <h3> Giờ bắt đầu hành trình</h3>
                         <div className="input-group">
                             <label>Thời gian bắt đầu hành trình du lịch</label>
                             <input 
@@ -485,8 +490,8 @@ const CompleteItineraryPlanner = () => {
                     </div>
 
                     <div className="form-section">
-                        <h3>✨ Hoạt động đặc biệt</h3>
-                        <div className="special-activities-grid">
+                        <h3> Hoạt động đặc biệt</h3>
+                        <div className="special-activities-grid-two-cols">
                             <div 
                                 className={`activity-card ${preferences.specialActivities.sunrise ? 'selected' : ''}`}
                                 onClick={() => handleSpecialActivityToggle('sunrise')}
@@ -564,7 +569,7 @@ const CompleteItineraryPlanner = () => {
 
                 <div className="preview-container">
                     <div className="preview-section">
-                        <h3>📍 Thông tin chuyến đi</h3>
+                        <h3><strong>Thông tin chuyến đi</strong></h3>
                         <div className="info-grid">
                             <div className="info-item">
                                 <strong>Tuyến đường:</strong> {preferences.departureCity} → {preferences.destination}
@@ -594,7 +599,7 @@ const CompleteItineraryPlanner = () => {
 
                     {selectedDestinations.length > 0 && (
                         <div className="preview-section">
-                            <h3>📍 Địa điểm bạn đã chọn</h3>
+                            <h3><strong>Địa điểm bạn đã chọn</strong></h3>
                             <div className="selected-destinations-preview">
                                 {selectedDestinations.map((dest, index) => (
                                     <div key={dest.id} className="preview-destination-item">
@@ -615,7 +620,7 @@ const CompleteItineraryPlanner = () => {
                     )}
 
                     <div className="preview-section">
-                        <h3>📝 Lịch trình sẽ bao gồm</h3>
+                        <h3><strong>Lịch trình sẽ bao gồm</strong></h3>
                         <div className="features-list">
                             <div className="feature-item">
                                 <span className="icon">📋</span>
@@ -681,7 +686,7 @@ const CompleteItineraryPlanner = () => {
                             className="back-btn"
                             onClick={() => setStep(2)}
                         >
-                            ← Quay lại chọn địa điểm
+                         Quay lại chọn địa điểm
                         </button>
                         <button 
                             className="generate-btn"
@@ -694,7 +699,7 @@ const CompleteItineraryPlanner = () => {
                                     Đang tạo lịch trình hoàn chỉnh...
                                 </div>
                             ) : (
-                                '🚀 Tạo lịch trình hoàn chỉnh'
+                                'Tạo lịch trình hoàn chỉnh'
                             )}
                         </button>
                     </div>
@@ -707,7 +712,7 @@ const CompleteItineraryPlanner = () => {
         return (
             <div className="complete-itinerary-result">
                 <div className="result-header no-print">
-                    <h1>🎉 Lịch trình hoàn chỉnh đã sẵn sàng!</h1>
+                    <h1> Lịch trình hoàn chỉnh đã sẵn sàng!</h1>
                     <div className="actions">
                         <button onClick={printItinerary} className="print-btn">
                             🖨️ In lịch trình

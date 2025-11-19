@@ -5,7 +5,7 @@ import { getUserProfile } from '../services/userProfileService';
 import './Navbar.css';
 
 // Import icons
-import logoIcon from '../icon/logo.png';
+import logoIcon from '../icon/Logo-02.png';
 import homeIcon from '../icon/trangchu.png';
 import planIcon from '../icon/lapkehoach.png';
 import aiIcon from '../icon/AIgoiy.png';
@@ -15,6 +15,8 @@ import contactIcon from '../icon/phone-call.png';
 import feedbackIcon from '../icon/phanhoi.png';
 import profileIcon from '../icon/thongtincanhan.png';
 import logoutIcon from '../icon/dangxuat.png';
+import loginIcon from '../icon/dangnhap.png';
+import registerIcon from '../icon/dangky.png';
 
 export default function Navbar() {
     const { currentUser, logout } = useAuth();
@@ -28,6 +30,18 @@ export default function Navbar() {
         if (currentUser) {
             loadUserAvatar();
         }
+    }, [currentUser]);
+
+    // Listen for avatar updates
+    useEffect(() => {
+        const handleAvatarUpdate = () => {
+            if (currentUser) {
+                loadUserAvatar();
+            }
+        };
+
+        window.addEventListener('avatarUpdated', handleAvatarUpdate);
+        return () => window.removeEventListener('avatarUpdated', handleAvatarUpdate);
     }, [currentUser]);
 
     const loadUserAvatar = async () => {
@@ -57,9 +71,7 @@ export default function Navbar() {
         { path: '/complete-planner', label: 'Lập kế hoạch', iconImg: planIcon, protected: true },
         { path: '/ai-recommendations', label: 'AI Gợi ý', iconImg: aiIcon, protected: true },
         { path: '/mytrips', label: 'Chuyến đi', iconImg: tripIcon, protected: true },
-        { path: '/about', label: 'Về chúng tôi', iconImg: aboutIcon },
-        { path: '/contact', label: 'Liên hệ', iconImg: contactIcon },
-        { path: '/feedback', label: 'Phản hồi', iconImg: feedbackIcon }
+        { path: '/feedback', label: 'Chăm sóc khách hàng', iconImg: feedbackIcon }
     ];
 
     return (
@@ -68,10 +80,6 @@ export default function Navbar() {
                 {/* Logo */}
                 <Link to="/" className="navbar-logo">
                     <img src={logoIcon} alt="ZIZOO" className="logo-icon-img" />
-                    <div className="logo-text-container">
-                        <span className="logo-text">ZIZOO</span>
-                        <span className="logo-subtitle">Travel AI</span>
-                    </div>
                 </Link>
 
                 {/* Desktop Navigation */}
@@ -116,11 +124,11 @@ export default function Navbar() {
                     ) : (
                         <div className="auth-buttons">
                             <Link to="/login" className="auth-btn login-btn">
-                                <span className="auth-icon">🔑</span>
+                                <img src={loginIcon} alt="" className="nav-icon-img" />
                                 <span>Đăng nhập</span>
                             </Link>
                             <Link to="/register" className="auth-btn register-btn">
-                                <span className="auth-icon">✨</span>
+                                <img src={registerIcon} alt="" className="nav-icon-img" />
                                 <span>Đăng ký</span>
                             </Link>
                         </div>
@@ -186,7 +194,7 @@ export default function Navbar() {
                                     className="mobile-auth-link"
                                     onClick={() => setIsMobileMenuOpen(false)}
                                 >
-                                    <span className="nav-icon">🔑</span>
+                                    <img src={loginIcon} alt="" className="nav-icon-img" />
                                     <span>Đăng nhập</span>
                                 </Link>
                                 <Link 
@@ -194,7 +202,7 @@ export default function Navbar() {
                                     className="mobile-auth-link"
                                     onClick={() => setIsMobileMenuOpen(false)}
                                 >
-                                    <span className="nav-icon">✨</span>
+                                    <img src={registerIcon} alt="" className="nav-icon-img" />
                                     <span>Đăng ký</span>
                                 </Link>
                             </>

@@ -69,7 +69,7 @@ const UserTripDashboard = () => {
 
     return (
         <div className="user-trip-dashboard">
-            <div className="dashboard-header">
+            <div className="dashboard-hero">
                 <h1>📊 Thống kê chuyến đi của bạn</h1>
                 <p>Tổng quan về các chuyến đi đã thực hiện</p>
             </div>
@@ -77,7 +77,6 @@ const UserTripDashboard = () => {
             {/* Overview Stats */}
             <div className="stats-grid">
                 <div className="stat-card">
-                    <div className="stat-icon">✈️</div>
                     <div className="stat-content">
                         <div className="stat-value">{dashboard.totalTrips}</div>
                         <div className="stat-label">Chuyến đi</div>
@@ -85,7 +84,6 @@ const UserTripDashboard = () => {
                 </div>
 
                 <div className="stat-card">
-                    <div className="stat-icon">📍</div>
                     <div className="stat-content">
                         <div className="stat-value">{dashboard.totalDestinations}</div>
                         <div className="stat-label">Điểm đến</div>
@@ -93,7 +91,6 @@ const UserTripDashboard = () => {
                 </div>
 
                 <div className="stat-card">
-                    <div className="stat-icon">💰</div>
                     <div className="stat-content">
                         <div className="stat-value">{formatMoney(dashboard.totalSpent)}</div>
                         <div className="stat-label">Tổng chi tiêu</div>
@@ -101,7 +98,6 @@ const UserTripDashboard = () => {
                 </div>
 
                 <div className="stat-card">
-                    <div className="stat-icon">📊</div>
                     <div className="stat-content">
                         <div className="stat-value">{formatMoney(dashboard.averageBudget)}</div>
                         <div className="stat-label">Ngân sách TB/chuyến</div>
