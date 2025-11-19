@@ -1,6 +1,13 @@
 // src/components/TravelChatbot.js
 import React, { useState, useRef, useEffect } from 'react';
 import { askTravelQuestion, suggestDestinationFromDescription } from '../services/geminiService';
+import { 
+    buildChatbotPrompt, 
+    analyzeUserIntent, 
+    enhanceResponseByIntent,
+    getUserContext 
+} from '../services/chatbotTrainingService';
+import { auth } from '../firebase';
 import './TravelChatbot.css';
 
 // Import icons
@@ -12,14 +19,27 @@ const TravelChatbot = () => {
     const [messages, setMessages] = useState([
         {
             type: 'bot',
-            text: 'Xin chào! 👋 Tôi là trợ lý du lịch AI của ZIZOO. Tôi có thể giúp bạn:\n\n• Tìm điểm đến phù hợp\n• Gợi ý lịch trình\n• Tư vấn chi phí\n• Trả lời mọi câu hỏi về du lịch Việt Nam\n\nBạn muốn đi du lịch ở đâu? 🌍',
+            text: 'Xin chào! 👋 Tôi là trợ lý du lịch thông minh của Travel Planner Vietnam.\n\n🎯 **Tôi có thể giúp bạn:**\n• Xem và quản lý lịch trình đã lưu\n• Gợi ý điểm đến phù hợp\n• Tư vấn chi phí và thời gian\n• Trả lời câu hỏi về du lịch Việt Nam\n\nBạn cần tôi giúp gì? 😊',
             timestamp: new Date()
         }
     ]);
     const [input, setInput] = useState('');
     const [loading, setLoading] = useState(false);
     const [isOpen, setIsOpen] = useState(false);
+    const [userContext, setUserContext] = useState(null);
     const messagesEndRef = useRef(null);
+
+    // Load user context khi component mount
+    useEffect(() => {
+        const loadUserContext = async () => {
+            const user = auth.currentUser;
+            if (user) {
+                const context = await getUserContext(user.uid);
+                setUserContext(context);
+            }
+        };
+        loadUserContext();
+    }, []);
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -39,17 +59,33 @@ const TravelChatbot = () => {
         };
 
         setMessages(prev => [...prev, userMessage]);
+        const userInput = input;
         setInput('');
         setLoading(true);
 
         try {
-            // Phát hiện intent
-            const lowerInput = input.toLowerCase();
+            // 1. Phân tích intent của user
+            const intent = analyzeUserIntent(userInput);
+            console.log('🎯 Detected intent:', intent);
+
+            // 2. Build prompt với user context (nếu có)
+            const user = auth.currentUser;
+            let fullPrompt;
+            try {
+                fullPrompt = await buildChatbotPrompt(userInput, user?.uid);
+            } catch (contextError) {
+                console.warn('Could not load user context, using basic prompt:', contextError);
+                // Fallback: Dùng prompt cơ bản nếu không load được context
+                fullPrompt = userInput;
+            }
+
+            // 3. Gọi Gemini API
             let response;
+            const lowerInput = userInput.toLowerCase();
 
             if (lowerInput.includes('gợi ý') || lowerInput.includes('tìm') || lowerInput.includes('nên đi')) {
                 // Gợi ý điểm đến
-                const suggestions = await suggestDestinationFromDescription(input);
+                const suggestions = await suggestDestinationFromDescription(userInput);
                 
                 if (suggestions.length > 0) {
                     response = '🎯 Dựa trên mô tả của bạn, tôi gợi ý:\n\n';
@@ -62,11 +98,17 @@ const TravelChatbot = () => {
                     });
                     response += 'Bạn muốn biết thêm chi tiết về điểm nào không? 😊';
                 } else {
-                    response = await askTravelQuestion(input);
+                    response = await askTravelQuestion(fullPrompt);
                 }
             } else {
-                // Trả lời câu hỏi thông thường
-                response = await askTravelQuestion(input);
+                // Trả lời câu hỏi với full context
+                response = await askTravelQuestion(fullPrompt);
+            }
+
+            // 4. Enhance response dựa trên intent
+            const enhancement = await enhanceResponseByIntent(intent, userContext);
+            if (enhancement) {
+                response += enhancement;
             }
 
             const botMessage = {
@@ -77,9 +119,26 @@ const TravelChatbot = () => {
 
             setMessages(prev => [...prev, botMessage]);
         } catch (error) {
+            console.error('Chatbot error:', error);
+            
+            let errorText = '😔 Xin lỗi, tôi gặp sự cố kỹ thuật.';
+            
+            // Xử lý các loại lỗi cụ thể
+            if (error.message?.includes('Failed to fetch')) {
+                errorText = '🌐 Không thể kết nối với AI. Vui lòng:\n' +
+                           '• Kiểm tra kết nối internet\n' +
+                           '• Thử lại sau vài giây\n' +
+                           '• Hoặc hỏi câu hỏi khác';
+            } else if (error.message?.includes('API key')) {
+                errorText = '🔑 Lỗi cấu hình API. Vui lòng liên hệ admin.';
+            } else if (error.message?.includes('index')) {
+                errorText = '📊 Đang tải thông tin của bạn...\n' +
+                           'Tôi vẫn có thể trả lời câu hỏi chung về du lịch!';
+            }
+            
             const errorMessage = {
                 type: 'bot',
-                text: '😔 Xin lỗi, tôi gặp sự cố kỹ thuật. Vui lòng thử lại sau.',
+                text: errorText,
                 timestamp: new Date()
             };
             setMessages(prev => [...prev, errorMessage]);
