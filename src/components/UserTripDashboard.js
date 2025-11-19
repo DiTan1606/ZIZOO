@@ -61,7 +61,7 @@ const UserTripDashboard = () => {
     if (!dashboard || dashboard.totalTrips === 0) {
         return (
             <div className="dashboard-empty">
-                <h2>📊 Thống kê chuyến đi</h2>
+                <h2>Thống kê chuyến đi</h2>
                 <p>Bạn chưa có chuyến đi nào. Hãy tạo lịch trình đầu tiên!</p>
             </div>
         );
@@ -70,7 +70,7 @@ const UserTripDashboard = () => {
     return (
         <div className="user-trip-dashboard">
             <div className="dashboard-hero">
-                <h1>📊 Thống kê chuyến đi của bạn</h1>
+                <h1>Thống kê chuyến đi của bạn</h1>
                 <p>Tổng quan về các chuyến đi đã thực hiện</p>
             </div>
 
@@ -108,7 +108,7 @@ const UserTripDashboard = () => {
             {/* Favorite Destinations */}
             {dashboard.favoriteDestinations.length > 0 && (
                 <div className="dashboard-section">
-                    <h2>🏆 Điểm đến yêu thích</h2>
+                    <h2>Điểm đến yêu thích</h2>
                     <div className="favorite-destinations">
                         {dashboard.favoriteDestinations.map((item, index) => (
                             <div key={index} className="favorite-item">
@@ -140,7 +140,7 @@ const UserTripDashboard = () => {
 
             {/* Travel Preferences */}
             <div className="dashboard-section">
-                <h2>🎯 Sở thích du lịch</h2>
+                <h2>Sở thích du lịch</h2>
                 <div className="preferences-grid">
                     {dashboard.preferredTravelStyle && (
                         <div className="preference-card">
@@ -169,7 +169,7 @@ const UserTripDashboard = () => {
             {/* Time Preferences */}
             {dashboard.timePreferences && (
                 <div className="dashboard-section">
-                    <h2>📅 Thời gian du lịch ưa thích</h2>
+                    <h2>Thời gian du lịch ưa thích</h2>
                     <div className="time-preferences">
                         {dashboard.timePreferences.preferredMonths.length > 0 && (
                             <div className="time-pref-card">

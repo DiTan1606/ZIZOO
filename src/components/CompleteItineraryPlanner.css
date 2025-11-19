@@ -182,6 +182,11 @@
     margin-bottom: 30px;
 }
 
+/* Row với 2 cột - chiếm đầy chiều rộng */
+.form-row-two-cols {
+    grid-template-columns: repeat(2, 1fr);
+}
+
 .form-group {
     display: flex;
     flex-direction: column;

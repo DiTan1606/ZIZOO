@@ -11,6 +11,7 @@ import { toast } from 'react-toastify';
 import MapViewer from '../components/MapViewer';
 import ItineraryDetailModal from '../components/ItineraryDetailModal';
 import './MyTrips.css';
+import Footer from '../components/Footer';
 
 export default function MyTrips() {
     const { currentUser } = useAuth();
@@ -259,7 +260,7 @@ export default function MyTrips() {
                     }`}
                     onClick={() => setActiveTab('active')}
                 >
-                    🎯 Đang hoạt động ({completeTrips.filter(t => {
+                     Đang hoạt động ({completeTrips.filter(t => {
                         const status = getItineraryStatus(t);
                         return status === 'active' || status === 'ongoing';
                     }).length})
@@ -557,6 +558,8 @@ export default function MyTrips() {
                     </div>
                 </div>
             )}
+            <Footer />
         </div>
     );
+    
 }

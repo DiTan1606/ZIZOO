@@ -153,7 +153,7 @@ const CompleteItineraryPlanner = () => {
             }));
             
             setShowWorkingForm(false);
-            toast.success('✅ Đã thêm địa điểm làm việc!');
+            toast.success(' Đã thêm địa điểm làm việc!');
         } catch (error) {
             toast.error('Lỗi: ' + error.message);
         }
@@ -180,14 +180,38 @@ const CompleteItineraryPlanner = () => {
         }
 
         setLoading(true);
+        
+        // Hiển thị toast loading với progress
+        const loadingToast = toast.info(' Đang tạo lịch trình... Vui lòng đợi 5-10 giây', {
+            autoClose: false,
+            closeButton: false
+        });
+        
         try {
-            const itinerary = await createCompleteItinerary(preferences, currentUser.uid);
+            // ⚡ Giảm timeout xuống 20s (đã tối ưu)
+            const timeoutPromise = new Promise((_, reject) => 
+                setTimeout(() => reject(new Error('Timeout: Quá thời gian tạo lịch trình')), 20000)
+            );
+            
+            const itineraryPromise = createCompleteItinerary(preferences, currentUser.uid);
+            
+            const itinerary = await Promise.race([itineraryPromise, timeoutPromise]);
+            
+            toast.dismiss(loadingToast);
             setCompleteItinerary(itinerary);
             setStep(4); // Chuyển sang step 4 để hiển thị kết quả
-            toast.success('🎉 Lịch trình hoàn chỉnh đã được tạo và lưu thành công!');
+            toast.success(' Lịch trình hoàn chỉnh đã được tạo và lưu thành công!');
         } catch (error) {
             console.error('Lỗi tạo lịch trình:', error);
-            toast.error(`Lỗi: ${error.message}`);
+            toast.dismiss(loadingToast);
+            
+            if (error.message.includes('Timeout')) {
+                toast.error(' Quá thời gian tạo lịch trình (20s). Vui lòng thử lại hoặc giảm số ngày xuống 3-5 ngày.', {
+                    autoClose: 5000
+                });
+            } else {
+                toast.error(`Lỗi: ${error.message}`);
+            }
         } finally {
             setLoading(false);
         }
@@ -324,7 +348,7 @@ const CompleteItineraryPlanner = () => {
 
                 <div className="form-container">
                     <div className="form-section">
-                        <h3>📋 Thông tin cơ bản</h3>
+                        <h3> Thông tin cơ bản</h3>
                         <div className="form-row-two-cols">
                             <div className="form-group">
                                 <label>Điểm khởi hành</label>
@@ -361,7 +385,7 @@ const CompleteItineraryPlanner = () => {
                             </div>
                         </div>
 
-                        <div className="form-row">
+                        <div className="form-row form-row-two-cols">
                             <div className="form-group">
                                 <label>Ngày khởi hành</label>
                                 <input 
@@ -385,7 +409,7 @@ const CompleteItineraryPlanner = () => {
                             </div>
                         </div>
 
-                        <div className="form-row">
+                        <div className="form-row form-row-two-cols">
                             <div className="form-group">
                                 <label>Số ngày</label>
                                 <div className="number-input-container">
@@ -538,7 +562,7 @@ const CompleteItineraryPlanner = () => {
                                 border: '2px dashed rgba(102, 126, 234, 0.3)'
                             }}>
                                 <h4 style={{ marginBottom: '15px', color: '#2c3e50' }}>
-                                    💼 Địa điểm làm việc
+                                     Địa điểm làm việc
                                 </h4>
                                 
                                 {/* Danh sách working locations */}
@@ -644,7 +668,7 @@ const CompleteItineraryPlanner = () => {
         return (
             <div className="complete-itinerary-planner">
                 <div className="header">
-                    <h1>📋 Xác nhận thông tin lịch trình</h1>
+                    <h1> Xác nhận thông tin lịch trình</h1>
                     <p>Kiểm tra lại thông tin trước khi tạo lịch trình hoàn chỉnh</p>
                 </div>
 
@@ -777,10 +801,15 @@ const CompleteItineraryPlanner = () => {
                             {loading ? (
                                 <div className="loading">
                                     <div className="spinner"></div>
-                                    Đang tạo lịch trình hoàn chỉnh...
+                                    <div style={{ marginLeft: '10px' }}>
+                                        <div>Đang tạo lịch trình hoàn chỉnh...</div>
+                                        <div style={{ fontSize: '0.85rem', opacity: 0.8, marginTop: '4px' }}>
+                                             Vui lòng đợi 5-10 giây (đã tối ưu)
+                                        </div>
+                                    </div>
                                 </div>
                             ) : (
-                                'Tạo lịch trình hoàn chỉnh'
+                                ' Tạo lịch trình hoàn chỉnh'
                             )}
                         </button>
                     </div>
@@ -794,20 +823,6 @@ const CompleteItineraryPlanner = () => {
             <div className="complete-itinerary-result">
                 <div className="result-header no-print">
                     <h1> Lịch trình hoàn chỉnh đã sẵn sàng!</h1>
-                    <div className="actions">
-                        <button onClick={printItinerary} className="print-btn">
-                            🖨️ In lịch trình
-                        </button>
-                        <button onClick={downloadItinerary} className="download-btn">
-                            💾 Tải xuống
-                        </button>
-                        <button onClick={() => navigate('/mytrips')} className="view-trips-btn">
-                            ✈️ Xem chuyến đi của tôi
-                        </button>
-                        <button onClick={() => setStep(1)} className="new-btn">
-                            ➕ Tạo lịch trình mới
-                        </button>
-                    </div>
                 </div>
 
                 {/* Real-time Alerts Panel */}
@@ -824,9 +839,9 @@ const CompleteItineraryPlanner = () => {
                 <div className="itinerary-content">
                     {/* 1. THÔNG TIN CƠ BẢN */}
                     <section className="itinerary-section">
-                        <h2>📋 1. Thông tin cơ bản</h2>
+                        <h2><strong> 1. Thông tin cơ bản</strong></h2>
                         <div className="header-info">
-                            <h3 className="trip-title">{completeItinerary.header.tripName}</h3>
+                            <h3 className="trip-title"><strong>{completeItinerary.header.tripName}</strong></h3>
                             <div className="basic-info">
                                 <div className="info-row">
                                     <span><strong>Thời gian:</strong> {completeItinerary.header.duration.startDate} - {completeItinerary.header.duration.endDate}</span>
@@ -863,11 +878,11 @@ const CompleteItineraryPlanner = () => {
 
                     {/* 2. LỊCH TRÌNH CHI TIẾT */}
                     <section className="itinerary-section">
-                        <h2>📅 2. Lịch trình chi tiết theo từng ngày</h2>
+                        <h2><strong>2. Lịch trình chi tiết theo từng ngày</strong></h2>
                         {completeItinerary.dailyItinerary.map((day, index) => (
                             <div key={index} className="day-plan">
                                 <div className="day-header">
-                                    <h3>Ngày {day.day}: {day.date} - {day.theme}</h3>
+                                    <h3><strong>Ngày {day.day}: {day.date} - {day.theme}</strong></h3>
                                     <span className="day-cost">Chi phí ước tính: {formatMoney(day.estimatedCost)}</span>
                                 </div>
 
@@ -906,10 +921,10 @@ const CompleteItineraryPlanner = () => {
 
                     {/* 3. CHI PHÍ DỰ KIẾN */}
                     <section className="itinerary-section">
-                        <h2>💰 3. Danh sách chi phí dự kiến</h2>
+                        <h2><strong>3. Danh sách chi phí dự kiến</strong></h2>
                         <div className="cost-breakdown">
                             <div className="cost-category">
-                                <h4>🚗 Phương tiện di chuyển</h4>
+                                <h4><strong>Phương tiện di chuyển</strong></h4>
                                 <div className="cost-details">
                                     <div className="cost-item">
                                         <span>Vé khứ hồi ({completeItinerary.transport?.intercity?.departure?.recommended?.type || 'N/A'})</span>
@@ -927,7 +942,7 @@ const CompleteItineraryPlanner = () => {
                             </div>
 
                             <div className="cost-category">
-                                <h4>🏨 Lưu trú</h4>
+                                <h4><strong>Lưu trú</strong></h4>
                                 <div className="cost-details">
                                     <div className="cost-item">
                                         <span>{completeItinerary.costBreakdown?.accommodation?.type || 'Khách sạn'} ({completeItinerary.costBreakdown?.accommodation?.nights || 0} đêm)</span>
@@ -937,7 +952,7 @@ const CompleteItineraryPlanner = () => {
                             </div>
 
                             <div className="cost-category">
-                                <h4>🍜 Ăn uống</h4>
+                                <h4><strong>Ăn uống</strong></h4>
                                 <div className="cost-details">
                                     <div className="cost-item">
                                         <span>Ăn uống ({completeItinerary.header.duration.days} ngày)</span>
@@ -947,7 +962,7 @@ const CompleteItineraryPlanner = () => {
                             </div>
 
                             <div className="cost-category">
-                                <h4>🎯 Tham quan</h4>
+                                <h4><strong>Tham quan</strong></h4>
                                 <div className="cost-details">
                                     <div className="cost-item">
                                         <span>Vé tham quan, hoạt động</span>
@@ -957,7 +972,7 @@ const CompleteItineraryPlanner = () => {
                             </div>
 
                             <div className="cost-category">
-                                <h4>Chi phí phát sinh</h4>
+                                <h4><strong>Chi phí phát sinh</strong></h4>
                                 <div className="cost-details">
                                     <div className="cost-item">
                                         <span>Dự phòng ({completeItinerary.costBreakdown.contingency.percentage}%)</span>
@@ -986,11 +1001,11 @@ const CompleteItineraryPlanner = () => {
 
                     {/* 4. PHƯƠNG TIỆN DI CHUYỂN */}
                     <section className="itinerary-section">
-                        <h2>4. Phương tiện di chuyển</h2>
+                        <h2><strong>4. Phương tiện di chuyển</strong></h2>
                         <div className="transport-plan">
                             {/* Lượt đi */}
                             <div className="transport-category">
-                                <h4>✈️ Lượt đi: {completeItinerary.header.destination.departure} → {completeItinerary.header.destination.main}</h4>
+                                <h4>Lượt đi: {completeItinerary.header.destination.departure} → {completeItinerary.header.destination.main}</h4>
                                 <p><strong>📅 Ngày:</strong> {completeItinerary.transport.intercity.departure.date}</p>
                                 
                                 {/* Hiển thị TẤT CẢ các options để chọn */}
@@ -1040,7 +1055,7 @@ const CompleteItineraryPlanner = () => {
                             
                             {/* Lượt về */}
                             <div className="transport-category">
-                                <h4>🔙 Lượt về: {completeItinerary.header.destination.main} → {completeItinerary.header.destination.departure}</h4>
+                                <h4> Lượt về: {completeItinerary.header.destination.main} → {completeItinerary.header.destination.departure}</h4>
                                 <p><strong>📅 Ngày:</strong> {completeItinerary.transport.intercity.return.date}</p>
                                 
                                 {/* Hiển thị TẤT CẢ các options để chọn */}
@@ -1114,7 +1129,7 @@ const CompleteItineraryPlanner = () => {
 
                     {/* 5. LƯU TRÚ */}
                     <section className="itinerary-section">
-                        <h2>5. Lưu trú</h2>
+                        <h2><strong>5. Lưu trú</strong></h2>
                         <div className="accommodation-plan">
                             {/* Khách sạn đã chọn */}
                             {completeItinerary.accommodation.selected && (
@@ -1174,7 +1189,7 @@ const CompleteItineraryPlanner = () => {
 
                     {/* 6. DANH SÁCH ĐỒ CẦN MANG */}
                     <section className="itinerary-section">
-                        <h2>6. Danh sách đồ cần mang</h2>
+                        <h2><strong>6. Danh sách đồ cần mang</strong></h2>
                         <div className="packing-list">
                             <div className="packing-category">
                                 <h4>Đồ cần thiết</h4>
@@ -1236,7 +1251,7 @@ const CompleteItineraryPlanner = () => {
 
                     {/* 7. LƯU Ý QUAN TRỌNG */}
                     <section className="itinerary-section">
-                        <h2>7. Lưu ý quan trọng</h2>
+                        <h2><strong>7. Lưu ý quan trọng</strong></h2>
                         <div className="important-notes">
                             {Object.entries(completeItinerary.importantNotes).map(([category, notes]) => (
                                 <div key={category} className="notes-category">
@@ -1263,7 +1278,7 @@ const CompleteItineraryPlanner = () => {
 
                     {/* 8. BẢN ĐỒ VÀ LỘ TRÌNH */}
                     <section className="itinerary-section">
-                        <h2>8. Bản đồ và tối ưu lộ trình</h2>
+                        <h2><strong>8. Bản đồ và tối ưu lộ trình</strong></h2>
                         <div className="route-optimization">
                             <div className="route-overview">
                                 <h4>Tổng quan lộ trình</h4>

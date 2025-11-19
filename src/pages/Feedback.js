@@ -146,17 +146,17 @@ const Feedback = () => {
                         <h2>• Tại sao phản hồi quan trọng?</h2>
                         <div className="info-cards">
                             <div className="info-card">
-                                <img src={require('../icon/ctsp.png')} alt="Cải thiện sản phẩm" className="card-icon-img" />
+                                <div className="card-icon">✨</div>
                                 <h3>Cải thiện sản phẩm</h3>
                                 <p>Phản hồi của bạn giúp chúng tôi phát triển tính năng mới và cải thiện trải nghiệm người dùng.</p>
                             </div>
                             <div className="info-card">
-                                <img src={require('../icon/slnc.png')} alt="Sửa lỗi nhanh chóng" className="card-icon-img" />
+                                <div className="card-icon">🔧</div>
                                 <h3>Sửa lỗi nhanh chóng</h3>
                                 <p>Báo cáo lỗi giúp chúng tôi phát hiện và khắc phục sự cố một cách nhanh chóng.</p>
                             </div>
                             <div className="info-card">
-                                <img src={require('../icon/ytm.png')} alt="Ý tưởng mới" className="card-icon-img" />
+                                <div className="card-icon">💡</div>
                                 <h3>Ý tưởng mới</h3>
                                 <p>Đề xuất tính năng mới từ bạn có thể trở thành reality trong phiên bản tiếp theo.</p>
                             </div>
