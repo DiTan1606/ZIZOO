@@ -294,11 +294,33 @@ export const analyzeTrafficIncidents = async (lat, lng, weather, destinationName
     
     const critical = [];
     
-    // Tạo bbox bao quanh destination (±0.2 độ ~ 20km)
-    const bboxSize = 0.2;
-    const bbox = `${lng - bboxSize},${lat - bboxSize},${lng + bboxSize},${lat + bboxSize}`;
+    // BBOX cố định cho các thành phố lớn (bao trùm toàn bộ thành phố)
+    const CITY_BBOXES = {
+      'Nha Trang': '109.14,12.18,109.26,12.30',
+      'Đà Lạt': '108.40,11.88,108.48,11.98',
+      'Đà Nẵng': '108.15,15.95,108.25,16.15',
+      'TP.HCM': '106.60,10.70,106.85,10.85',
+      'TP. Hồ Chí Minh': '106.60,10.70,106.85,10.85',
+      'Hà Nội': '105.75,20.95,105.90,21.10',
+      'Vũng Tàu': '107.05,10.30,107.15,10.40',
+      'Phú Quốc': '103.95,10.15,104.05,10.35'
+    };
     
-    console.log(`🔍 Checking TomTom traffic incidents in bbox: ${bbox}`);
+    // Tìm bbox cho thành phố, nếu không có thì dùng bbox động
+    let bbox;
+    const cityKey = Object.keys(CITY_BBOXES).find(city => 
+      destinationName.toLowerCase().includes(city.toLowerCase())
+    );
+    
+    if (cityKey) {
+      bbox = CITY_BBOXES[cityKey];
+      console.log(`🔍 Using city bbox for ${cityKey}: ${bbox}`);
+    } else {
+      // Fallback: bbox động (±0.2 độ ~ 20km)
+      const bboxSize = 0.2;
+      bbox = `${lng - bboxSize},${lat - bboxSize},${lng + bboxSize},${lat + bboxSize}`;
+      console.log(`🔍 Using dynamic bbox: ${bbox}`);
+    }
     
     try {
       const res = await fetch(
@@ -313,8 +335,9 @@ export const analyzeTrafficIncidents = async (lat, lng, weather, destinationName
         
         console.log(`📊 Found ${incidents.length} traffic incidents in ${destinationName} area`);
         
-        // Phân loại incidents theo category - HIỂN THỊ NHIỀU HƠN
+        // Phân loại incidents - GIỐNG PYTHON CODE
         const seenDescriptions = new Set(); // Loại bỏ trùng lặp
+        const floodKeywords = ['flood', 'water', 'ngập', 'ngap', 'rain', 'mưa', 'mua'];
         
         incidents.forEach(incident => {
           const cat = incident.properties.iconCategory;
@@ -336,21 +359,30 @@ export const analyzeTrafficIncidents = async (lat, lng, weather, destinationName
             code
           };
           
-          // PHÂN LOẠI THEO MỨC ĐỘ NGHIÊM TRỌNG
-          if (cat === 8) {
-            // Đóng đường - CRITICAL
+          // LOGIC LỌC GIỐNG PYTHON:
+          // 1. Category 8 (Road Closed)
+          // 2. HOẶC description chứa từ khóa ngập/flood
+          const isRoadClosed = (cat === 8);
+          const isFlooded = floodKeywords.some(keyword => desc.toLowerCase().includes(keyword));
+          
+          if (isRoadClosed || isFlooded) {
             incidentData.severity = 'critical';
             critical.push(incidentData);
             byReason.roadClosed.push(incidentData);
-            console.log(`🚫 CRITICAL: Road closed - ${desc}`);
+            if (isFlooded) {
+              byReason.weather.push(incidentData);
+              console.log(`🌊 CRITICAL: Flooding detected - ${desc}`);
+            } else {
+              console.log(`🚫 CRITICAL: Road closed - ${desc}`);
+            }
           } else if (cat === 11) {
-            // Ngập lụt - CRITICAL
+            // Ngập lụt (category) - CRITICAL
             incidentData.severity = 'critical';
             critical.push(incidentData);
             byReason.weather.push(incidentData);
-            console.log(`🌊 CRITICAL: Flooding - ${desc}`);
+            console.log(`🌊 CRITICAL: Flooding (cat 11) - ${desc}`);
           } else if (cat === 9) {
-            // Thi công - MEDIUM (hiển thị nhưng không nghiêm trọng)
+            // Thi công - MEDIUM
             incidentData.severity = 'medium';
             critical.push(incidentData);
             byReason.construction.push(incidentData);

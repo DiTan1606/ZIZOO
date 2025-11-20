@@ -29,17 +29,17 @@ const TravelChatbot = () => {
     const [userContext, setUserContext] = useState(null);
     const messagesEndRef = useRef(null);
 
-    // Load user context khi component mount
-    useEffect(() => {
-        const loadUserContext = async () => {
-            const user = auth.currentUser;
-            if (user) {
-                const context = await getUserContext(user.uid);
-                setUserContext(context);
-            }
-        };
-        loadUserContext();
-    }, []);
+    // TẠM TẮT: Load user context - Dùng trip knowledge thay thế
+    // useEffect(() => {
+    //     const loadUserContext = async () => {
+    //         const user = auth.currentUser;
+    //         if (user) {
+    //             const context = await getUserContext(user.uid);
+    //             setUserContext(context);
+    //         }
+    //     };
+    //     loadUserContext();
+    // }, []);
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });

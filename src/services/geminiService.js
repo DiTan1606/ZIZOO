@@ -89,6 +89,11 @@ const callGeminiAPI = async (prompt, options = {}) => {
 
         if (candidate.finishReason === 'MAX_TOKENS') {
             console.warn('Response was truncated due to MAX_TOKENS');
+            // Vẫn trả về nội dung bị cắt nếu có
+            if (candidate.content && candidate.content.parts && candidate.content.parts.length > 0) {
+                const text = candidate.content.parts[0].text;
+                return text + '\n\n[Câu trả lời bị cắt ngắn do quá dài. Hãy hỏi ngắn gọn hơn.]';
+            }
         }
         
         if (!candidate.content || !candidate.content.parts || candidate.content.parts.length === 0) {
@@ -347,7 +352,7 @@ ${contextText}Câu hỏi: ${question}
 Trả lời CỰC NGẮN (tối đa 100 từ), súc tích, tiếng Việt.`;
 
     try {
-        const answer = await callGeminiAPI(prompt, { temperature: 0.7, maxOutputTokens: 1024 });
+        const answer = await callGeminiAPI(prompt, { temperature: 0.7, maxOutputTokens: 2048 });
         return answer.trim();
     } catch (error) {
         console.error('Error asking travel question:', error);

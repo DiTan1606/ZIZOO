@@ -155,16 +155,35 @@ export const formatUserContextForPrompt = (userContext) => {
 };
 
 /**
- * Tạo prompt đầy đủ cho chatbot với system instructions + user context
+ * Tạo prompt đầy đủ cho chatbot với system instructions + user context + trip knowledge
  */
 export const buildChatbotPrompt = async (userMessage, userId) => {
     let fullPrompt = CHATBOT_SYSTEM_INSTRUCTIONS;
 
-    // Thêm user context nếu có userId
+    // Thêm user context nếu có userId (TẠM TẮT - dùng trip knowledge thay thế)
+    // if (userId) {
+    //     const userContext = await getUserContext(userId);
+    //     if (userContext) {
+    //         fullPrompt += formatUserContextForPrompt(userContext);
+    //     }
+    // }
+    
     if (userId) {
-        const userContext = await getUserContext(userId);
-        if (userContext) {
-            fullPrompt += formatUserContextForPrompt(userContext);
+        // THÊM MỚI: Trip Knowledge - Thông tin các chuyến đi từ complete_itineraries
+        try {
+            const tripKnowledgeService = await import('./tripKnowledgeService');
+            console.log('📦 Trip knowledge service loaded');
+            const tripContext = await tripKnowledgeService.createTripContext(userId);
+            console.log('📊 Trip context created:', tripContext.summary);
+            
+            if (tripContext.trips.length > 0) {
+                fullPrompt += `\n\n${tripContext.trainingText}`;
+                console.log(`📚 Added ${tripContext.trips.length} trips to chatbot context`);
+            } else {
+                console.warn('⚠️ No trips found for this user');
+            }
+        } catch (error) {
+            console.error('❌ Could not load trip knowledge:', error);
         }
     }
 
