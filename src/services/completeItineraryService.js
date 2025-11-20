@@ -10,6 +10,7 @@ import { TRAVEL_STYLES, ACCOMMODATION_TYPES, TRANSPORT_OPTIONS, MEAL_COSTS } fro
 import { formatMoney, getSeason, getClimate } from '../utils/commonUtils';
 import transportDataService from './transportDataService';
 import amadeusService from './amadeusService';
+import { optimizeDayRoute } from './dailyItineraryOptimizer';
 /**
  * Service tạo lịch trình du lịch hoàn chỉnh theo cấu trúc chuẩn
  * Bao gồm: Header, Daily Itinerary, Chi phí, Phương tiện, Lưu trú, Packing list, Lưu ý, Bản đồ
@@ -56,7 +57,8 @@ export const createCompleteItinerary = async (preferences, userId) => {
         interests = [],
         departureCity = 'Hà Nội',
         startTime = '08:00', // Giờ bắt đầu tham quan (từ UI)
-        specialActivities = {}
+        specialActivities = {},
+        customDestinations = [] // Địa điểm user đã chọn từ DestinationSelector
     } = preferences;
     
     // Map startTime thành departureTime để dùng trong code
@@ -226,7 +228,8 @@ const generateDailyItinerary = async (preferences) => {
         travelers,
         startTime = '08:00', // Giờ bắt đầu
         specialActivities = {},
-        workingLocations = [] // Thêm working locations
+        workingLocations = [], // Thêm working locations
+        customDestinations = [] // Địa điểm user đã chọn
     } = preferences;
     const coord = provinceCoords[destination] || { lat: 16.047, lng: 108.220 };
     
@@ -235,6 +238,36 @@ const generateDailyItinerary = async (preferences) => {
     
     // Tính ngân sách hàng ngày
     const dailyBudget = budget ? (budget * 0.6) / (duration * travelers) : 500000; // 60% budget cho activities
+    
+    // Phân bổ customDestinations vào các ngày nếu có
+    let destinationsPerDay = [];
+    if (customDestinations && customDestinations.length > 0) {
+        try {
+            console.log(`📍 User selected ${customDestinations.length} custom destinations, distributing across ${duration} days...`);
+            
+            // Import distributeDestinationsAcrossDays
+            const { distributeDestinationsAcrossDays } = require('./dailyItineraryOptimizer');
+            
+            // Phân bổ địa điểm vào các ngày
+            destinationsPerDay = distributeDestinationsAcrossDays(customDestinations, duration, { interests, travelStyle });
+            
+            console.log('✅ Destinations distributed:', destinationsPerDay.map(d => `Day ${d.day}: ${d.count} destinations`).join(', '));
+        } catch (error) {
+            console.error('❌ Error distributing destinations:', error);
+            // Fallback: phân bổ đơn giản nếu lỗi
+            destinationsPerDay = Array.from({ length: duration }, (_, i) => ({
+                day: i + 1,
+                destinations: [],
+                count: 0
+            }));
+            customDestinations.forEach((dest, index) => {
+                const dayIndex = index % duration;
+                destinationsPerDay[dayIndex].destinations.push(dest);
+                destinationsPerDay[dayIndex].count++;
+            });
+            console.log('⚠️ Using fallback distribution');
+        }
+    }
     
     const dailyPlans = [];
 
@@ -248,6 +281,8 @@ const generateDailyItinerary = async (preferences) => {
             loc.isAllDays || (loc.workingDays && loc.workingDays.includes(dateString))
         );
         
+        // Lấy customDestinations cho ngày này (nếu có)
+        const dayCustomDestinations = destinationsPerDay[day]?.destinations || [];
         
         // Tạo kế hoạch cho từng ngày với ngân sách và departureTime
         const dayPlan = await generateSingleDayPlan(
@@ -262,7 +297,7 @@ const generateDailyItinerary = async (preferences) => {
             travelers,
             departureTime,
             specialActivities,
-            [],
+            dayCustomDestinations, // Truyền custom destinations cho ngày này
             duration,
             dayWorkingLocations // Truyền working locations cho ngày này
         );
@@ -294,14 +329,38 @@ const generateSingleDayPlan = async (
     try {
         console.log(`📅 Generating DIVERSE day plan for Day ${dayNumber} in ${destination}...`);
 
-        // Tìm địa điểm tham quan ĐA DẠNG (truyền thêm travelStyle và dailyBudget)
-        let destinations = await findRealDestinationsForDay(dayNumber, destination, coord, interests, travelStyle, dailyBudget);
+        // Tìm địa điểm tham quan
+        let destinations = [];
         
-        // ✨ TỐI ƯU ROUTE: Sắp xếp địa điểm theo khoảng cách gần nhất (Nearest Neighbor)
-        if (destinations.length > 1) {
-            console.log(`🗺️ Optimizing route for ${destinations.length} destinations...`);
-            destinations = optimizeDayRoute(destinations);
-            console.log(`✅ Route optimized:`, destinations.map(d => d.name).join(' → '));
+        try {
+            // Nếu có customDestinations (user đã chọn), ưu tiên dùng chúng
+            if (customDestinations && customDestinations.length > 0) {
+                console.log(`📍 Using ${customDestinations.length} custom destinations for Day ${dayNumber}`);
+                destinations = customDestinations;
+            } else {
+                // Nếu không có, tìm địa điểm ĐA DẠNG từ hệ thống
+                destinations = await findRealDestinationsForDay(dayNumber, destination, coord, interests, travelStyle, dailyBudget);
+            }
+            
+            // ✨ TỐI ƯU ROUTE: Sắp xếp địa điểm theo:
+            // 1. Loại địa điểm (sáng: tham quan, trưa: ăn, chiều: giải trí...)
+            // 2. Khoảng cách gần nhất trong cùng loại
+            // 3. Logic hợp lý
+            if (destinations.length > 1) {
+                console.log(`🗺️ Optimizing route for ${destinations.length} destinations on Day ${dayNumber}...`);
+                try {
+                    destinations = optimizeDayRoute(destinations, { interests, travelStyle });
+                    console.log(`✅ Route optimized for Day ${dayNumber}:`, destinations.map(d => d.name).join(' → '));
+                } catch (optimizeError) {
+                    console.error(`⚠️ Error optimizing route for Day ${dayNumber}:`, optimizeError);
+                    // Giữ nguyên thứ tự nếu lỗi
+                    console.log(`⚠️ Keeping original order for Day ${dayNumber}`);
+                }
+            }
+        } catch (error) {
+            console.error(`❌ Error finding destinations for Day ${dayNumber}:`, error);
+            // Fallback: tạo destinations rỗng
+            destinations = [];
         }
         
         // Tìm nhà hàng ĐA DẠNG
@@ -2598,119 +2657,13 @@ const getFallbackRestaurants = (destination) => {
     };
 };
 
-/**
- * Tối ưu hóa lộ trình trong ngày bằng Nearest Neighbor + 2-opt
- * Đảm bảo các điểm gần nhau được sắp xếp liên tiếp
- */
-const optimizeDayRoute = (destinations) => {
-    if (destinations.length <= 1) return destinations;
-    
-    console.log(`🗺️ Optimizing ${destinations.length} destinations...`);
-    
-    // Tạo ma trận khoảng cách
-    const n = destinations.length;
-    const distanceMatrix = Array(n).fill(null).map(() => Array(n).fill(0));
-    
-    for (let i = 0; i < n; i++) {
-        for (let j = i + 1; j < n; j++) {
-            const dist = calculateDistance(
-                { lat: destinations[i].lat || 0, lng: destinations[i].lng || 0 },
-                { lat: destinations[j].lat || 0, lng: destinations[j].lng || 0 }
-            );
-            distanceMatrix[i][j] = dist;
-            distanceMatrix[j][i] = dist;
-        }
-    }
-    
-    // Nearest Neighbor từ điểm đầu tiên
-    const visited = new Set();
-    const optimized = [];
-    let current = 0;
-    
-    visited.add(current);
-    optimized.push(destinations[current]);
-    
-    while (visited.size < n) {
-        let nearest = -1;
-        let minDist = Infinity;
-        
-        for (let i = 0; i < n; i++) {
-            if (!visited.has(i) && distanceMatrix[current][i] < minDist) {
-                minDist = distanceMatrix[current][i];
-                nearest = i;
-            }
-        }
-        
-        if (nearest !== -1) {
-            visited.add(nearest);
-            optimized.push(destinations[nearest]);
-            current = nearest;
-        }
-    }
-    
-    // Áp dụng 2-opt để cải thiện thêm
-    const finalRoute = apply2OptLocal(optimized, distanceMatrix, destinations);
-    
-    const originalDist = calculateTotalDistance(destinations);
-    const optimizedDist = calculateTotalDistance(finalRoute);
-    const saved = ((originalDist - optimizedDist) / originalDist * 100).toFixed(1);
-    
-    console.log(`✅ Route optimized! Distance saved: ${saved}%`);
-    console.log(`   Route: ${finalRoute.map(d => d.name).join(' → ')}`);
-    
-    return finalRoute;
-};
-
-/**
- * 2-opt optimization cục bộ
- */
-const apply2OptLocal = (route, distanceMatrix, originalDestinations) => {
-    if (route.length <= 3) return route;
-    
-    let improved = true;
-    let optimizedRoute = [...route];
-    let iterations = 0;
-    
-    while (improved && iterations < 50) {
-        improved = false;
-        iterations++;
-        
-        for (let i = 1; i < optimizedRoute.length - 2; i++) {
-            for (let j = i + 1; j < optimizedRoute.length - 1; j++) {
-                const idx_i = originalDestinations.indexOf(optimizedRoute[i]);
-                const idx_i_prev = originalDestinations.indexOf(optimizedRoute[i - 1]);
-                const idx_j = originalDestinations.indexOf(optimizedRoute[j]);
-                const idx_j_next = originalDestinations.indexOf(optimizedRoute[j + 1]);
-                
-                if (idx_i === -1 || idx_i_prev === -1 || idx_j === -1 || idx_j_next === -1) continue;
-                
-                const currentDist = distanceMatrix[idx_i_prev][idx_i] + distanceMatrix[idx_j][idx_j_next];
-                const newDist = distanceMatrix[idx_i_prev][idx_j] + distanceMatrix[idx_i][idx_j_next];
-                
-                if (newDist < currentDist - 0.01) { // Threshold để tránh floating point issues
-                    const newRoute = [
-                        ...optimizedRoute.slice(0, i),
-                        ...optimizedRoute.slice(i, j + 1).reverse(),
-                        ...optimizedRoute.slice(j + 1)
-                    ];
-                    optimizedRoute = newRoute;
-                    improved = true;
-                }
-            }
-        }
-    }
-    
-    return optimizedRoute;
-};
+// optimizeDayRoute đã được import từ dailyItineraryOptimizer.js
+// Các helper functions cho distance calculation
+const routeOptimizationService = require('./routeOptimizationService').default;
+const { haversineDistance } = routeOptimizationService;
 
 const calculateDistance = (point1, point2) => {
-    const R = 6371; // Earth's radius in km
-    const dLat = (point2.lat - point1.lat) * Math.PI / 180;
-    const dLng = (point2.lng - point1.lng) * Math.PI / 180;
-    const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-        Math.cos(point1.lat * Math.PI / 180) * Math.cos(point2.lat * Math.PI / 180) *
-        Math.sin(dLng/2) * Math.sin(dLng/2);
-    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return haversineDistance(point1.lat || 0, point1.lng || 0, point2.lat || 0, point2.lng || 0);
 };
 
 const calculateTotalDistance = (destinations) => {
