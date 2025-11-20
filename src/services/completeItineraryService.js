@@ -261,8 +261,29 @@ const generateDailyItinerary = async (preferences) => {
     // Map startTime thành departureTime
     const departureTime = startTime;
     
-    // Tính ngân sách hàng ngày
-    const dailyBudget = budget ? (budget * 0.6) / (duration * travelers) : 500000; // 60% budget cho activities
+    // Tính ngân sách hàng ngày CHO 1 NGƯỜI
+    // Công thức: (Tổng budget - Transport - Accommodation) / (Số ngày × Số người)
+    // Ước tính: Transport ~20%, Accommodation ~25%, Activities ~55%
+    const budgetPerPerson = budget / travelers;
+    const dailyBudgetPerPerson = budget ? (budget * 0.55) / (duration * travelers) : 500000;
+    
+    console.log(`💰 Budget breakdown:`);
+    console.log(`  - Total budget: ${budget.toLocaleString()}đ`);
+    console.log(`  - Per person: ${budgetPerPerson.toLocaleString()}đ`);
+    console.log(`  - Daily budget per person: ${dailyBudgetPerPerson.toLocaleString()}đ`);
+    console.log(`  - Travelers: ${travelers} people`);
+    
+    // Điều chỉnh dailyBudget theo số người (nhóm đông có thể tiết kiệm hơn)
+    let dailyBudget = dailyBudgetPerPerson;
+    if (travelers >= 4) {
+        // Nhóm 4+ người: giảm 10% chi phí/người (chia sẻ xe, phòng...)
+        dailyBudget = dailyBudgetPerPerson * 0.9;
+        console.log(`  - Group discount (4+ people): -10% → ${dailyBudget.toLocaleString()}đ/person/day`);
+    } else if (travelers >= 6) {
+        // Nhóm 6+ người: giảm 15%
+        dailyBudget = dailyBudgetPerPerson * 0.85;
+        console.log(`  - Group discount (6+ people): -15% → ${dailyBudget.toLocaleString()}đ/person/day`);
+    }
     
     // Phân bổ customDestinations vào các ngày nếu có
     let destinationsPerDay = [];
@@ -452,16 +473,26 @@ const generateSingleDayPlan = async (
             schedule: hourlySchedule,
             
             // Danh sách địa điểm THỰC TẾ và ĐA DẠNG
-            destinations: destinations.map(dest => ({
-                ...dest,
-                visitTime: dest.estimatedDuration || '1-2 giờ',
-                entryFee: dest.entryFee || 0,
-                notes: dest.specialNotes || [],
-                isOpen: dest.isOpen,
-                crowdLevel: dest.currentCrowdLevel,
-                bestTimeToVisit: dest.bestTimeToVisit,
-                category: dest.category || 'general'
-            })),
+            destinations: destinations.map(dest => {
+                // Đảm bảo entryFee luôn có giá trị hợp lệ
+                let entryFee = dest.entryFee;
+                if (entryFee === undefined || entryFee === null) {
+                    // Nếu chưa có entryFee, ước tính từ tên
+                    entryFee = estimateEntryFeeFromName(dest.name);
+                    console.log(`  💰 Estimated entry fee for ${dest.name}: ${entryFee.toLocaleString()}đ`);
+                }
+                
+                return {
+                    ...dest,
+                    visitTime: dest.estimatedDuration || '1-2 giờ',
+                    entryFee: entryFee,
+                    notes: dest.specialNotes || [],
+                    isOpen: dest.isOpen,
+                    crowdLevel: dest.currentCrowdLevel,
+                    bestTimeToVisit: dest.bestTimeToVisit,
+                    category: dest.category || 'general'
+                };
+            }),
             
             // Bữa ăn ĐA DẠNG
             meals: {
@@ -580,55 +611,105 @@ const generateHourlySchedule = (dayNumber, destinations, restaurants) => {
 const generateCostBreakdown = async (preferences, dailyItinerary, accommodationPlan = null) => {
     const { travelers, duration, travelStyle, departureCity, destination, budget } = preferences;
     
-    // Tính chi phí THỰC TẾ
+    // 1. Chi phí xe khứ hồi (intercity transport)
     const transportCost = calculateTransportCost(departureCity, destination, travelers, travelStyle);
+    
+    // 2. Chi phí khách sạn
     const accommodationCost = calculateAccommodationCost(duration - 1, travelers, travelStyle, accommodationPlan);
     
-    // Tính chi phí từ các ngày (đã bao gồm: vé tham quan + ăn uống + di chuyển trong ngày + phát sinh)
-    const dailyActivitiesCost = dailyItinerary.reduce((sum, day) => sum + (day.estimatedCost || 0), 0) * travelers;
+    // 3. Tính chi phí từ các ngày với GROUP DISCOUNT
+    // Thay vì dùng estimatedCost × travelers (không có discount),
+    // tính từ các hàm chi tiết đã có group discount
+    const foodCostDetail = calculateFoodCostFromDays(dailyItinerary, travelers);
+    const sightseeingCostDetail = calculateSightseeingCostFromDays(dailyItinerary, travelers);
+    const localTransportCostDetail = calculateLocalTransportCostFromDays(dailyItinerary, travelers);
     
-    // Tách ra để hiển thị chi tiết
-    const foodCost = calculateFoodCost(dailyItinerary, travelers, travelStyle);
-    const sightseeingCost = calculateSightseeingCost(dailyItinerary, travelers);
-    const localTransportCost = calculateLocalTransportCost(duration, travelers, travelStyle);
+    // Tính misc cost (phát sinh nhỏ: nước uống, tip...)
+    // 30k/người/ngày, nhưng nhóm đông có thể chia sẻ
+    const miscCostPerPersonPerDay = 30000;
+    let miscMultiplier = travelers;
+    if (travelers >= 4) {
+        miscMultiplier = travelers * 0.9; // Giảm 10% cho nhóm 4+
+    }
+    const miscCost = roundPrice(miscCostPerPersonPerDay * duration * miscMultiplier);
+    
+    // Tổng chi phí activities = Food + Sightseeing + LocalTransport + Misc
+    const dailyActivitiesCost = foodCostDetail + sightseeingCostDetail + localTransportCostDetail + miscCost;
+    
+    console.log(`📊 Daily activities breakdown:`);
+    console.log(`  - Food: ${foodCostDetail.toLocaleString()}đ (with group discount)`);
+    console.log(`  - Sightseeing: ${sightseeingCostDetail.toLocaleString()}đ (no discount)`);
+    console.log(`  - Local Transport: ${localTransportCostDetail.toLocaleString()}đ (with group discount)`);
+    console.log(`  - Misc: ${miscCost.toLocaleString()}đ`);
+    console.log(`  - TOTAL Activities: ${dailyActivitiesCost.toLocaleString()}đ`);
     
     // Tổng chi phí = Xe khứ hồi + Khách sạn + Hoạt động các ngày
     const subtotal = transportCost + accommodationCost + dailyActivitiesCost;
     
-    // Chi phí phát sinh 5%
+    // Chi phí phát sinh 5% (giảm từ 15% xuống 5%)
     const contingencyCost = roundPrice(subtotal * 0.05);
     
     // Tổng cộng (làm tròn)
     const grandTotal = roundPrice(subtotal + contingencyCost);
 
+    console.log('');
+    console.log('💰 ========== COST BREAKDOWN SUMMARY ==========');
+    console.log(`📊 Trip: ${departureCity} → ${destination} (${duration} days, ${travelers} people)`);
+    console.log(`💵 Total Budget: ${budget.toLocaleString()}đ`);
+    console.log(`👤 Budget per person: ${Math.round(budget/travelers).toLocaleString()}đ`);
+    console.log('');
+    console.log('📋 Breakdown:');
+    console.log(`  1. Transport (round trip):`);
+    console.log(`     ${transportCost.toLocaleString()}đ (${Math.round(transportCost/travelers).toLocaleString()}đ/person)`);
+    console.log(`  2. Accommodation (${duration-1} nights):`);
+    console.log(`     ${accommodationCost.toLocaleString()}đ (${Math.round(accommodationCost/travelers).toLocaleString()}đ/person)`);
+    console.log(`  3. Daily Activities (${duration} days × ${travelers} people):`);
+    console.log(`     ${dailyActivitiesCost.toLocaleString()}đ (${Math.round(dailyActivitiesCost/travelers).toLocaleString()}đ/person)`);
+    console.log(`     ├─ Food: ${foodCostDetail.toLocaleString()}đ`);
+    console.log(`     ├─ Sightseeing: ${sightseeingCostDetail.toLocaleString()}đ`);
+    console.log(`     └─ Local Transport: ${localTransportCostDetail.toLocaleString()}đ`);
+    console.log(`  4. Contingency (5%):`);
+    console.log(`     ${contingencyCost.toLocaleString()}đ`);
+    console.log('');
+    console.log(`💎 GRAND TOTAL: ${grandTotal.toLocaleString()}đ`);
+    console.log(`👤 Per person: ${Math.round(grandTotal/travelers).toLocaleString()}đ`);
+    console.log(`📊 Budget status: ${grandTotal <= budget ? '✅ Within budget' : '⚠️ Over budget'}`);
+    if (grandTotal <= budget) {
+        console.log(`💰 Remaining: ${(budget - grandTotal).toLocaleString()}đ`);
+    } else {
+        console.log(`⚠️ Exceeded by: ${(grandTotal - budget).toLocaleString()}đ`);
+    }
+    console.log('===============================================');
+    console.log('');
+
     return {
         transport: {
             intercity: transportCost,
-            local: localTransportCost,
-            total: transportCost + localTransportCost,
+            local: localTransportCostDetail,
+            total: transportCost + localTransportCostDetail,
             details: getTransportDetails(departureCity, destination, travelStyle)
         },
         accommodation: {
             total: accommodationCost,
             perNight: Math.round(accommodationCost / (duration - 1)),
             nights: duration - 1,
-            type: 'Khách sạn', // Đơn giản hóa, không hiển thị số sao
+            type: 'Khách sạn',
             bookingLinks: generateBookingLinks(destination, travelStyle)
         },
         food: {
-            total: foodCost,
-            perDay: Math.round(foodCost / duration),
-            perPerson: Math.round(foodCost / travelers),
+            total: foodCostDetail,
+            perDay: Math.round(foodCostDetail / duration),
+            perPerson: Math.round(foodCostDetail / travelers),
             breakdown: getFoodCostBreakdown(dailyItinerary)
         },
         sightseeing: {
-            total: sightseeingCost,
-            perPerson: Math.round(sightseeingCost / travelers),
+            total: sightseeingCostDetail,
+            perPerson: Math.round(sightseeingCostDetail / travelers),
             breakdown: getSightseeingCostBreakdown(dailyItinerary)
         },
         contingency: {
             amount: contingencyCost,
-            percentage: 15,
+            percentage: 5,
             purpose: 'Chi phí phát sinh, mua sắm, tip'
         },
         grandTotal,
@@ -1514,7 +1595,8 @@ const calculateAccommodationCost = (nights, travelers, style, accommodationPlan 
     return roundPrice(totalCost);
 };
 
-const calculateFoodCost = (dailyItinerary, travelers) => {
+// CÁC HÀM TÍNH CHI PHÍ CŨ - GIỮ LẠI ĐỂ TƯƠNG THÍCH
+const calculateFoodCost = (dailyItinerary, travelers, travelStyle) => {
     // Giảm chi phí ăn uống xuống 150k/người/ngày
     return dailyItinerary.length * 150000 * travelers;
 };
@@ -1528,9 +1610,133 @@ const calculateSightseeingCost = (dailyItinerary, travelers) => {
 };
 
 const calculateLocalTransportCost = (duration, travelers, style) => {
-    // Giảm chi phí di chuyển địa phương xuống 80k/ngày
-    const dailyCost = TRANSPORT_OPTIONS.local[style]?.costPerDay || 80000;
-    return Math.min(dailyCost * duration * travelers, duration * 100000);
+    // Chi phí di chuyển địa phương/người/ngày
+    const dailyCostPerPerson = TRANSPORT_OPTIONS.local[style]?.costPerDay || 80000;
+    
+    // Áp dụng group discount (giống calculateLocalTransportCostFromDays)
+    let groupMultiplier = travelers;
+    if (travelers === 1) {
+        groupMultiplier = 1;
+    } else if (travelers === 2) {
+        groupMultiplier = 2;
+    } else if (travelers <= 4) {
+        groupMultiplier = travelers * 0.6;
+    } else if (travelers <= 7) {
+        groupMultiplier = travelers * 0.4;
+    } else {
+        groupMultiplier = travelers * 0.5;
+    }
+    
+    const totalCost = dailyCostPerPerson * duration * groupMultiplier;
+    return roundPrice(totalCost);
+};
+
+// CÁC HÀM TÍNH CHI PHÍ MỚI - TRÍCH XUẤT TỪ estimatedCost CỦA TỪNG NGÀY
+const calculateFoodCostFromDays = (dailyItinerary, travelers) => {
+    // Tính tổng chi phí ăn uống từ meals của từng ngày
+    let totalFoodCostPerPerson = 0;
+    dailyItinerary.forEach(day => {
+        if (day.meals) {
+            if (day.meals.breakfast?.estimatedCost) totalFoodCostPerPerson += day.meals.breakfast.estimatedCost;
+            if (day.meals.lunch?.estimatedCost) totalFoodCostPerPerson += day.meals.lunch.estimatedCost;
+            if (day.meals.dinner?.estimatedCost) totalFoodCostPerPerson += day.meals.dinner.estimatedCost;
+            // Không tính street food và cafe vào tổng (optional)
+        }
+    });
+    
+    // Áp dụng group discount cho ăn uống
+    // Khi đi nhóm: gọi món chung, chia nhau, combo nhóm → tiết kiệm hơn
+    let groupMultiplier = travelers;
+    
+    if (travelers === 1) {
+        groupMultiplier = 1.0;        // 1 người: 100%
+    } else if (travelers === 2) {
+        groupMultiplier = 1.95;       // 2 người: 97.5% (giảm 2.5%)
+    } else if (travelers <= 4) {
+        groupMultiplier = travelers * 0.9;  // 3-4 người: 90% (giảm 10%)
+    } else if (travelers <= 6) {
+        groupMultiplier = travelers * 0.85; // 5-6 người: 85% (giảm 15%)
+    } else {
+        groupMultiplier = travelers * 0.8;  // 7+ người: 80% (giảm 20%)
+    }
+    
+    const totalFoodCost = totalFoodCostPerPerson * groupMultiplier;
+    
+    console.log(`🍜 Food cost calculation:`);
+    console.log(`  - Base cost/person: ${totalFoodCostPerPerson.toLocaleString()}đ`);
+    console.log(`  - Travelers: ${travelers} people`);
+    console.log(`  - Group multiplier: ${groupMultiplier.toFixed(2)}x`);
+    console.log(`  - Total: ${totalFoodCost.toLocaleString()}đ`);
+    console.log(`  - Per person: ${Math.round(totalFoodCost/travelers).toLocaleString()}đ`);
+    console.log(`  - Savings: ${Math.round((1 - groupMultiplier/travelers) * 100)}%`);
+    
+    return roundPrice(totalFoodCost);
+};
+
+const calculateSightseeingCostFromDays = (dailyItinerary, travelers) => {
+    // Tính tổng chi phí vé tham quan từ destinations của từng ngày
+    let totalEntryFees = 0;
+    let destinationCount = 0;
+    
+    dailyItinerary.forEach(day => {
+        if (day.destinations && day.destinations.length > 0) {
+            day.destinations.forEach(dest => {
+                const fee = dest.entryFee || 0;
+                totalEntryFees += fee;
+                destinationCount++;
+                if (fee === 0) {
+                    console.log(`  ⚠️ ${dest.name}: FREE (entryFee = 0)`);
+                }
+            });
+        }
+    });
+    
+    console.log(`🎯 Sightseeing cost: ${destinationCount} destinations, total fees = ${totalEntryFees.toLocaleString()}đ × ${travelers} people = ${(totalEntryFees * travelers).toLocaleString()}đ`);
+    
+    return roundPrice(totalEntryFees * travelers);
+};
+
+const calculateLocalTransportCostFromDays = (dailyItinerary, travelers) => {
+    // Tính tổng chi phí di chuyển địa phương
+    // CHI PHÍ NÀY ĐÃ TÍNH CHO NHÓM, KHÔNG NHÂN VỚI SỐ NGƯỜI
+    
+    // Tính chi phí di chuyển/người/ngày từ estimatedCost
+    const transportCostPerPersonPerDay = dailyItinerary.reduce((sum, day) => {
+        const dayCost = day.estimatedCost || 0;
+        // 20% chi phí ngày là di chuyển
+        return sum + (dayCost * 0.2);
+    }, 0);
+    
+    // Áp dụng group discount cho di chuyển địa phương
+    let groupMultiplier = travelers;
+    
+    if (travelers === 1) {
+        // 1 người: phải trả full giá Grab/taxi
+        groupMultiplier = 1;
+    } else if (travelers === 2) {
+        // 2 người: chia đôi chi phí xe
+        groupMultiplier = 2;
+    } else if (travelers <= 4) {
+        // 3-4 người: thuê xe 4 chỗ, chi phí tăng ~60% so với 1 người
+        groupMultiplier = travelers * 0.6;
+    } else if (travelers <= 7) {
+        // 5-7 người: thuê xe 7 chỗ, chi phí tăng ~40% so với 1 người
+        groupMultiplier = travelers * 0.4;
+    } else {
+        // 8+ người: thuê 2 xe, chi phí tăng ~50% so với 1 người
+        groupMultiplier = travelers * 0.5;
+    }
+    
+    const totalTransportCost = transportCostPerPersonPerDay * groupMultiplier;
+    
+    console.log(`🚗 Local transport cost calculation:`);
+    console.log(`  - Base cost/person: ${transportCostPerPersonPerDay.toLocaleString()}đ`);
+    console.log(`  - Travelers: ${travelers} people`);
+    console.log(`  - Group multiplier: ${groupMultiplier.toFixed(2)}x`);
+    console.log(`  - Total: ${totalTransportCost.toLocaleString()}đ`);
+    console.log(`  - Per person: ${Math.round(totalTransportCost/travelers).toLocaleString()}đ`);
+    
+    return roundPrice(totalTransportCost);
 };
 
 // getClimate and getSeason are imported from commonUtils
@@ -5534,15 +5740,18 @@ const generateWeatherRecommendations = (weather, destination) => {
 
 /**
  * Tính chi phí ngày nâng cao - SỬ DỤNG GIÁ THỰC TẾ
+ * CHI PHÍ CHO 1 NGƯỜI/NGÀY (chưa nhân với số người)
+ * 
+ * @param {Array} destinations - Danh sách địa điểm
+ * @param {Object} restaurants - Nhà hàng
+ * @param {String} travelStyle - Phong cách du lịch
+ * @param {Number} dayNumber - Ngày thứ mấy
+ * @param {Number} dailyBudget - Ngân sách/người/ngày (để tham khảo)
  */
 const calculateEnhancedDayCost = (destinations, restaurants, travelStyle, dayNumber, dailyBudget = 500000) => {
-    const multiplier = Math.min(TRAVEL_STYLES[travelStyle]?.multiplier || 1, 1.2);
-    
     // 1. Chi phí vé vào cổng (sử dụng giá THỰC TẾ từ API)
     const sightseeingCost = destinations.reduce((sum, dest) => {
-        // Sử dụng entryFee đã được tính từ estimateEntryFeeFromName hoặc estimateEntryFee
         const fee = dest.entryFee || estimateEntryFeeFromName(dest.name);
-        console.log(`💰 ${dest.name}: ${fee.toLocaleString()}đ`);
         return sum + fee;
     }, 0);
     
@@ -5559,40 +5768,39 @@ const calculateEnhancedDayCost = (destinations, restaurants, travelStyle, dayNum
     if (restaurants.dinner) {
         foodCost += restaurants.dinner.estimatedCost || styleCosts.dinner.avg;
     }
-    if (restaurants.streetFood && restaurants.streetFood.length > 0) {
-        foodCost += restaurants.streetFood[0].estimatedCost || styleCosts.streetFood.avg;
-    }
-    if (restaurants.cafes && restaurants.cafes.length > 0) {
-        foodCost += restaurants.cafes[0].estimatedCost || styleCosts.cafe.avg;
-    }
     
-    // 3. Chi phí di chuyển giữa các địa điểm trong ngày
-    let localTransportCost = 0;
-    // Tính chi phí di chuyển giữa các địa điểm
-    for (let i = 0; i < destinations.length - 1; i++) {
-        const from = destinations[i].address || destinations[i].name;
-        const to = destinations[i + 1].address || destinations[i + 1].name;
-        
-        // Thử lấy thời gian từ CSV (nếu có)
-        const travelTime = transportDataService.getTravelTime(from, to);
-        if (travelTime && travelTime > 0.5) {
-            // Nếu > 30 phút, có thể cần xe
-            localTransportCost += 50000; // Grab/taxi giữa các địa điểm
-        } else {
-            // Ngắn, có thể đi bộ hoặc xe ngắn
-            localTransportCost += 20000;
-        }
-    }
-    
-    // Thêm chi phí di chuyển cơ bản trong ngày
+    // 3. Chi phí di chuyển trong ngày
     const baseTransportCost = TRANSPORT_OPTIONS.local[travelStyle]?.costPerDay || 80000;
-    localTransportCost += baseTransportCost;
+    let localTransportCost = baseTransportCost;
     
-    // 4. Chi phí mua sắm/phát sinh
-    const miscCost = 50000; // Nước uống, tip, mua sắm nhỏ
+    // Thêm chi phí di chuyển giữa các địa điểm (nếu có nhiều địa điểm)
+    if (destinations.length > 2) {
+        localTransportCost += (destinations.length - 2) * 30000; // 30k cho mỗi chuyến thêm
+    }
     
-    // Tổng chi phí trong ngày (CHỈ hoạt động, KHÔNG bao gồm khách sạn/xe khứ hồi)
-    const totalCost = sightseeingCost + foodCost + localTransportCost + miscCost;
+    // 4. Chi phí phát sinh (nước uống, tip, mua sắm nhỏ)
+    const miscCost = 30000;
+    
+    // Tổng chi phí trong ngày CHO 1 NGƯỜI (KHÔNG bao gồm khách sạn/xe khứ hồi)
+    let totalCost = sightseeingCost + foodCost + localTransportCost + miscCost;
+    
+    // Kiểm tra xem có vượt ngân sách không
+    const budgetStatus = totalCost > dailyBudget ? 'over' : 'within';
+    const budgetDiff = Math.abs(totalCost - dailyBudget);
+    
+    console.log(`💰 Day ${dayNumber} cost breakdown (per person):`);
+    console.log(`  - Sightseeing: ${sightseeingCost.toLocaleString()}đ (${destinations.length} places)`);
+    console.log(`  - Food: ${foodCost.toLocaleString()}đ (3 meals)`);
+    console.log(`  - Local Transport: ${localTransportCost.toLocaleString()}đ`);
+    console.log(`  - Misc: ${miscCost.toLocaleString()}đ`);
+    console.log(`  - TOTAL: ${totalCost.toLocaleString()}đ`);
+    console.log(`  - Daily budget: ${dailyBudget.toLocaleString()}đ`);
+    console.log(`  - Status: ${budgetStatus} (${budgetStatus === 'over' ? '+' : '-'}${budgetDiff.toLocaleString()}đ)`);
+    
+    // Nếu vượt ngân sách quá nhiều (>20%), cảnh báo
+    if (totalCost > dailyBudget * 1.2) {
+        console.warn(`  ⚠️ WARNING: Day ${dayNumber} cost exceeds budget by ${Math.round((totalCost/dailyBudget - 1) * 100)}%`);
+    }
     
     // Làm tròn đến 10,000
     return roundPrice(totalCost);

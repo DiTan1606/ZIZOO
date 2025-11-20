@@ -200,6 +200,11 @@ const CompleteItineraryPlanner = () => {
         const oldHotelCost = completeItinerary.accommodation.selected.totalCost;
         const newHotelCost = hotel.totalCost;
         const priceDifference = newHotelCost - oldHotelCost;
+        
+        const newGrandTotal = completeItinerary.costBreakdown.grandTotal + priceDifference;
+        const travelers = completeItinerary.header.travelers.total;
+        const newCostPerPerson = Math.round(newGrandTotal / travelers);
+        const budget = completeItinerary.preferences.budget;
 
         // Cập nhật khách sạn đã chọn
         const updatedItinerary = {
@@ -215,17 +220,27 @@ const CompleteItineraryPlanner = () => {
                     total: newHotelCost,
                     perNight: hotel.pricePerNight
                 },
-                grandTotal: completeItinerary.costBreakdown.grandTotal + priceDifference
+                grandTotal: newGrandTotal,
+                perPerson: newCostPerPerson,
+                budgetStatus: {
+                    withinBudget: newGrandTotal <= budget,
+                    difference: budget - newGrandTotal,
+                    percentage: Math.round((newGrandTotal / budget) * 100)
+                }
             },
             summary: {
                 ...completeItinerary.summary,
-                totalCost: completeItinerary.summary.totalCost + priceDifference,
-                costPerPerson: Math.round((completeItinerary.summary.totalCost + priceDifference) / completeItinerary.summary.travelers)
+                totalCost: newGrandTotal,
+                costPerPerson: newCostPerPerson
             }
         };
 
         setCompleteItinerary(updatedItinerary);
-        toast.success(`✅ Đã chọn ${hotel.name}. Giá tổng đã được cập nhật!`);
+        
+        const statusMsg = newGrandTotal <= budget 
+            ? `✅ Đã chọn ${hotel.name}. Tổng: ${formatMoney(newGrandTotal)} (trong ngân sách)`
+            : `⚠️ Đã chọn ${hotel.name}. Tổng: ${formatMoney(newGrandTotal)} (vượt ${formatMoney(newGrandTotal - budget)})`;
+        toast.success(statusMsg);
     };
 
     const formatMoney = (amount) => {
@@ -254,21 +269,38 @@ const CompleteItineraryPlanner = () => {
             const departureFlight = direction === 'departure' ? flight : (selectedDepartureFlight || updatedItinerary.transport.intercity.departure.recommended);
             const returnFlight = direction === 'return' ? flight : (selectedReturnFlight || updatedItinerary.transport.intercity.return.recommended);
             
-            const departurePrice = departureFlight?.pricePerPerson || 0;
-            const returnPrice = returnFlight?.pricePerPerson || 0;
+            const departurePrice = departureFlight?.price || 0;
+            const returnPrice = returnFlight?.price || 0;
             const travelers = updatedItinerary.header.travelers.total;
             
-            const newTransportCost = (departurePrice + returnPrice) * travelers;
+            const newTransportCost = departurePrice + returnPrice;
             const oldTransportCost = updatedItinerary.costBreakdown.transport.intercity;
             const difference = newTransportCost - oldTransportCost;
             
+            const newGrandTotal = updatedItinerary.costBreakdown.grandTotal + difference;
+            const newCostPerPerson = Math.round(newGrandTotal / travelers);
+            const budget = updatedItinerary.preferences.budget;
+            
             updatedItinerary.costBreakdown.transport.intercity = newTransportCost;
             updatedItinerary.costBreakdown.transport.total += difference;
-            updatedItinerary.costBreakdown.grandTotal += difference;
-            updatedItinerary.costBreakdown.perPerson = Math.round(updatedItinerary.costBreakdown.grandTotal / travelers);
+            updatedItinerary.costBreakdown.grandTotal = newGrandTotal;
+            updatedItinerary.costBreakdown.perPerson = newCostPerPerson;
+            updatedItinerary.costBreakdown.budgetStatus = {
+                withinBudget: newGrandTotal <= budget,
+                difference: budget - newGrandTotal,
+                percentage: Math.round((newGrandTotal / budget) * 100)
+            };
+            
+            // Cập nhật summary
+            updatedItinerary.summary.totalCost = newGrandTotal;
+            updatedItinerary.summary.costPerPerson = newCostPerPerson;
             
             setCompleteItinerary(updatedItinerary);
-            toast.success(`Đã chọn chuyến bay ${flight.provider} ${flight.flightNumber || ''}`);
+            
+            const statusMsg = newGrandTotal <= budget 
+                ? `✅ Đã chọn ${flight.provider}. Tổng: ${formatMoney(newGrandTotal)} (trong ngân sách)`
+                : `⚠️ Đã chọn ${flight.provider}. Tổng: ${formatMoney(newGrandTotal)} (vượt ${formatMoney(newGrandTotal - budget)})`;
+            toast.success(statusMsg);
         }
     };
 

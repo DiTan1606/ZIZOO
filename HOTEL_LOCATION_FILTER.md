@@ -142,48 +142,13 @@ const calculateDistanceBetweenPoints = (lat1, lng1, lat2, lng2) => {
 };
 ```
 
-## 🔧 Update: Fallback thông minh
-
-### Vấn đề:
-- Filter quá chặt → một số nơi không tìm được khách sạn
-- Dùng fallback generic "Khách sạn 4 sao" ❌
-
-### Giải pháp:
-**3 lần thử tìm kiếm:**
-
-1. **Try 1**: Tìm trong 5km với keyword "city center"
-2. **Try 2**: Nếu không có → mở rộng 10km
-3. **Try 3**: Nếu vẫn không có → tìm "lodging" trong 15km
-
-**Sort thông minh:**
-- Ưu tiên khách sạn < 5km
-- Nhưng vẫn chấp nhận khách sạn xa hơn nếu cần
-- Không lọc cứng theo khoảng cách
-
-```javascript
-// Thử 1: 5km radius
-let hotels = await searchPlacesByText(`hotels in ${destination} city center`, coord, 5000);
-
-// Thử 2: 10km radius
-if (!hotels || hotels.length === 0) {
-    hotels = await searchPlacesByText(`hotels in ${destination}`, coord, 10000);
-}
-
-// Thử 3: 15km radius + lodging
-if (!hotels || hotels.length === 0) {
-    hotels = await searchPlacesByText(`lodging accommodation in ${destination}`, coord, 15000);
-}
-```
-
 ## 📝 Changelog
 
 **2024-11-21:**
 - ✅ Giảm radius tìm kiếm: 10km → 5km
 - ✅ Thêm keyword "downtown" và "city center"
 - ✅ Tính khoảng cách từ khách sạn đến trung tâm
-- ✅ ~~Lọc khách sạn > 3km từ trung tâm~~ (đã bỏ - quá chặt)
+- ✅ Lọc khách sạn > 3km từ trung tâm
 - ✅ Ưu tiên khách sạn gần trong sort logic
 - ✅ Thêm hàm `calculateDistanceBetweenPoints()`
-- ✅ **3 lần thử tìm kiếm với radius tăng dần**
-- ✅ **Không lọc cứng theo khoảng cách** (chỉ ưu tiên)
 - ✅ Log khoảng cách để debug
