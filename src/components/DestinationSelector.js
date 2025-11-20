@@ -1,9 +1,7 @@
 // src/components/DestinationSelector.js
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { toast } from 'react-toastify';
 import { searchPlacesByText, initPlacesService } from '../services/placesService';
-import { saveCustomDestination } from '../services/customDestinationService';
-import { useAuth } from '../context/AuthContext';
 import provinceCoords from '../assets/provinceCoord.json';
 import './DestinationSelector.css';
 
@@ -13,7 +11,6 @@ import ctcIcon from '../icon/ctc.png';
 import bctcIcon from '../icon/bctc.png';
 
 const DestinationSelector = ({ preferences, onConfirm, onBack }) => {
-    const { currentUser } = useAuth();
     const [loading, setLoading] = useState(true);
     const [destinations, setDestinations] = useState([]);
     const [selectedDestinations, setSelectedDestinations] = useState([]);
@@ -28,13 +25,8 @@ const DestinationSelector = ({ preferences, onConfirm, onBack }) => {
         preferredTime: '',
         duration: '2',
         type: 'tourist_attraction',
-        price: '',
-        coordinates: { lat: null, lng: null }
+        price: ''
     });
-    
-    // Ref cho Google Places Autocomplete
-    const addressInputRef = useRef(null);
-    const autocompleteRef = useRef(null);
 
     const categories = [
         { id: 'all', name: 'Tất cả', icon: '🗺️' },
@@ -105,70 +97,6 @@ const DestinationSelector = ({ preferences, onConfirm, onBack }) => {
         }
     }, [preferences.destination, placesServiceReady]);
 
-    // Initialize Google Places Autocomplete cho custom address input
-    useEffect(() => {
-        if (!showCustomInput || !addressInputRef.current) return;
-
-        const initAutocomplete = () => {
-            if (!window.google?.maps?.places) {
-                setTimeout(initAutocomplete, 500);
-                return;
-            }
-
-            try {
-                // Xóa autocomplete cũ nếu có
-                if (autocompleteRef.current) {
-                    window.google.maps.event.clearInstanceListeners(autocompleteRef.current);
-                }
-
-                // Tạo autocomplete mới
-                autocompleteRef.current = new window.google.maps.places.Autocomplete(
-                    addressInputRef.current,
-                    {
-                        componentRestrictions: { country: 'vn' },
-                        fields: ['formatted_address', 'geometry', 'name', 'place_id', 'types'],
-                        types: ['establishment', 'geocode']
-                    }
-                );
-
-                // Lắng nghe sự kiện chọn địa chỉ
-                autocompleteRef.current.addListener('place_changed', () => {
-                    const place = autocompleteRef.current.getPlace();
-                    
-                    if (!place.geometry) {
-                        toast.warning('Không tìm thấy địa chỉ. Vui lòng chọn từ danh sách gợi ý.');
-                        return;
-                    }
-
-                    setCustomDestination(prev => ({
-                        ...prev,
-                        address: place.formatted_address || place.name,
-                        coordinates: {
-                            lat: place.geometry.location.lat(),
-                            lng: place.geometry.location.lng()
-                        },
-                        // Tự động điền tên nếu chưa có
-                        name: prev.name || place.name || ''
-                    }));
-
-                    toast.success('✓ Đã xác định vị trí địa điểm!');
-                });
-
-                console.log('✅ Google Places Autocomplete initialized for custom address');
-            } catch (error) {
-                console.error('Error initializing Autocomplete:', error);
-            }
-        };
-
-        initAutocomplete();
-
-        return () => {
-            if (autocompleteRef.current && window.google) {
-                window.google.maps.event.clearInstanceListeners(autocompleteRef.current);
-            }
-        };
-    }, [showCustomInput]);
-
     const loadDestinations = async () => {
         if (!placesServiceReady) {
             console.warn('Places Service not ready yet');
@@ -193,7 +121,6 @@ const DestinationSelector = ({ preferences, onConfirm, onBack }) => {
                     
                     const places = results.slice(0, 10).map(place => ({
                         id: place.place_id,
-                        place_id: place.place_id, // Thêm place_id để dễ so sánh
                         name: place.name,
                         address: place.vicinity || place.formatted_address,
                         rating: place.rating || 0,
@@ -223,16 +150,6 @@ const DestinationSelector = ({ preferences, onConfirm, onBack }) => {
             
             // Sắp xếp theo rating
             uniquePlaces.sort((a, b) => b.rating - a.rating);
-            
-            console.log('📍 Load Destinations Result:');
-            console.log('- Total places found:', allPlaces.length);
-            console.log('- Unique places:', uniquePlaces.length);
-            console.log('- Sample destinations:', uniquePlaces.slice(0, 3).map(d => ({
-                id: d.id,
-                place_id: d.place_id,
-                name: d.name,
-                category: d.category
-            })));
             
             setDestinations(uniquePlaces);
             
@@ -277,7 +194,7 @@ const DestinationSelector = ({ preferences, onConfirm, onBack }) => {
         );
     };
 
-    const addCustomDestination = async () => {
+    const addCustomDestination = () => {
         if (!customDestination.name.trim()) {
             toast.warning('Vui lòng nhập tên địa điểm!');
             return;
@@ -292,7 +209,6 @@ const DestinationSelector = ({ preferences, onConfirm, onBack }) => {
 
         const newDestination = {
             id: `custom_${Date.now()}`,
-            place_id: `custom_${Date.now()}`, // Thêm place_id để tránh duplicate
             name: customDestination.name,
             address: customDestination.address || preferences.destination,
             rating: 0,
@@ -304,44 +220,14 @@ const DestinationSelector = ({ preferences, onConfirm, onBack }) => {
             preferredTime: customDestination.preferredTime,
             duration: customDestination.duration,
             isCustom: true,
-            priority: 'high', // ✨ Ưu tiên cao cho địa điểm custom
-            userSelected: true, // ✨ Đánh dấu là người dùng chọn
-            // Coordinates from Google Places Autocomplete
-            coordinates: customDestination.coordinates,
-            geometry: customDestination.coordinates.lat ? {
-                location: {
-                    lat: customDestination.coordinates.lat,
-                    lng: customDestination.coordinates.lng
-                }
-            } : null,
-            lat: customDestination.coordinates.lat,
-            lng: customDestination.coordinates.lng,
             // Price info
             price: customDestination.price ? parseInt(customDestination.price) : null,
             priceLevel: customDestination.price ? calculatePriceLevel(parseInt(customDestination.price)) : 2,
             // Store original type for better categorization
-            placeType: customDestination.type,
-            // Lưu thành phố để query sau này
-            city: preferences.destination
+            placeType: customDestination.type
         };
 
-        // 💾 LƯU VÀO DATABASE để dùng lại sau
-        try {
-            if (currentUser) {
-                await saveCustomDestination(newDestination, currentUser.uid);
-                console.log('✅ Đã lưu địa điểm tùy chỉnh vào database');
-            } else {
-                console.log('⚠️ Chưa đăng nhập, không lưu vào database');
-            }
-        } catch (error) {
-            console.warn('⚠️ Không thể lưu vào database:', error);
-            // Vẫn tiếp tục thêm vào lịch trình
-        }
-
-        // Tự động thêm vào danh sách đã chọn với ưu tiên cao
         setSelectedDestinations(prev => [...prev, newDestination]);
-        
-        toast.success(`✅ Đã thêm "${customDestination.name}" vào lịch trình${currentUser ? ' và lưu vào database' : ''}!`);
         
         // Reset form
         setCustomDestination({
@@ -350,10 +236,11 @@ const DestinationSelector = ({ preferences, onConfirm, onBack }) => {
             preferredTime: '',
             duration: '2',
             type: 'tourist_attraction',
-            price: '',
-            coordinates: { lat: null, lng: null }
+            price: ''
         });
         setShowCustomInput(false);
+        
+        toast.success(`✅ Đã thêm "${newDestination.name}"`);
     };
 
     // Helper function to calculate price level from VND
@@ -370,58 +257,10 @@ const DestinationSelector = ({ preferences, onConfirm, onBack }) => {
 
     const toggleAll = () => {
         const filtered = getFilteredDestinations();
-        
-        console.log('🔍 Toggle All Debug:');
-        console.log('- Total destinations:', destinations.length);
-        console.log('- Filtered destinations:', filtered.length);
-        console.log('- Currently selected:', selectedDestinations.length);
-        console.log('- Active category:', activeCategory);
-        
-        // Helper function để so sánh destinations (dùng id hoặc place_id)
-        const isSameDestination = (dest1, dest2) => {
-            if (dest1.place_id && dest2.place_id) {
-                return dest1.place_id === dest2.place_id;
-            }
-            if (dest1.id && dest2.id) {
-                return dest1.id === dest2.id;
-            }
-            return dest1.name === dest2.name && dest1.address === dest2.address;
-        };
-        
-        // Tách địa điểm custom (không có trong danh sách gợi ý)
-        const customDestinations = selectedDestinations.filter(
-            selected => !destinations.some(dest => isSameDestination(dest, selected))
-        );
-        
-        console.log('- Custom destinations:', customDestinations.length);
-        
-        // Kiểm tra xem tất cả địa điểm gợi ý đã được chọn chưa
-        const allSuggestedSelected = filtered.length > 0 && filtered.every(dest => 
-            selectedDestinations.some(selected => isSameDestination(dest, selected))
-        );
-        
-        console.log('- All suggested selected?', allSuggestedSelected);
-        
-        if (allSuggestedSelected) {
-            // Bỏ chọn tất cả địa điểm gợi ý, nhưng GIỮ LẠI địa điểm custom
-            console.log('→ Bỏ chọn tất cả, giữ custom');
-            setSelectedDestinations(customDestinations);
+        if (selectedDestinations.length === filtered.length) {
+            setSelectedDestinations([]);
         } else {
-            // Chọn tất cả địa điểm gợi ý + GIỮ LẠI địa điểm custom
-            console.log('→ Chọn tất cả + giữ custom');
-            const newSelected = [...customDestinations];
-            
-            filtered.forEach(dest => {
-                // Chỉ thêm nếu chưa có trong newSelected
-                if (!newSelected.some(s => isSameDestination(s, dest))) {
-                    newSelected.push(dest);
-                }
-            });
-            
-            console.log('→ New selected count:', newSelected.length);
-            console.log('→ Filtered to add:', filtered.length);
-            console.log('→ Custom kept:', customDestinations.length);
-            setSelectedDestinations(newSelected);
+            setSelectedDestinations(filtered);
         }
     };
 
@@ -438,25 +277,8 @@ const DestinationSelector = ({ preferences, onConfirm, onBack }) => {
             return;
         }
 
-        // Sắp xếp địa điểm: Ưu tiên địa điểm custom/user-selected lên đầu
-        const sortedDestinations = [...selectedDestinations].sort((a, b) => {
-            // 1. Địa điểm có preferredTime lên đầu
-            if (a.preferredTime && !b.preferredTime) return -1;
-            if (!a.preferredTime && b.preferredTime) return 1;
-            
-            // 2. Địa điểm custom/userSelected ưu tiên cao
-            if (a.priority === 'high' && b.priority !== 'high') return -1;
-            if (a.priority !== 'high' && b.priority === 'high') return 1;
-            
-            if (a.userSelected && !b.userSelected) return -1;
-            if (!a.userSelected && b.userSelected) return 1;
-            
-            // 3. Sắp xếp theo rating
-            return (b.rating || 0) - (a.rating || 0);
-        });
-
         // Kiểm tra xem có địa điểm nào có thời gian trùng không
-        const timesSet = sortedDestinations
+        const timesSet = selectedDestinations
             .filter(d => d.preferredTime)
             .map(d => d.preferredTime);
         
@@ -466,12 +288,7 @@ const DestinationSelector = ({ preferences, onConfirm, onBack }) => {
             toast.warning('⚠️ Có địa điểm trùng khung giờ! Hệ thống sẽ tự động điều chỉnh.');
         }
         
-        const customCount = sortedDestinations.filter(d => d.isCustom).length;
-        if (customCount > 0) {
-            console.log(`✨ ${customCount} địa điểm tùy chỉnh sẽ được ưu tiên trong lịch trình`);
-        }
-        
-        onConfirm(sortedDestinations);
+        onConfirm(selectedDestinations);
     };
 
     const getPriceText = (priceLevel) => {
@@ -500,12 +317,7 @@ const DestinationSelector = ({ preferences, onConfirm, onBack }) => {
                 <p>Chọn các địa điểm bạn quan tâm và chỉ định khung giờ (tùy chọn)</p>
                 <div className="selection-summary">
                     <span className="selected-count">
-                        Đã chọn: <strong>{selectedDestinations.length}</strong> / {getFilteredDestinations().length} địa điểm
-                        {destinations.length === 0 && !loading && (
-                            <span style={{ color: '#ff6b6b', marginLeft: '10px' }}>
-                                (Không có địa điểm gợi ý - Vui lòng thêm tùy chỉnh)
-                            </span>
-                        )}
+                        Đã chọn: <strong>{selectedDestinations.length}</strong> địa điểm
                     </span>
                     <div className="header-actions">
                         <button 
@@ -545,13 +357,8 @@ const DestinationSelector = ({ preferences, onConfirm, onBack }) => {
                                 />
                             </div>
                             <div className="form-group">
-                                <label>Địa chỉ (tùy chọn)
-                                    <span style={{ fontSize: '0.85rem', color: '#666', fontWeight: 'normal', marginLeft: '8px' }}>
-                                        - Gõ và chọn từ gợi ý
-                                    </span>
-                                </label>
+                                <label>Địa chỉ (tùy chọn)</label>
                                 <input
-                                    ref={addressInputRef}
                                     type="text"
                                     placeholder="VD: 123 Đường ABC, Quận 1..."
                                     value={customDestination.address}
@@ -560,18 +367,6 @@ const DestinationSelector = ({ preferences, onConfirm, onBack }) => {
                                         address: e.target.value
                                     }))}
                                 />
-                                {customDestination.coordinates.lat && customDestination.coordinates.lng && (
-                                    <div style={{ 
-                                        fontSize: '0.85rem', 
-                                        color: '#28a745', 
-                                        marginTop: '5px',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '5px'
-                                    }}>
-                                        ✓ Đã xác định vị trí: {customDestination.coordinates.lat.toFixed(6)}, {customDestination.coordinates.lng.toFixed(6)}
-                                    </div>
-                                )}
                             </div>
                         </div>
                         <div className="form-row">

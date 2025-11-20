@@ -3,7 +3,6 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { generatePersonalizedItinerary, recordUserFeedback, getRecommendationExplanation } from '../services/recommendationService';
 import './PersonalizedRecommendations.css';
-import Footer from '../components/Footer';
 
 const PersonalizedRecommendations = () => {
     const { currentUser } = useAuth();
@@ -356,7 +355,6 @@ const PersonalizedRecommendations = () => {
                     <p>🔐 Đăng nhập để sử dụng tính năng gợi ý cá nhân hóa bằng AI</p>
                 </div>
             )}
-            <Footer/>
         </div>
     );
 };

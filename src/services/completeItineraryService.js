@@ -226,8 +226,7 @@ const generateDailyItinerary = async (preferences) => {
         travelers,
         startTime = '08:00', // Giờ bắt đầu
         specialActivities = {},
-        workingLocations = [], // Thêm working locations
-        customDestinations = [] // ✨ Địa điểm tùy chỉnh từ người dùng
+        workingLocations = [] // Thêm working locations
     } = preferences;
     const coord = provinceCoords[destination] || { lat: 16.047, lng: 108.220 };
     
@@ -239,128 +238,16 @@ const generateDailyItinerary = async (preferences) => {
     
     const dailyPlans = [];
 
-    console.log(`✨ Có ${customDestinations.length} địa điểm tùy chỉnh từ người dùng`);
-
-    // ✅ FIX: Lấy TẤT CẢ destinations một lần, rồi phân bổ cho từng ngày
-    console.log(`🔍 Fetching all destinations for ${duration} days...`);
-    let allDestinations = [];
-    try {
-        // ✅ Fetch đủ destinations cho tất cả các ngày (4-5 địa điểm/ngày)
-        const minDestsNeeded = duration * 4; // Tối thiểu 4 địa điểm/ngày
-        
-        // Fetch destinations cho nhiều ngày để có đủ đa dạng
-        const fetchPromises = [];
-        for (let i = 1; i <= Math.min(duration, 3); i++) {
-            fetchPromises.push(
-                findRealDestinationsForDay(i, destination, coord, interests, travelStyle, dailyBudget)
-            );
-        }
-        
-        const results = await Promise.all(fetchPromises);
-        
-        // Gộp tất cả destinations và loại bỏ trùng lặp (theo place_id hoặc name)
-        const seenIds = new Set();
-        const seenNames = new Set();
-        
-        results.forEach(dests => {
-            dests.forEach(dest => {
-                const id = dest.place_id || dest.id || dest.name;
-                const name = dest.name.toLowerCase().trim();
-                
-                if (!seenIds.has(id) && !seenNames.has(name)) {
-                    seenIds.add(id);
-                    seenNames.add(name);
-                    allDestinations.push(dest);
-                }
-            });
-        });
-        
-        console.log(`✅ Fetched ${allDestinations.length} unique destinations (needed: ${minDestsNeeded})`);
-        
-        // Nếu vẫn không đủ, cảnh báo
-        if (allDestinations.length < minDestsNeeded) {
-            console.warn(`⚠️ Only ${allDestinations.length} destinations available, may reuse some`);
-        }
-    } catch (error) {
-        console.error('Error fetching destinations:', error);
-    }
-
-    // ✅ FIX: Lấy TẤT CẢ restaurants một lần để tránh trùng lặp
-    console.log(`🍽️ Fetching all restaurants for ${duration} days...`);
-    const allRestaurantsByDay = [];
-    try {
-        // Fetch restaurants cho từng ngày (mỗi lần fetch sẽ tự động tránh trùng nhờ global usedRestaurants)
-        for (let i = 0; i < duration; i++) {
-            const restaurants = await findRealRestaurantsForDay(destination, coord, travelStyle);
-            allRestaurantsByDay.push(restaurants);
-            console.log(`✅ Day ${i + 1} restaurants: breakfast=${restaurants.breakfast?.name}, lunch=${restaurants.lunch?.name}, dinner=${restaurants.dinner?.name}`);
-        }
-    } catch (error) {
-        console.error('Error fetching restaurants:', error);
-    }
-
     for (let day = 0; day < duration; day++) {
         const currentDate = new Date(startDate);
         currentDate.setDate(currentDate.getDate() + day);
         const dateString = currentDate.toISOString().split('T')[0];
         
         // Lấy working locations cho ngày này
-        const dayWorkingLocations = workingLocations.filter(loc => {
-            // Nếu isAllDays = true, áp dụng cho tất cả các ngày
-            if (loc.isAllDays) return true;
-            
-            // Nếu có workingDays, kiểm tra xem ngày hiện tại có trong danh sách không
-            if (loc.workingDays && Array.isArray(loc.workingDays)) {
-                return loc.workingDays.includes(dateString);
-            }
-            
-            // Mặc định không áp dụng
-            return false;
-        });
+        const dayWorkingLocations = workingLocations.filter(loc => 
+            loc.isAllDays || (loc.workingDays && loc.workingDays.includes(dateString))
+        );
         
-        // Debug log
-        if (dayWorkingLocations.length > 0) {
-            console.log(`📅 Ngày ${dateString}: Có ${dayWorkingLocations.length} working location(s)`);
-            dayWorkingLocations.forEach(loc => {
-                console.log(`  💼 ${loc.name}: ${loc.startTime} - ${loc.endTime}`);
-            });
-        }
-        
-        
-        // ✅ Phân bổ destinations cho ngày này (không trùng lặp)
-        let dayDestinations = [];
-        
-        if (allDestinations.length > 0) {
-            const destsPerDay = Math.ceil(allDestinations.length / duration);
-            const startIdx = day * destsPerDay;
-            const endIdx = Math.min(startIdx + destsPerDay, allDestinations.length);
-            dayDestinations = allDestinations.slice(startIdx, endIdx);
-            
-            console.log(`📅 Day ${day + 1}: Assigned ${dayDestinations.length} destinations (${startIdx}-${endIdx})`);
-            console.log(`   Destinations: ${dayDestinations.map(d => d.name).join(', ')}`);
-            
-            // ✅ VALIDATION: Đảm bảo mỗi ngày có ít nhất 2 destinations
-            if (dayDestinations.length === 0) {
-                console.warn(`⚠️ Day ${day + 1} has NO destinations! Will fetch new ones.`);
-                // Để generateSingleDayPlan tự fetch
-            } else if (dayDestinations.length < 2 && allDestinations.length >= 2) {
-                console.warn(`⚠️ Day ${day + 1} only has ${dayDestinations.length} destination(s), redistributing...`);
-                // Lấy thêm từ pool nếu có
-                const additionalNeeded = 2 - dayDestinations.length;
-                const availableIndices = allDestinations
-                    .map((d, idx) => idx)
-                    .filter(idx => idx < startIdx || idx >= endIdx);
-                
-                for (let i = 0; i < Math.min(additionalNeeded, availableIndices.length); i++) {
-                    dayDestinations.push(allDestinations[availableIndices[i]]);
-                }
-            }
-        } else {
-            console.warn(`⚠️ No destinations fetched! Day ${day + 1} will fetch its own.`);
-        }
-        
-        // ✅ Lấy restaurants đã phân bổ cho ngày này
-        const dayRestaurants = allRestaurantsByDay[day] || null;
         
         // Tạo kế hoạch cho từng ngày với ngân sách và departureTime
         const dayPlan = await generateSingleDayPlan(
@@ -375,11 +262,9 @@ const generateDailyItinerary = async (preferences) => {
             travelers,
             departureTime,
             specialActivities,
-            customDestinations, // ✨ Truyền custom destinations
+            [],
             duration,
-            dayWorkingLocations, // Truyền working locations cho ngày này
-            dayDestinations, // ✅ Truyền destinations đã phân bổ
-            dayRestaurants // ✅ Truyền restaurants đã phân bổ
+            dayWorkingLocations // Truyền working locations cho ngày này
         );
         dailyPlans.push(dayPlan);
     }
@@ -404,24 +289,13 @@ const generateSingleDayPlan = async (
     specialActivities = {},
     customDestinations = [],
     duration = 3,
-    workingLocations = [], // Thêm working locations
-    preAllocatedDestinations = [], // ✅ Destinations đã phân bổ từ trước
-    preAllocatedRestaurants = null // ✅ Restaurants đã phân bổ từ trước
+    workingLocations = [] // Thêm working locations
 ) => {
     try {
         console.log(`📅 Generating DIVERSE day plan for Day ${dayNumber} in ${destination}...`);
 
-        // ✅ FIX: Ưu tiên dùng destinations đã phân bổ, CHỈ fetch nếu thực sự không có
-        let destinations = [];
-        
-        if (preAllocatedDestinations && preAllocatedDestinations.length > 0) {
-            destinations = preAllocatedDestinations;
-            console.log(`📍 Day ${dayNumber}: Using ${destinations.length} PRE-ALLOCATED destinations`);
-        } else {
-            console.warn(`⚠️ Day ${dayNumber}: No pre-allocated destinations, fetching new ones...`);
-            destinations = await findRealDestinationsForDay(dayNumber, destination, coord, interests, travelStyle, dailyBudget);
-            console.log(`📍 Day ${dayNumber}: Fetched ${destinations.length} NEW destinations`);
-        }
+        // Tìm địa điểm tham quan ĐA DẠNG (truyền thêm travelStyle và dailyBudget)
+        let destinations = await findRealDestinationsForDay(dayNumber, destination, coord, interests, travelStyle, dailyBudget);
         
         // ✨ TỐI ƯU ROUTE: Sắp xếp địa điểm theo khoảng cách gần nhất (Nearest Neighbor)
         if (destinations.length > 1) {
@@ -430,12 +304,8 @@ const generateSingleDayPlan = async (
             console.log(`✅ Route optimized:`, destinations.map(d => d.name).join(' → '));
         }
         
-        // ✅ FIX: Sử dụng restaurants đã phân bổ thay vì fetch lại
-        const restaurants = preAllocatedRestaurants 
-            ? preAllocatedRestaurants 
-            : await findRealRestaurantsForDay(destination, coord, travelStyle);
-        
-        console.log(`🍽️ Day ${dayNumber}: Using restaurants - breakfast=${restaurants.breakfast?.name}, lunch=${restaurants.lunch?.name}, dinner=${restaurants.dinner?.name}`);
+        // Tìm nhà hàng ĐA DẠNG
+        const restaurants = await findRealRestaurantsForDay(destination, coord, travelStyle);
         
         // Tìm quán ăn địa phương nếu user quan tâm food
         let localFoodVenues = [];
@@ -619,14 +489,16 @@ const generateCostBreakdown = async (preferences, dailyItinerary, accommodationP
     const transportCost = calculateTransportCost(departureCity, destination, travelers, travelStyle);
     const accommodationCost = calculateAccommodationCost(duration - 1, travelers, travelStyle, accommodationPlan);
     
-    // Tách ra để hiển thị chi tiết (KHÔNG nhân với travelers vì đã tính trong hàm)
+    // Tính chi phí từ các ngày (đã bao gồm: vé tham quan + ăn uống + di chuyển trong ngày + phát sinh)
+    const dailyActivitiesCost = dailyItinerary.reduce((sum, day) => sum + (day.estimatedCost || 0), 0) * travelers;
+    
+    // Tách ra để hiển thị chi tiết
     const foodCost = calculateFoodCost(dailyItinerary, travelers, travelStyle);
     const sightseeingCost = calculateSightseeingCost(dailyItinerary, travelers);
     const localTransportCost = calculateLocalTransportCost(duration, travelers, travelStyle);
     
-    // ✅ FIX: Tổng chi phí = Xe khứ hồi + Khách sạn + Ăn uống + Tham quan + Di chuyển địa phương
-    // KHÔNG dùng dailyActivitiesCost vì nó đã bao gồm tất cả và sẽ bị double
-    const subtotal = transportCost + accommodationCost + foodCost + sightseeingCost + localTransportCost;
+    // Tổng chi phí = Xe khứ hồi + Khách sạn + Hoạt động các ngày
+    const subtotal = transportCost + accommodationCost + dailyActivitiesCost;
     
     // Chi phí phát sinh 5%
     const contingencyCost = roundPrice(subtotal * 0.05);
@@ -3229,9 +3101,7 @@ const diversifyDestinations = (destinations, dayNumber) => {
     });
 
     if (availableDestinations.length === 0) {
-        console.warn(`⚠️ No new destinations available for day ${dayNumber}, resetting tracking and using all destinations`);
-        // Reset để có thể dùng lại destinations (tránh lịch trình trống)
-        resetDestinationTracking();
+        console.warn(`⚠️ No new destinations available for day ${dayNumber}, using fallback`);
         return destinations.slice(0, dayNumber === 1 ? 2 : 3);
     }
 
@@ -3844,8 +3714,6 @@ const findRealRestaurantsForDay = async (destination, coord, travelStyle) => {
         // Shuffle restaurants để tránh lặp lại
         const shuffledRestaurants = [...realRestaurants].sort(() => 0.5 - Math.random());
         
-        console.log(`🍽️ Total restaurants fetched: ${shuffledRestaurants.length}, Already used: ${usedRestaurants.size}`);
-        
         // Tạo danh sách đa dạng từ dữ liệu thực và Firebase
         const diverseOptions = {};
         
@@ -3885,7 +3753,6 @@ const findRealRestaurantsForDay = async (destination, coord, travelStyle) => {
                 address: selected.address
             };
             usedRestaurants.add(selected.name);
-            console.log(`✅ Selected breakfast: ${selected.name} (Total used: ${usedRestaurants.size})`);
         } else {
             diverseOptions.breakfast = {
                 name: `Quán ăn sáng ${destination}`,
@@ -3926,9 +3793,7 @@ const findRealRestaurantsForDay = async (destination, coord, travelStyle) => {
                 address: selected.address
             };
             usedRestaurants.add(selected.name);
-            console.log(`✅ Selected lunch: ${selected.name} (Total used: ${usedRestaurants.size})`);
         } else {
-            console.log(`⚠️ No available lunch restaurants, using fallback`);
             diverseOptions.lunch = {
                 name: `Nhà hàng cơm ${destination}`,
                 specialty: localCuisines.lunch || 'Cơm địa phương',
@@ -3968,9 +3833,7 @@ const findRealRestaurantsForDay = async (destination, coord, travelStyle) => {
                 address: selected.address
             };
             usedRestaurants.add(selected.name);
-            console.log(`✅ Selected dinner: ${selected.name} (Total used: ${usedRestaurants.size})`);
         } else {
-            console.log(`⚠️ No available dinner restaurants, using fallback`);
             diverseOptions.dinner = {
                 name: `Nhà hàng hải sản ${destination}`,
                 specialty: localCuisines.dinner || 'Hải sản tươi sống',
@@ -4569,16 +4432,6 @@ const generateEnhancedHourlySchedule = (dayNumber, destinations, restaurants, in
     let currentTime = '';
     const usedRestaurants = new Set(); // Track restaurants đã dùng
     
-    // ✅ GIỚI HẠN CỨNG: Chỉ dùng tối đa X destinations để TRÁNH TRÙNG LẶP
-    const MAX_DESTS_PER_DAY = dayNumber === 1 ? 3 : 4;
-    const originalDestinations = destinations;
-    destinations = destinations.slice(0, MAX_DESTS_PER_DAY);
-    
-    console.log(`🕐 generateEnhancedHourlySchedule Day ${dayNumber}:`);
-    console.log(`   Received: ${originalDestinations.length} destinations`);
-    console.log(`   Using (LIMITED): ${destinations.length} destinations`);
-    console.log(`   Names: ${destinations.map(d => d.name).join(', ')}`);
-    
     // Helper function: Gộp các địa điểm liên quan gần nhau
     const groupRelatedDestinations = (dests) => {
         if (!dests || dests.length === 0) return [];
@@ -4675,10 +4528,7 @@ const generateEnhancedHourlySchedule = (dayNumber, destinations, restaurants, in
         // Convert back to time string
         const hours = Math.floor(latestEndTime / 60);
         const mins = latestEndTime % 60;
-        const newTime = `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
-        
-        console.log(`⏰ Điều chỉnh thời gian: ${time} → ${newTime} (tránh giờ làm việc)`);
-        return newTime;
+        return `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
     };
     
     // Helper function: Tính duration giữa 2 thời gian
@@ -4723,31 +4573,25 @@ const generateEnhancedHourlySchedule = (dayNumber, destinations, restaurants, in
         });
     }
     
-    // ===== NGÀY 1: Logic đặc biệt với thời gian cố định =====
+    // Ngày 1: Khởi hành và check-in
     if (dayNumber === 1) {
-        // Bắt đầu hành trình từ departureTime (startTime)
+        // Bắt đầu hành trình từ departureTime
         currentTime = departureTime;
-        const [startHour, startMinute] = departureTime.split(':').map(Number);
-        const startTimeMinutes = startHour * 60 + startMinute;
-        const checkInTimeMinutes = 12 * 60 + 30; // 12:30
+        const [startHour] = departureTime.split(':').map(Number);
         
-        // Tính thời gian từ bắt đầu đến check-in
-        const timeUntilCheckIn = checkInTimeMinutes - startTimeMinutes;
-        
-        // Nếu có > 1h trước check-in, thêm hoạt động
-        if (timeUntilCheckIn > 60) {
-            // Ăn sáng nếu bắt đầu trước 10:00
+        // Nếu đến sớm (< 12:00), tham quan trước khi check-in
+        if (startHour < 12) {
+            // Ăn sáng nếu đến trước 10:00
             if (startHour < 10 && restaurants.breakfast) {
                 schedule.push({
                     time: currentTime,
-                    activity: `🍳 Ăn sáng tại ${restaurants.breakfast.name}`,
+                    activity: `Ăn sáng tại ${restaurants.breakfast.name}`,
                     type: 'meal',
                     duration: '45 phút',
                     location: restaurants.breakfast,
                     specialty: restaurants.breakfast.specialty,
                     estimatedCost: restaurants.breakfast.estimatedCost,
                     notes: ['Bắt đầu hành trình với bữa sáng ngon'],
-                    isFixed: true,
                     realData: true
                 });
                 usedRestaurants.add(restaurants.breakfast.name);
@@ -4755,84 +4599,65 @@ const generateEnhancedHourlySchedule = (dayNumber, destinations, restaurants, in
                 currentTime = getNextAvailableTime(currentTime);
             }
             
-            // ✅ GIỚI HẠN: Tối đa 1 địa điểm trước check-in
-            const morningDests = destinations.slice(0, 1);
-            
+            // Tham quan 1-2 địa điểm trước check-in
+            const morningDests = destinations.slice(0, Math.min(2, destinations.length));
             morningDests.forEach(dest => {
-                // Skip nếu vượt quá 12:30
-                if (timeToMinutes(currentTime) >= checkInTimeMinutes) return;
-                
                 schedule.push({
                     time: currentTime,
-                    activity: `${dest.categoryIcon || '📍'} Tham quan ${dest.name}`,
+                    activity: `Tham quan ${dest.name}`,
                     type: 'sightseeing',
                     duration: dest.estimatedDuration || '1-2 giờ',
                     location: dest,
                     entryFee: dest.entryFee,
-                    notes: dest.isCustom ? ['✨ Địa điểm bạn chọn', 'Ưu tiên cao'] : ['Khám phá trước khi check-in'],
-                    isCustom: dest.isCustom || false,
-                    priority: dest.priority || 'normal',
+                    notes: ['Khám phá trước khi check-in'],
                     realData: true
                 });
                 currentTime = calculateNextTime(currentTime, dest.estimatedDuration || '1.5 giờ');
-                currentTime = getNextAvailableTime(currentTime);
             });
             
-            // Check-in khách sạn CỐ ĐỊNH lúc 12:30
+            // Check-in khách sạn lúc 12:30
             schedule.push({
                 time: '12:30',
-                activity: '🏨 Check-in khách sạn',
+                activity: 'Check-in khách sạn',
                 type: 'accommodation',
                 duration: '30 phút',
                 notes: ['Nhận phòng', 'Để hành lý', 'Nghỉ ngơi'],
-                isFixed: true,
                 realData: true
             });
             currentTime = '13:00';
             
-            // ✅ Ăn trưa - Dùng restaurants.lunch đã được phân bổ riêng cho ngày này
-            const lunchVenue = restaurants.lunch;
+            // Ăn trưa
+            const lunchVenue = (restaurants.localFood && restaurants.localFood.length > 0) 
+                ? restaurants.localFood[0] 
+                : restaurants.lunch;
             
-            if (lunchVenue && !usedRestaurants.has(lunchVenue.name)) {
+            if (lunchVenue) {
                 schedule.push({
-                    time: '13:00',
-                    activity: `🍽️ Ăn trưa tại ${lunchVenue.name}`,
+                    time: currentTime,
+                    activity: `Ăn trưa tại ${lunchVenue.name}`,
                     type: 'meal',
                     duration: '1 giờ',
                     location: lunchVenue,
                     specialty: lunchVenue.specialty,
                     estimatedCost: lunchVenue.estimatedCost,
-                    isFixed: true,
                     realData: true
                 });
-                usedRestaurants.add(lunchVenue.name);
                 currentTime = '14:00';
-                console.log(`🍽️ Day ${dayNumber} lunch: ${lunchVenue.name}`);
             }
             
-            // ✅ GIỚI HẠN: Tối đa 2 địa điểm buổi chiều (từ vị trí 1 trở đi)
-            const afternoonDests = destinations.slice(1, 3); // Lấy địa điểm thứ 2 và 3
-            
-            console.log(`🌅 Day 1 afternoon: Using ${afternoonDests.length} destinations`);
-            
+            // Tham quan các địa điểm còn lại buổi chiều
+            const afternoonDests = destinations.slice(morningDests.length);
             afternoonDests.forEach((dest, index) => {
-                // Dừng nếu quá 18:00
-                if (timeToMinutes(currentTime) >= 18 * 60) return;
-                
                 schedule.push({
                     time: currentTime,
-                    activity: `${dest.categoryIcon || '📍'} Tham quan ${dest.name}`,
+                    activity: `Tham quan ${dest.name}`,
                     type: 'sightseeing',
                     duration: dest.estimatedDuration || '1-2 giờ',
                     location: dest,
                     entryFee: dest.entryFee,
-                    notes: dest.isCustom ? ['✨ Địa điểm bạn chọn', 'Ưu tiên cao'] : [],
-                    isCustom: dest.isCustom || false,
-                    priority: dest.priority || 'normal',
                     realData: true
                 });
                 currentTime = calculateNextTime(currentTime, dest.estimatedDuration || '1.5 giờ');
-                currentTime = getNextAvailableTime(currentTime);
                 
                 // Nghỉ giữa các điểm
                 if (index < afternoonDests.length - 1) {
@@ -4840,171 +4665,90 @@ const generateEnhancedHourlySchedule = (dayNumber, destinations, restaurants, in
                 }
             });
         } else {
-            // Không đủ thời gian, check-in ngay
+            // Đến trễ (>= 12:00), check-in ngay
             schedule.push({
-                time: '12:30',
-                activity: '🏨 Check-in khách sạn',
+                time: currentTime,
+                activity: 'Check-in khách sạn',
                 type: 'accommodation',
                 duration: '30 phút',
                 notes: ['Nhận phòng', 'Để hành lý', 'Nghỉ ngơi'],
-                isFixed: true,
                 realData: true
             });
-            currentTime = '13:00';
+            currentTime = calculateNextTime(currentTime, '30 phút');
             
-            // ✅ Ăn trưa - Dùng restaurants.lunch đã được phân bổ riêng cho ngày này
-            const lunchVenue = restaurants.lunch;
-            
-            if (lunchVenue && !usedRestaurants.has(lunchVenue.name)) {
-                schedule.push({
-                    time: '13:00',
-                    activity: `🍽️ Ăn trưa tại ${lunchVenue.name}`,
-                    type: 'meal',
-                    duration: '1 giờ',
-                    location: lunchVenue,
-                    specialty: lunchVenue.specialty,
-                    estimatedCost: lunchVenue.estimatedCost,
-                    isFixed: true,
-                    realData: true
-                });
-                usedRestaurants.add(lunchVenue.name);
-                currentTime = '14:00';
-                console.log(`🍽️ Day ${dayNumber} lunch: ${lunchVenue.name}`);
+            // Ăn trưa nếu chưa quá 14:00
+            const [currentHour] = currentTime.split(':').map(Number);
+            if (currentHour < 14) {
+                const lunchVenue = (restaurants.localFood && restaurants.localFood.length > 0) 
+                    ? restaurants.localFood[0] 
+                    : restaurants.lunch;
+                
+                if (lunchVenue) {
+                    schedule.push({
+                        time: currentTime,
+                        activity: `Ăn trưa tại ${lunchVenue.name}`,
+                        type: 'meal',
+                        duration: '1 giờ',
+                        location: lunchVenue,
+                        specialty: lunchVenue.specialty,
+                        estimatedCost: lunchVenue.estimatedCost,
+                        realData: true
+                    });
+                    currentTime = calculateNextTime(currentTime, '1 giờ');
+                }
             }
             
-            // ✅ GIỚI HẠN: Tối đa 3 địa điểm buổi chiều
-            const afternoonDests = destinations.slice(0, 3);
-            
-            console.log(`🌅 Day 1 afternoon (no morning): Using ${afternoonDests.length} destinations`);
-            
-            afternoonDests.forEach((dest, index) => {
-                // Dừng nếu quá 18:00
-                if (timeToMinutes(currentTime) >= 18 * 60) return;
-                
+            // Tham quan các địa điểm buổi chiều
+            destinations.forEach((dest, index) => {
                 schedule.push({
                     time: currentTime,
-                    activity: `${dest.categoryIcon || '📍'} Tham quan ${dest.name}`,
+                    activity: `Tham quan ${dest.name}`,
                     type: 'sightseeing',
                     duration: dest.estimatedDuration || '1-2 giờ',
                     location: dest,
                     entryFee: dest.entryFee,
-                    notes: dest.isCustom ? ['✨ Địa điểm bạn chọn', 'Ưu tiên cao'] : [],
-                    isCustom: dest.isCustom || false,
-                    priority: dest.priority || 'normal',
                     realData: true
                 });
                 currentTime = calculateNextTime(currentTime, dest.estimatedDuration || '1.5 giờ');
-                currentTime = getNextAvailableTime(currentTime);
                 
                 // Nghỉ giữa các điểm
-                if (index < afternoonDests.length - 1) {
+                if (index < destinations.length - 1) {
                     currentTime = calculateNextTime(currentTime, '15 phút');
                 }
             });
         }
     } 
-    // ===== NGÀY 2+: Logic chuẩn với thời gian cố định =====
+    // ===== NGÀY 2+: Logic chuẩn =====
     else {
-        // Ăn sáng CỐ ĐỊNH lúc 7:00
+        // Bắt đầu từ 7:00 - Ăn sáng
         currentTime = '07:00';
         
-        if (restaurants.breakfast && !usedRestaurants.has(restaurants.breakfast.name)) {
+        if (restaurants.breakfast) {
             schedule.push({
                 time: currentTime,
-                activity: `🍳 Ăn sáng tại ${restaurants.breakfast.name}`,
+                activity: `Ăn sáng tại ${restaurants.breakfast.name}`,
                 type: 'meal',
                 duration: '45 phút',
                 location: restaurants.breakfast,
                 specialty: restaurants.breakfast.specialty,
                 estimatedCost: restaurants.breakfast.estimatedCost,
                 notes: ['Bắt đầu ngày mới với năng lượng'],
-                isFixed: true,
                 realData: true
             });
-            usedRestaurants.add(restaurants.breakfast.name);
             currentTime = '07:45';
-            console.log(`🍳 Day ${dayNumber} breakfast: ${restaurants.breakfast.name}`);
         }
         
-        // ✅ GIỚI HẠN: Buổi sáng tối đa 2 destinations (8:00-11:00)
-        const morningDests = destinations.slice(0, 2);
+        // Chia destinations thành buổi sáng và buổi chiều
+        const morningDestCount = Math.ceil(destinations.length / 2);
+        const morningDests = destinations.slice(0, morningDestCount);
+        const afternoonDests = destinations.slice(morningDestCount);
         
+        // Tham quan buổi sáng từ 8:00
         currentTime = '08:00';
-        currentTime = getNextAvailableTime(currentTime);
-        
-        console.log(`🌄 Day ${dayNumber} morning: Using ${morningDests.length} destinations`);
-        
         morningDests.forEach((dest, index) => {
-            // Dừng nếu vượt quá 11:00
-            if (timeToMinutes(currentTime) >= 11 * 60) return;
-            
             schedule.push({
                 time: currentTime,
-                activity: `${dest.categoryIcon || '📍'} Tham quan ${dest.name}`,
-                type: 'sightseeing',
-                duration: dest.estimatedDuration || '1-2 giờ',
-                location: dest,
-                entryFee: dest.entryFee,
-                notes: dest.isCustom ? ['✨ Địa điểm bạn chọn', 'Ưu tiên cao'] : (dest.notes || []),
-                isCustom: dest.isCustom || false,
-                priority: dest.priority || 'normal',
-                realData: true
-            });
-            currentTime = calculateNextTime(currentTime, dest.estimatedDuration || '1.5 giờ');
-            currentTime = getNextAvailableTime(currentTime);
-            
-            // Nghỉ giữa các điểm
-            if (index < morningDests.length - 1) {
-                currentTime = calculateNextTime(currentTime, '15 phút');
-                currentTime = getNextAvailableTime(currentTime);
-            }
-        });
-        
-        // Ăn trưa - Tự động điều chỉnh nếu trùng giờ làm việc
-        currentTime = getNextAvailableTime(currentTime); // ✅ Tránh working hours
-        
-        // Nếu currentTime < 11:00, set về 11:00 (giờ ăn trưa hợp lý)
-        if (timeToMinutes(currentTime) < 11 * 60) {
-            currentTime = '11:00';
-            currentTime = getNextAvailableTime(currentTime); // ✅ Kiểm tra lại
-        }
-        
-        // ✅ Ăn trưa - Dùng restaurants.lunch đã được phân bổ riêng cho ngày này
-        const lunchVenue = restaurants.lunch;
-        
-        if (lunchVenue && !usedRestaurants.has(lunchVenue.name)) {
-            schedule.push({
-                time: currentTime,
-                activity: `🍽️ Ăn trưa tại ${lunchVenue.name}`,
-                type: 'meal',
-                duration: '1 giờ',
-                location: lunchVenue,
-                specialty: lunchVenue.specialty,
-                estimatedCost: lunchVenue.estimatedCost,
-                priceRange: lunchVenue.priceRange,
-                popularDishes: lunchVenue.popularDishes,
-                notes: ['Nghỉ ngơi, thưởng thức ẩm thực địa phương'],
-                isFixed: true,
-                realData: true
-            });
-            usedRestaurants.add(lunchVenue.name);
-            currentTime = calculateNextTime(currentTime, '1 giờ');
-            currentTime = getNextAvailableTime(currentTime);
-            console.log(`🍽️ Day ${dayNumber} lunch: ${lunchVenue.name}`);
-        }
-        
-        // ✅ GIỚI HẠN: Buổi chiều tối đa 2 destinations (12:00-18:00)
-        const afternoonDests = destinations.slice(2, 4); // Lấy địa điểm thứ 3 và 4
-        
-        console.log(`🌅 Day ${dayNumber} afternoon: Using ${afternoonDests.length} destinations`);
-        
-        afternoonDests.forEach((dest, index) => {
-            // Dừng nếu quá 18:00
-            if (timeToMinutes(currentTime) >= 18 * 60) return;
-            
-            schedule.push({
-                time: currentTime,
-                activity: `${dest.categoryIcon || '📍'} Tham quan ${dest.name}`,
+                activity: `Tham quan ${dest.name}`,
                 type: 'sightseeing',
                 duration: dest.estimatedDuration || '1-2 giờ',
                 location: dest,
@@ -5013,18 +4757,64 @@ const generateEnhancedHourlySchedule = (dayNumber, destinations, restaurants, in
                 realData: true
             });
             currentTime = calculateNextTime(currentTime, dest.estimatedDuration || '1.5 giờ');
-            currentTime = getNextAvailableTime(currentTime);
+            
+            // Nghỉ giữa các điểm (15 phút di chuyển)
+            if (index < morningDests.length - 1) {
+                currentTime = calculateNextTime(currentTime, '15 phút');
+            }
+        });
+        
+        // Ăn trưa trong khung 11:30-12:30
+        const [lunchHour] = currentTime.split(':').map(Number);
+        if (lunchHour < 11) {
+            currentTime = '11:30';
+        } else if (lunchHour > 13) {
+            currentTime = '12:00';
+        }
+        
+        const lunchVenue = (restaurants.localFood && restaurants.localFood.length > 0) 
+            ? restaurants.localFood[0] 
+            : restaurants.lunch;
+        
+        if (lunchVenue) {
+            schedule.push({
+                time: currentTime,
+                activity: `Ăn trưa tại ${lunchVenue.name}`,
+                type: 'meal',
+                duration: '1 giờ',
+                location: lunchVenue,
+                specialty: lunchVenue.specialty,
+                estimatedCost: lunchVenue.estimatedCost,
+                priceRange: lunchVenue.priceRange,
+                popularDishes: lunchVenue.popularDishes,
+                notes: ['Nghỉ ngơi, thưởng thức ẩm thực địa phương'],
+                realData: true
+            });
+            currentTime = calculateNextTime(currentTime, '1 giờ');
+        }
+        
+        // Tham quan buổi chiều (tiếp tục các địa điểm còn lại)
+        afternoonDests.forEach((dest, index) => {
+            schedule.push({
+                time: currentTime,
+                activity: `Tham quan ${dest.name}`,
+                type: 'sightseeing',
+                duration: dest.estimatedDuration || '1-2 giờ',
+                location: dest,
+                entryFee: dest.entryFee,
+                notes: dest.notes || [],
+                realData: true
+            });
+            currentTime = calculateNextTime(currentTime, dest.estimatedDuration || '1.5 giờ');
             
             // Nghỉ giữa các điểm
             if (index < afternoonDests.length - 1) {
                 currentTime = calculateNextTime(currentTime, '15 phút');
-                currentTime = getNextAvailableTime(currentTime);
             }
         });
     }
 
     // Hoạt động chiều - chỉ thêm nếu còn thời gian trước bữa tối
-    currentTime = getNextAvailableTime(currentTime); // ✅ Tránh working hours
     const [currentHour] = currentTime.split(':').map(Number);
     
     // Nếu còn thời gian (< 17:00) và user quan tâm food
@@ -5051,7 +4841,6 @@ const generateEnhancedHourlySchedule = (dayNumber, destinations, restaurants, in
                 realData: true
             });
             currentTime = calculateNextTime(currentTime, '1 giờ');
-            currentTime = getNextAvailableTime(currentTime); // ✅ Tránh working hours
         } else if (restaurants.streetFood && restaurants.streetFood.length > 0) {
             // Street food
             schedule.push({
@@ -5066,12 +4855,10 @@ const generateEnhancedHourlySchedule = (dayNumber, destinations, restaurants, in
                 realData: true
             });
             currentTime = calculateNextTime(currentTime, '30 phút');
-            currentTime = getNextAvailableTime(currentTime); // ✅ Tránh working hours
         }
     }
     
     // Nếu vẫn còn thời gian trống trước bữa tối, thêm hoạt động thư giãn
-    currentTime = getNextAvailableTime(currentTime); // ✅ Tránh working hours
     const [predinnerHour] = currentTime.split(':').map(Number);
     if (predinnerHour < 18) {
         schedule.push({
@@ -5083,8 +4870,6 @@ const generateEnhancedHourlySchedule = (dayNumber, destinations, restaurants, in
             notes: ['Nghỉ ngơi trước bữa tối'],
             realData: false
         });
-        currentTime = calculateNextTime(currentTime, '1 giờ');
-        currentTime = getNextAvailableTime(currentTime); // ✅ Tránh working hours
     }
     
     // Ăn tối trong khung 18:00-19:00
@@ -5094,9 +4879,8 @@ const generateEnhancedHourlySchedule = (dayNumber, destinations, restaurants, in
     } else if (dinnerHour > 19) {
         currentTime = '18:30';
     }
-    currentTime = getNextAvailableTime(currentTime); // ✅ Tránh working hours
     
-    if (restaurants.dinner && !usedRestaurants.has(restaurants.dinner.name)) {
+    if (restaurants.dinner) {
         schedule.push({
             time: currentTime,
             activity: `Ăn tối tại ${restaurants.dinner.name}`,
@@ -5108,10 +4892,7 @@ const generateEnhancedHourlySchedule = (dayNumber, destinations, restaurants, in
             notes: ['Bữa tối thịnh soạn', 'Thưởng thức đặc sản địa phương'],
             realData: true
         });
-        usedRestaurants.add(restaurants.dinner.name);
         currentTime = calculateNextTime(currentTime, '1.5 giờ');
-        currentTime = getNextAvailableTime(currentTime);
-        console.log(`🍽️ Day ${dayNumber} dinner: ${restaurants.dinner.name}`);
     }
 
     // Hoạt động tối đa dạng

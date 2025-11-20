@@ -135,9 +135,8 @@ export default function Home() {
                         </div>
                         <div className="grid grid-cols-2 gap-6">
                             <div className="text-center p-6 bg-white/80 backdrop-blur-md rounded-xl shadow-lg border border-white">
-                                <h4 className="text-2xl font-bold text-indigo-600 mb-2">Quản lý</h4>
-                                <h4 className="text-2xl font-bold text-indigo-600 mb-2">hoạt động</h4>
-                                <p className="text-gray-600">Theo dõi lịch trình</p>
+                                <h4 className="text-3xl font-bold text-indigo-600 mb-2">10,000+</h4>
+                                <p className="text-gray-600">Lịch trình đã tạo</p>
                             </div>
                             <div className="text-center p-6 bg-white/80 backdrop-blur-md rounded-xl shadow-lg border border-white">
                                 <h4 className="text-3xl font-bold text-purple-600 mb-2">5,000+</h4>
@@ -145,12 +144,11 @@ export default function Home() {
                             </div>
                             <div className="text-center p-6 bg-white/80 backdrop-blur-md rounded-xl shadow-lg border border-white">
                                 <h4 className="text-3xl font-bold text-green-600 mb-2">63</h4>
-                                <p className="text-gray-600">Tỉnh thành Việt Nam</p>
+                                <p className="text-gray-600">Tỉnh thành VN</p>
                             </div>
                             <div className="text-center p-6 bg-white/80 backdrop-blur-md rounded-xl shadow-lg border border-white">
                                 <h4 className="text-3xl font-bold text-orange-600 mb-2">24/7</h4>
-                                <p className="text-gray-600">Dịch vụ chăm sóc</p>
-                                <p className="text-gray-600">khách hàng</p>
+                                <p className="text-gray-600">Hỗ trợ AI</p>
                             </div>
                         </div>
                     </div>

@@ -183,17 +183,12 @@
     justify-content: space-between;
     align-items: center;
     margin-bottom: 20px;
-    padding: 15px;
     padding-bottom: 15px;
     border-bottom: 2px solid #f1f2f6;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    border-radius: 10px;
-    margin: -25px -25px 20px -25px;
-    color: #ffffff;
 }
 
 .day-header h4 {
-    color: #ffffff;
+    color: #2c3e50;
     margin: 0;
     font-size: 1.3rem;
 }
@@ -321,7 +316,7 @@
 
 .dest-header h6 {
     margin: 0;
-    color: #ffffff;
+    color: #2c3e50;
     font-size: 1rem;
     font-weight: 600;
 }
@@ -340,7 +335,7 @@
 .dest-fee {
     margin: 8px 0;
     font-size: 0.9rem;
-    color: #ffffff;
+    color: #666;
 }
 
 .dest-notes {

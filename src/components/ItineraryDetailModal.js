@@ -68,9 +68,9 @@ const ItineraryDetailModal = ({ itinerary, onClose }) => {
                     <div className="header-info">
                         <h1>{itinerary.header?.tripName || 'Lịch trình du lịch'}</h1>
                         <div className="trip-meta">
-                            <span className="destination">{itinerary.header?.destination?.main}</span>
-                            <span className="duration">{itinerary.header?.duration?.days} ngày {itinerary.header?.duration?.days - 1} đêm</span>
-                            <span className="travelers">{typeof itinerary.header?.travelers === 'object' ? itinerary.header.travelers?.total || itinerary.header.travelers?.adults || 2 : itinerary.header?.travelers || 2} người</span>
+                            <span className="destination">📍 {itinerary.header?.destination?.main}</span>
+                            <span className="duration">📅 {itinerary.header?.duration?.days} ngày {itinerary.header?.duration?.days - 1} đêm</span>
+                            <span className="travelers">👥 {typeof itinerary.header?.travelers === 'object' ? itinerary.header.travelers?.total || itinerary.header.travelers?.adults || 2 : itinerary.header?.travelers || 2} người</span>
                         </div>
                     </div>
                     <button className="close-btn" onClick={onClose}>✕</button>
@@ -80,7 +80,7 @@ const ItineraryDetailModal = ({ itinerary, onClose }) => {
                     {/* Trip Summary */}
                     <div className="trip-summary">
                         <div className="summary-card">
-                            <h3><strong>Tổng quan chi phí</strong></h3>
+                            <h3>💰 Tổng quan chi phí</h3>
                             <div className="cost-breakdown">
                                 <div className="cost-item">
                                     <span>Tổng chi phí:</span>
@@ -97,8 +97,8 @@ const ItineraryDetailModal = ({ itinerary, onClose }) => {
                                 {itinerary.costBreakdown?.budgetStatus && (
                                     <div className={`budget-status ${itinerary.costBreakdown.budgetStatus.withinBudget ? 'within' : 'over'}`}>
                                         {itinerary.costBreakdown.budgetStatus.withinBudget ? 
-                                            ` Trong ngân sách (còn lại ${formatMoney(itinerary.costBreakdown.budgetStatus.difference)})` :
-                                            ` Vượt ngân sách ${formatMoney(Math.abs(itinerary.costBreakdown.budgetStatus.difference))}`
+                                            `✅ Trong ngân sách (còn lại ${formatMoney(itinerary.costBreakdown.budgetStatus.difference)})` :
+                                            `⚠️ Vượt ngân sách ${formatMoney(Math.abs(itinerary.costBreakdown.budgetStatus.difference))}`
                                         }
                                     </div>
                                 )}
@@ -106,7 +106,7 @@ const ItineraryDetailModal = ({ itinerary, onClose }) => {
                         </div>
 
                         <div className="summary-card">
-                            <h3><strong>Thông tin chuyến đi</strong></h3>
+                            <h3>🎯 Thông tin chuyến đi</h3>
                             <div className="trip-info">
                                 <div className="info-item">
                                     <span>Ngày khởi hành:</span>
@@ -128,11 +128,11 @@ const ItineraryDetailModal = ({ itinerary, onClose }) => {
 
                     {/* Daily Itinerary */}
                     <div className="daily-itinerary">
-                        <h3><strong>Lịch trình theo ngày</strong></h3>
+                        <h3>📅 Lịch trình theo ngày</h3>
                         {itinerary.dailyItinerary?.map((day, index) => (
                             <div key={index} className="day-card">
                                 <div className="day-header">
-                                    <h4><strong>Ngày {day.day} - {formatDate(day.date)}</strong></h4>
+                                    <h4>Ngày {day.day} - {formatDate(day.date)}</h4>
                                     <span className="day-theme">{day.theme}</span>
                                     <span className="day-cost">{formatMoney(day.estimatedCost)}</span>
                                 </div>
@@ -140,7 +140,7 @@ const ItineraryDetailModal = ({ itinerary, onClose }) => {
                                 {/* Weather */}
                                 {day.weather && (
                                     <div className="weather-info">
-                                        <span className="weather-temp">🌡️ {day.weather.temperature}</span>
+                                        <span className="weather-temp">🌡️ {day.weather.temperature}°C</span>
                                         <span className="weather-desc">{day.weather.description}</span>
                                         {day.weather.rainfall && (
                                             <span className="weather-rain">🌧️ {day.weather.rainfall}mm</span>
@@ -170,7 +170,7 @@ const ItineraryDetailModal = ({ itinerary, onClose }) => {
                                 {/* Schedule */}
                                 {day.schedule && day.schedule.length > 0 && (
                                     <div className="day-schedule">
-                                        <h5><strong>Lịch trình theo giờ</strong></h5>
+                                        <h5>⏰ Lịch trình theo giờ</h5>
                                         <div className="schedule-list">
                                             {day.schedule.map((item, scheduleIndex) => (
                                                 <div key={scheduleIndex} className="schedule-item">
@@ -210,7 +210,7 @@ const ItineraryDetailModal = ({ itinerary, onClose }) => {
                                 {/* Destinations */}
                                 {day.destinations && day.destinations.length > 0 && (
                                     <div className="destinations">
-                                        <h5><strong>Địa điểm tham quan</strong></h5>
+                                        <h5>📍 Địa điểm tham quan</h5>
                                         <div className="destinations-grid">
                                             {day.destinations.map((dest, destIndex) => (
                                                 <div key={destIndex} className="destination-card">
@@ -247,11 +247,11 @@ const ItineraryDetailModal = ({ itinerary, onClose }) => {
                                 {/* Meals */}
                                 {day.meals && (
                                     <div className="meals">
-                                        <h5><strong>Bữa ăn</strong></h5>
+                                        <h5>🍽️ Bữa ăn</h5>
                                         <div className="meals-grid">
                                             {day.meals.breakfast && (
                                                 <div className="meal-card">
-                                                    <h6><strong>Sáng: {day.meals.breakfast.name}</strong></h6>
+                                                    <h6>🌅 Sáng: {day.meals.breakfast.name}</h6>
                                                     <p>{day.meals.breakfast.address}</p>
                                                     {day.meals.breakfast.estimatedCost && (
                                                         <span className="meal-cost">{formatMoney(day.meals.breakfast.estimatedCost)}</span>
@@ -260,7 +260,7 @@ const ItineraryDetailModal = ({ itinerary, onClose }) => {
                                             )}
                                             {day.meals.lunch && (
                                                 <div className="meal-card">
-                                                    <h6><strong>Trưa: {day.meals.lunch.name}</strong></h6>
+                                                    <h6>☀️ Trưa: {day.meals.lunch.name}</h6>
                                                     <p>{day.meals.lunch.address}</p>
                                                     {day.meals.lunch.estimatedCost && (
                                                         <span className="meal-cost">{formatMoney(day.meals.lunch.estimatedCost)}</span>
@@ -269,7 +269,7 @@ const ItineraryDetailModal = ({ itinerary, onClose }) => {
                                             )}
                                             {day.meals.dinner && (
                                                 <div className="meal-card">
-                                                    <h6><strong>Tối: {day.meals.dinner.name}</strong></h6>
+                                                    <h6>🌙 Tối: {day.meals.dinner.name}</h6>
                                                     <p>{day.meals.dinner.address}</p>
                                                     {day.meals.dinner.estimatedCost && (
                                                         <span className="meal-cost">{formatMoney(day.meals.dinner.estimatedCost)}</span>
@@ -283,7 +283,7 @@ const ItineraryDetailModal = ({ itinerary, onClose }) => {
                                 {/* Special Notes */}
                                 {day.specialNotes && day.specialNotes.length > 0 && (
                                     <div className="special-notes">
-                                        <h5><strong>Lưu ý đặc biệt</strong></h5>
+                                        <h5>📝 Lưu ý đặc biệt</h5>
                                         <ul>
                                             {day.specialNotes.map((note, noteIndex) => (
                                                 <li key={noteIndex}>
@@ -300,12 +300,12 @@ const ItineraryDetailModal = ({ itinerary, onClose }) => {
                     {/* Transport Plan */}
                     {itinerary.transport && (
                         <div className="transport-section">
-                            <h3><strong>Phương tiện di chuyển</strong></h3>
+                            <h3>🚗 Phương tiện di chuyển</h3>
                             
                             {/* Intercity Transport */}
                             {itinerary.transport.intercity && (
                                 <div className="transport-card">
-                                    <h4><strong>Di chuyển liên tỉnh</strong></h4>
+                                    <h4>✈️ Di chuyển liên tỉnh</h4>
                                     
                                     {/* Departure */}
                                     {itinerary.transport.intercity.departure && (
@@ -486,7 +486,7 @@ const ItineraryDetailModal = ({ itinerary, onClose }) => {
                             {/* Local Transport */}
                             {itinerary.transport.local && (
                                 <div className="transport-card">
-                                    <h4><strong>Di chuyển tại địa phương</strong></h4>
+                                    <h4>🚕 Di chuyển tại địa phương</h4>
                                     {itinerary.transport.local.recommended && (
                                         <div className="local-transport">
                                             <p><strong>Khuyến nghị:</strong> {
@@ -524,7 +524,7 @@ const ItineraryDetailModal = ({ itinerary, onClose }) => {
                     {/* Accommodation */}
                     {itinerary.accommodation && (
                         <div className="accommodation-section">
-                            <h3><strong>Lưu trú</strong></h3>
+                            <h3>🏨 Lưu trú</h3>
                             <div className="accommodation-card">
                                 {itinerary.accommodation.selected && (
                                     <>
@@ -567,7 +567,7 @@ const ItineraryDetailModal = ({ itinerary, onClose }) => {
                     {/* Packing List */}
                     {itinerary.packingList && (
                         <div className="packing-section">
-                            <h3><strong>Danh sách đồ cần mang</strong></h3>
+                            <h3>🎒 Danh sách đồ cần mang</h3>
                             <div className="packing-categories">
                                 {Object.entries(itinerary.packingList).map(([category, items]) => (
                                     <div key={category} className="packing-category">
