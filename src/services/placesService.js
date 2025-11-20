@@ -261,7 +261,6 @@ const filterResultsByCountryAndProvince = (results, provinceName = '') => {
 
         // 2. Nếu có provinceName, kiểm tra địa điểm có trong tỉnh không
         if (provinceName) {
-            const provinceNameLower = provinceName.toLowerCase();
             const provinceVariants = getProvinceVariants(provinceName);
             
             const isInProvince = provinceVariants.some(variant => 
@@ -269,8 +268,42 @@ const filterResultsByCountryAndProvince = (results, provinceName = '') => {
             );
 
             if (!isInProvince) {
-                console.log(`❌ Filtered out (not in ${provinceName}): ${place.name} - ${address}`);
+                console.log(`❌ Not in ${provinceName}: ${place.name} - ${address}`);
                 return false;
+            }
+            
+            // 3. Loại trừ địa điểm ở thành phố khác (logic đặc biệt cho Vũng Tàu/Bà Rịa)
+            if (provinceName === 'Vũng Tàu') {
+                // Format: "Phường/Xã, Quận/Huyện, Thành phố, Tỉnh, Quốc gia"
+                // Cần check phần thứ 2 HOẶC 3 có "Bà Rịa" không
+                const addressParts = address.split(',').map(p => p.trim().toLowerCase());
+                
+                // Check phần 2 và 3 (district và city)
+                const part2 = addressParts.length >= 2 ? addressParts[1] : '';
+                const part3 = addressParts.length >= 3 ? addressParts[2] : '';
+                
+                const hasBaRia = (part2.includes('bà rịa') || part2.includes('ba ria') ||
+                                 part3.includes('bà rịa') || part3.includes('ba ria')) &&
+                                !part2.includes('vũng tàu') && !part3.includes('vũng tàu');
+                
+                if (hasBaRia) {
+                    console.log(`❌ Excluded (in Bà Rịa): ${place.name} - ${address}`);
+                    return false;
+                }
+            } else if (provinceName === 'Bà Rịa') {
+                // Ngược lại cho Bà Rịa
+                const addressParts = address.split(',').map(p => p.trim().toLowerCase());
+                const part2 = addressParts.length >= 2 ? addressParts[1] : '';
+                const part3 = addressParts.length >= 3 ? addressParts[2] : '';
+                
+                const hasVungTau = (part2.includes('vũng tàu') || part2.includes('vung tau') ||
+                                   part3.includes('vũng tàu') || part3.includes('vung tau')) &&
+                                  !part2.includes('bà rịa') && !part3.includes('bà rịa');
+                
+                if (hasVungTau) {
+                    console.log(`❌ Excluded (in Vũng Tàu): ${place.name} - ${address}`);
+                    return false;
+                }
             }
         }
 
@@ -282,20 +315,21 @@ const filterResultsByCountryAndProvince = (results, provinceName = '') => {
 const getProvinceVariants = (provinceName) => {
     const variants = [provinceName];
     
-    // Map các tên tỉnh với biến thể
+    // Map các tên tỉnh với biến thể - CHỈ tên thành phố
     const provinceMap = {
-        'Vũng Tàu': ['vũng tàu', 'vung tau', 'bà rịa - vũng tàu', 'ba ria - vung tau', 'brvt'],
+        'Vũng Tàu': ['vũng tàu', 'vung tau', 'tp. vũng tàu', 'tp vung tau', 'thành phố vũng tàu'],
+        'Bà Rịa': ['bà rịa', 'ba ria', 'tp. bà rịa', 'thành phố bà rịa'],
         'Hà Nội': ['hà nội', 'ha noi', 'hanoi'],
         'TP. Hồ Chí Minh': ['hồ chí minh', 'ho chi minh', 'tp.hcm', 'tphcm', 'sài gòn', 'saigon'],
         'Đà Nẵng': ['đà nẵng', 'da nang', 'danang'],
-        'Đà Lạt': ['đà lạt', 'da lat', 'dalat', 'lâm đồng', 'lam dong'],
-        'Nha Trang': ['nha trang', 'khánh hòa', 'khanh hoa'],
-        'Phú Quốc': ['phú quốc', 'phu quoc', 'kiên giang', 'kien giang'],
-        'Hội An': ['hội an', 'hoi an', 'quảng nam', 'quang nam'],
-        'Huế': ['huế', 'hue', 'thừa thiên huế', 'thua thien hue'],
-        'Sapa': ['sapa', 'sa pa', 'lào cai', 'lao cai'],
-        'Hạ Long': ['hạ long', 'ha long', 'quảng ninh', 'quang ninh'],
-        'Quy Nhơn': ['quy nhơn', 'quy nhon', 'bình định', 'binh dinh'],
+        'Đà Lạt': ['đà lạt', 'da lat', 'dalat'],
+        'Nha Trang': ['nha trang'],
+        'Phú Quốc': ['phú quốc', 'phu quoc'],
+        'Hội An': ['hội an', 'hoi an'],
+        'Huế': ['huế', 'hue'],
+        'Sapa': ['sapa', 'sa pa'],
+        'Hạ Long': ['hạ long', 'ha long'],
+        'Quy Nhơn': ['quy nhơn', 'quy nhon'],
         'Cần Thơ': ['cần thơ', 'can tho'],
         'Hải Phòng': ['hải phòng', 'hai phong']
     };

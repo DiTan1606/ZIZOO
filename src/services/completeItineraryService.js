@@ -70,6 +70,7 @@ export const createCompleteItinerary = async (preferences, userId) => {
     try {
         // Reset destination tracking for new itinerary
         resetDestinationTracking();
+        console.log('🔄 Reset tracking - usedRestaurants:', usedRestaurants.size, 'usedDestinations:', usedDestinations.size);
         
         // 1. THÔNG TIN CƠ BẢN (HEADER)
         const tripHeader = await generateTripHeader(preferences);
@@ -3546,6 +3547,7 @@ const generateCafeAmbiance = (placeName) => {
 const findRealRestaurantsForDay = async (destination, coord, travelStyle) => {
     try {
         console.log(`🍽️ Finding DIVERSE restaurants in ${destination} from Firebase...`);
+        console.log(`📋 Currently used restaurants:`, Array.from(usedRestaurants));
 
         // Thử lấy nhà hàng thực từ Google Places API
         let realRestaurants = [];
@@ -3579,21 +3581,28 @@ const findRealRestaurantsForDay = async (destination, coord, travelStyle) => {
                 `rooftop restaurants ${destination}`,
                 `best restaurants ${destination}`,
                 `seafood restaurants ${destination}`,
-                `vietnamese restaurants ${destination}`
+                `vietnamese restaurants ${destination}`,
+                `asian restaurants ${destination}`,
+                `international restaurants ${destination}`
             ] : [
                 `best restaurants ${destination}`,
+                `restaurants ${destination}`,
+                `nhà hàng ${destination}`,
+                `quán ăn ${destination}`,
                 `local food ${destination}`,
                 `popular restaurants ${destination}`,
                 `seafood restaurants ${destination}`,
                 `vietnamese restaurants ${destination}`,
                 `family restaurants ${destination}`,
                 `casual dining ${destination}`,
-                `street food ${destination}`
+                `cơm ${destination}`,
+                `bún ${destination}`,
+                `phở ${destination}`
             ];
             
             for (const query of restaurantQueries) {
                 try {
-                    const results = await searchPlacesByText(query, coord, 10000);
+                    const results = await searchPlacesByText(query, coord, 15000, destination);
                     
                     if (results && results.length > 0) {
                         const restaurants = results
@@ -3633,9 +3642,10 @@ const findRealRestaurantsForDay = async (destination, coord, travelStyle) => {
                                 // Sort by rating
                                 return (b.rating || 0) - (a.rating || 0);
                             })
-                            .slice(0, 3)
+                            .slice(0, 10) // Lấy 10 nhà hàng từ mỗi query
                             .map(place => ({
                                 name: place.name,
+                                place_id: place.place_id, // ✅ FIX: Thêm place_id để track đúng
                                 address: place.vicinity || place.formatted_address || `${destination}`,
                                 rating: place.rating || 4.0,
                                 types: place.types || ['restaurant'],
@@ -3648,7 +3658,9 @@ const findRealRestaurantsForDay = async (destination, coord, travelStyle) => {
                         
                         realRestaurants.push(...restaurants);
                         
-                        if (realRestaurants.length >= 3) break;
+                        // ✅ FIX: Tăng target lên 50 nhà hàng để đủ cho nhiều ngày (3 ngày × 3 bữa = 9 nhà hàng tối thiểu)
+                        // Với 50 nhà hàng, sau khi loại duplicate còn ~30-40, đủ cho 10+ ngày
+                        if (realRestaurants.length >= 50) break;
                     }
                 } catch (queryError) {
                     console.warn(`Restaurant query failed: ${query}`, queryError);
@@ -3664,19 +3676,124 @@ const findRealRestaurantsForDay = async (destination, coord, travelStyle) => {
         // Lấy dữ liệu ẩm thực từ Firebase
         const localCuisines = await getLocalCuisinesByDestination(destination);
         
-        // Shuffle restaurants để tránh lặp lại
-        const shuffledRestaurants = [...realRestaurants].sort(() => 0.5 - Math.random());
+        // ✅ FIX: Loại bỏ duplicate restaurants trước khi shuffle
+        const uniqueRestaurants = [];
+        const seenNames = new Set();
+        const seenIds = new Set();
+        
+        for (const r of realRestaurants) {
+            // Skip nếu đã thấy name hoặc place_id
+            if (seenNames.has(r.name) || (r.place_id && seenIds.has(r.place_id))) {
+                continue;
+            }
+            
+            // Skip nếu tên quá giống với nhà hàng đã có
+            const isDuplicate = uniqueRestaurants.some(existing => {
+                const similarity = calculateSimilarity(existing.name.toLowerCase(), r.name.toLowerCase());
+                return similarity > 0.85; // 85% giống = duplicate
+            });
+            
+            if (!isDuplicate) {
+                uniqueRestaurants.push(r);
+                seenNames.add(r.name);
+                if (r.place_id) seenIds.add(r.place_id);
+            }
+        }
+        
+        console.log(`🍽️ Unique restaurants: ${uniqueRestaurants.length}/${realRestaurants.length} (removed ${realRestaurants.length - uniqueRestaurants.length} duplicates)`);
+        console.log(`📋 Already used restaurants (${usedRestaurants.size}):`, Array.from(usedRestaurants).slice(0, 10));
+        
+        // ⚠️ CẢNH BÁO: Nếu không đủ nhà hàng
+        if (uniqueRestaurants.length < 3) {
+            console.warn(`⚠️ WARNING: Only ${uniqueRestaurants.length} unique restaurants found! May have duplicates across days.`);
+        }
+        
+        // 🔍 DEBUG: Log top 5 restaurants
+        console.log(`🔍 Top 5 unique restaurants:`, uniqueRestaurants.slice(0, 5).map(r => `${r.name} (${r.rating})`));
+        
+        // Shuffle restaurants để tránh lặp lại - MỖI NGÀY SHUFFLE LẠI
+        const shuffledRestaurants = [...uniqueRestaurants].sort(() => 0.5 - Math.random());
+        
+        // 🔍 DEBUG: Log top 5 after shuffle
+        console.log(`🔍 Top 5 after shuffle:`, shuffledRestaurants.slice(0, 5).map(r => `${r.name} (${r.rating})`));
         
         // Tạo danh sách đa dạng từ dữ liệu thực và Firebase
         const diverseOptions = {};
         
+        // Track nhà hàng đã dùng TRONG NGÀY này (để tránh trùng trong cùng ngày)
+        const usedInThisDay = new Set();
+        
         // Breakfast - ưu tiên nhà hàng chưa dùng, tính giá theo travelStyle
         const styleCosts = MEAL_COSTS[travelStyle] || MEAL_COSTS.standard;
         const availableForBreakfast = shuffledRestaurants.filter(r => {
-            // Check đã dùng chưa
-            if (usedRestaurants.has(r.name)) return false;
+            // Check đã dùng trong các ngày trước chưa
+            if (usedRestaurants.has(r.name) || usedRestaurants.has(r.place_id)) {
+                // console.log(`⚠️ Skipping ${r.name} - already used in previous days`); // Bỏ log này để giảm spam
+                return false;
+            }
             
             // Check cùng chuỗi với nhà hàng đã dùng chưa
+            const sameChainUsed = Array.from(usedRestaurants).some(used => {
+                if (typeof used === 'string') {
+                    return isSameRestaurantChain(r.name, used);
+                }
+                return false;
+            });
+            
+            if (sameChainUsed) {
+                // console.log(`⚠️ Skipping ${r.name} - same chain as used restaurant`); // Bỏ log này để giảm spam
+                return false;
+            }
+            
+            return true;
+        });
+        
+        console.log(`🍽️ Available breakfast restaurants: ${availableForBreakfast.length}/${shuffledRestaurants.length}`);
+        
+        if (availableForBreakfast.length > 0) {
+            const selected = availableForBreakfast[0];
+            const estimatedCost = estimateMealCostFromPriceLevel(selected.price_level, 'breakfast', travelStyle);
+            diverseOptions.breakfast = {
+                name: selected.name,
+                specialty: 'Ẩm thực địa phương',
+                priceRange: `${(estimatedCost * 0.8).toLocaleString()}-${(estimatedCost * 1.2).toLocaleString()} VNĐ`,
+                estimatedCost: estimatedCost,
+                rating: selected.rating || 4.2,
+                isOpen: true,
+                dataSource: 'places_search_real',
+                address: selected.address,
+                lat: selected.geometry?.location?.lat(),
+                lng: selected.geometry?.location?.lng()
+            };
+            // ✅ FIX: Add vào cả 2 Set
+            usedRestaurants.add(selected.name);
+            if (selected.place_id) usedRestaurants.add(selected.place_id);
+            usedInThisDay.add(selected.name);
+            console.log(`✅ Selected breakfast: ${selected.name}`);
+        } else {
+            console.warn(`⚠️ No available breakfast restaurants, using fallback`);
+            // ✅ FIX: Thêm random suffix để tránh trùng tên fallback
+            const fallbackSuffixes = ['Trung Tâm', 'Phố Cổ', 'Bến Cảng', 'Chợ Đêm', 'Bãi Biển', 'Trung Tâm Thành Phố'];
+            const randomSuffix = fallbackSuffixes[Math.floor(Math.random() * fallbackSuffixes.length)];
+            diverseOptions.breakfast = {
+                name: `Quán ăn sáng ${randomSuffix} - ${destination}`,
+                specialty: 'Phở bò/gà truyền thống',
+                priceRange: `${styleCosts.breakfast.min.toLocaleString()}-${styleCosts.breakfast.max.toLocaleString()} VNĐ`,
+                estimatedCost: styleCosts.breakfast.avg,
+                rating: 4.2,
+                isOpen: true,
+                dataSource: 'firebase_fallback'
+            };
+        }
+        
+        // Lunch - ưu tiên nhà hàng khác, tính giá theo travelStyle
+        const availableForLunch = shuffledRestaurants.filter(r => {
+            // ✅ FIX: Check cả usedRestaurants (các ngày trước) VÀ usedInThisDay (trong ngày)
+            if (usedRestaurants.has(r.name) || usedRestaurants.has(r.place_id) || usedInThisDay.has(r.name)) {
+                console.log(`⚠️ Skipping ${r.name} - already used`);
+                return false;
+            }
+            
             const sameChainUsed = Array.from(usedRestaurants).some(used => {
                 if (typeof used === 'string') {
                     return isSameRestaurantChain(r.name, used);
@@ -3692,48 +3809,18 @@ const findRealRestaurantsForDay = async (destination, coord, travelStyle) => {
             return true;
         });
         
-        if (availableForBreakfast.length > 0) {
-            const selected = availableForBreakfast[0];
-            const estimatedCost = estimateMealCostFromPriceLevel(selected.price_level, 'breakfast', travelStyle);
-            diverseOptions.breakfast = {
-                name: selected.name,
-                specialty: 'Ẩm thực địa phương',
-                priceRange: `${(estimatedCost * 0.8).toLocaleString()}-${(estimatedCost * 1.2).toLocaleString()} VNĐ`,
-                estimatedCost: estimatedCost,
-                rating: selected.rating || 4.2,
-                isOpen: true,
-                dataSource: 'places_search_real',
-                address: selected.address
-            };
-            usedRestaurants.add(selected.name);
-        } else {
-            diverseOptions.breakfast = {
-                name: `Quán ăn sáng ${destination}`,
-                specialty: 'Phở bò/gà truyền thống',
-                priceRange: `${styleCosts.breakfast.min.toLocaleString()}-${styleCosts.breakfast.max.toLocaleString()} VNĐ`,
-                estimatedCost: styleCosts.breakfast.avg,
-                rating: 4.2,
-                isOpen: true,
-                dataSource: 'firebase_fallback'
-            };
-        }
-        
-        // Lunch - ưu tiên nhà hàng khác, tính giá theo travelStyle
-        const availableForLunch = shuffledRestaurants.filter(r => {
-            if (usedRestaurants.has(r.name)) return false;
-            
-            const sameChainUsed = Array.from(usedRestaurants).some(used => {
-                if (typeof used === 'string') {
-                    return isSameRestaurantChain(r.name, used);
-                }
-                return false;
-            });
-            
-            return !sameChainUsed;
-        });
+        console.log(`🍽️ Available lunch restaurants: ${availableForLunch.length}/${shuffledRestaurants.length}`);
         
         if (availableForLunch.length > 0) {
             const selected = availableForLunch[0];
+            console.log(`🔍 LUNCH SELECTION DEBUG:`, {
+                name: selected.name,
+                place_id: selected.place_id,
+                hasPlaceId: !!selected.place_id,
+                usedRestaurantsSize: usedRestaurants.size,
+                usedRestaurantsList: Array.from(usedRestaurants).slice(0, 5)
+            });
+            
             const estimatedCost = estimateMealCostFromPriceLevel(selected.price_level, 'lunch', travelStyle);
             diverseOptions.lunch = {
                 name: selected.name,
@@ -3743,12 +3830,27 @@ const findRealRestaurantsForDay = async (destination, coord, travelStyle) => {
                 rating: selected.rating || 4.3,
                 isOpen: true,
                 dataSource: 'places_search_real',
-                address: selected.address
+                address: selected.address,
+                lat: selected.geometry?.location?.lat(),
+                lng: selected.geometry?.location?.lng()
             };
+            // ✅ FIX: Add vào cả 2 Set
             usedRestaurants.add(selected.name);
+            if (selected.place_id) {
+                usedRestaurants.add(selected.place_id);
+                console.log(`✅ Added to usedRestaurants: name="${selected.name}", place_id="${selected.place_id}"`);
+            } else {
+                console.warn(`⚠️ WARNING: No place_id for "${selected.name}"!`);
+            }
+            usedInThisDay.add(selected.name);
+            console.log(`✅ Selected lunch: ${selected.name} (Total used: ${usedRestaurants.size})`);
         } else {
+            console.warn(`⚠️ No available lunch restaurants, using fallback`);
+            // ✅ FIX: Thêm random suffix để tránh trùng tên fallback
+            const fallbackSuffixes = ['Trung Tâm', 'Phố Cổ', 'Bến Cảng', 'Chợ Đêm', 'Bãi Biển', 'Khu Du Lịch'];
+            const randomSuffix = fallbackSuffixes[Math.floor(Math.random() * fallbackSuffixes.length)];
             diverseOptions.lunch = {
-                name: `Nhà hàng cơm ${destination}`,
+                name: `Nhà hàng cơm ${randomSuffix} - ${destination}`,
                 specialty: localCuisines.lunch || 'Cơm địa phương',
                 priceRange: `${styleCosts.lunch.min.toLocaleString()}-${styleCosts.lunch.max.toLocaleString()} VNĐ`,
                 estimatedCost: styleCosts.lunch.avg,
@@ -3760,7 +3862,11 @@ const findRealRestaurantsForDay = async (destination, coord, travelStyle) => {
         
         // Dinner - ưu tiên nhà hàng khác nữa, tính giá theo travelStyle
         const availableForDinner = shuffledRestaurants.filter(r => {
-            if (usedRestaurants.has(r.name)) return false;
+            // ✅ FIX: Check cả usedRestaurants (các ngày trước) VÀ usedInThisDay (trong ngày)
+            if (usedRestaurants.has(r.name) || usedRestaurants.has(r.place_id) || usedInThisDay.has(r.name)) {
+                console.log(`⚠️ Skipping ${r.name} - already used`);
+                return false;
+            }
             
             const sameChainUsed = Array.from(usedRestaurants).some(used => {
                 if (typeof used === 'string') {
@@ -3769,8 +3875,15 @@ const findRealRestaurantsForDay = async (destination, coord, travelStyle) => {
                 return false;
             });
             
-            return !sameChainUsed;
+            if (sameChainUsed) {
+                console.log(`⚠️ Skipping ${r.name} - same chain as used restaurant`);
+                return false;
+            }
+            
+            return true;
         });
+        
+        console.log(`🍽️ Available dinner restaurants: ${availableForDinner.length}/${shuffledRestaurants.length}`);
         
         if (availableForDinner.length > 0) {
             const selected = availableForDinner[0];
@@ -3783,12 +3896,22 @@ const findRealRestaurantsForDay = async (destination, coord, travelStyle) => {
                 rating: selected.rating || 4.4,
                 isOpen: true,
                 dataSource: 'places_search_real',
-                address: selected.address
+                address: selected.address,
+                lat: selected.geometry?.location?.lat(),
+                lng: selected.geometry?.location?.lng()
             };
+            // ✅ FIX: Add vào cả 2 Set
             usedRestaurants.add(selected.name);
+            if (selected.place_id) usedRestaurants.add(selected.place_id);
+            usedInThisDay.add(selected.name);
+            console.log(`✅ Selected dinner: ${selected.name}`);
         } else {
+            console.warn(`⚠️ No available dinner restaurants, using fallback`);
+            // ✅ FIX: Thêm random suffix để tránh trùng tên fallback
+            const fallbackSuffixes = ['Bãi Sau', 'Bãi Trước', 'Bến Cảng', 'Chợ Đêm', 'Khu Du Lịch', 'Trung Tâm'];
+            const randomSuffix = fallbackSuffixes[Math.floor(Math.random() * fallbackSuffixes.length)];
             diverseOptions.dinner = {
-                name: `Nhà hàng hải sản ${destination}`,
+                name: `Nhà hàng hải sản ${randomSuffix} - ${destination}`,
                 specialty: localCuisines.dinner || 'Hải sản tươi sống',
                 priceRange: `${styleCosts.dinner.min.toLocaleString()}-${styleCosts.dinner.max.toLocaleString()} VNĐ`,
                 estimatedCost: styleCosts.dinner.avg,
@@ -4383,7 +4506,7 @@ const generateEnhancedDayTheme = (dayNumber, destinations, interests, destinatio
 const generateEnhancedHourlySchedule = (dayNumber, destinations, restaurants, interests, departureTime = '08:00', specialActivities = {}, workingLocations = []) => {
     const schedule = [];
     let currentTime = '';
-    const usedRestaurants = new Set(); // Track restaurants đã dùng
+    // Dùng global usedRestaurants để tránh lặp giữa các ngày
     
     // Helper function: Gộp các địa điểm liên quan gần nhau
     const groupRelatedDestinations = (dests) => {
@@ -4579,10 +4702,8 @@ const generateEnhancedHourlySchedule = (dayNumber, destinations, restaurants, in
             });
             currentTime = '13:00';
             
-            // Ăn trưa
-            const lunchVenue = (restaurants.localFood && restaurants.localFood.length > 0) 
-                ? restaurants.localFood[0] 
-                : restaurants.lunch;
+            // Ăn trưa - ✅ FIX: Dùng restaurants.lunch đã được track đúng, KHÔNG dùng localFood
+            const lunchVenue = restaurants.lunch;
             
             if (lunchVenue) {
                 schedule.push({
@@ -4595,6 +4716,7 @@ const generateEnhancedHourlySchedule = (dayNumber, destinations, restaurants, in
                     estimatedCost: lunchVenue.estimatedCost,
                     realData: true
                 });
+                // Không cần add vào usedRestaurants vì đã add trong findRealRestaurantsForDay
                 currentTime = '14:00';
             }
             
@@ -4632,9 +4754,8 @@ const generateEnhancedHourlySchedule = (dayNumber, destinations, restaurants, in
             // Ăn trưa nếu chưa quá 14:00
             const [currentHour] = currentTime.split(':').map(Number);
             if (currentHour < 14) {
-                const lunchVenue = (restaurants.localFood && restaurants.localFood.length > 0) 
-                    ? restaurants.localFood[0] 
-                    : restaurants.lunch;
+                // ✅ FIX: Dùng restaurants.lunch đã được track đúng, KHÔNG dùng localFood
+                const lunchVenue = restaurants.lunch;
                 
                 if (lunchVenue) {
                     schedule.push({
@@ -4647,6 +4768,7 @@ const generateEnhancedHourlySchedule = (dayNumber, destinations, restaurants, in
                         estimatedCost: lunchVenue.estimatedCost,
                         realData: true
                     });
+                    // Không cần add vào usedRestaurants vì đã add trong findRealRestaurantsForDay
                     currentTime = calculateNextTime(currentTime, '1 giờ');
                 }
             }
@@ -4688,6 +4810,7 @@ const generateEnhancedHourlySchedule = (dayNumber, destinations, restaurants, in
                 notes: ['Bắt đầu ngày mới với năng lượng'],
                 realData: true
             });
+            usedRestaurants.add(restaurants.breakfast.name); // Track để tránh lặp
             currentTime = '07:45';
         }
         
@@ -4725,9 +4848,8 @@ const generateEnhancedHourlySchedule = (dayNumber, destinations, restaurants, in
             currentTime = '12:00';
         }
         
-        const lunchVenue = (restaurants.localFood && restaurants.localFood.length > 0) 
-            ? restaurants.localFood[0] 
-            : restaurants.lunch;
+        // ✅ FIX: Dùng restaurants.lunch đã được track đúng, KHÔNG dùng localFood
+        const lunchVenue = restaurants.lunch;
         
         if (lunchVenue) {
             schedule.push({
@@ -4743,6 +4865,7 @@ const generateEnhancedHourlySchedule = (dayNumber, destinations, restaurants, in
                 notes: ['Nghỉ ngơi, thưởng thức ẩm thực địa phương'],
                 realData: true
             });
+            // Không cần add vào usedRestaurants vì đã add trong findRealRestaurantsForDay
             currentTime = calculateNextTime(currentTime, '1 giờ');
         }
         
@@ -4845,6 +4968,7 @@ const generateEnhancedHourlySchedule = (dayNumber, destinations, restaurants, in
             notes: ['Bữa tối thịnh soạn', 'Thưởng thức đặc sản địa phương'],
             realData: true
         });
+        usedRestaurants.add(restaurants.dinner.name); // Track để tránh lặp
         currentTime = calculateNextTime(currentTime, '1.5 giờ');
     }
 
