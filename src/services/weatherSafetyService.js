@@ -112,7 +112,7 @@ const checkDalatPassesArea = async () => {
     console.log(`🔍 Quét radar khu vực ĐÈO PRENN & MIMOSA với bbox: ${BBOX_PASSES}`);
     
     const res = await fetch(
-      `https://api.tomtom.com/traffic/services/5/incidentDetails?bbox=${BBOX_PASSES}&key=${TOMTOM_API_KEY}&fields={incidents{type,geometry{type,coordinates},properties{iconCategory,events{description}}}}&language=vi-VN&t=${Date.now()}`
+      `http://localhost:5000/api/tomtom/traffic?bbox=${BBOX_PASSES}&key=${TOMTOM_API_KEY}&t=${Date.now()}`
     );
     
     if (!res.ok) {
@@ -136,15 +136,17 @@ const checkDalatPassesArea = async () => {
     
     console.log(`📊 Tìm thấy ${incidents.length} sự cố trong khu vực đèo`);
     
-    // Lọc sự cố nghiêm trọng trên đèo: 6=Tắc, 8=Đóng, 9=Thi công
+    // CHỈ LẤY SỰ CỐ ĐÓNG ĐƯỜNG THỰC SỰ (category 8)
     const prennIncidents = [];
     const mimosaIncidents = [];
+    const seenPrenn = new Set();
+    const seenMimosa = new Set();
     
     incidents.forEach(incident => {
       const cat = incident.properties.iconCategory;
       
-      // Chỉ quan tâm sự cố nghiêm trọng
-      if (cat === 6 || cat === 8 || cat === 9) {
+      // CHỈ quan tâm ĐÓNG ĐƯỜNG (category 8) hoặc NGẬP LỤT (category 11)
+      if (cat === 8 || cat === 11) {
         const coords = incident.geometry.coordinates;
         const point = Array.isArray(coords[0]) ? coords[0] : coords;
         const desc = incident.properties.events?.[0]?.description || 'Closed';
@@ -152,20 +154,26 @@ const checkDalatPassesArea = async () => {
         // Phân loại theo vị trí (Prenn ở phía Bắc, Mimosa ở phía Nam)
         if (point[1] > 11.90) {
           // Đèo Prenn (lat > 11.90)
-          prennIncidents.push({
-            category: cat,
-            description: desc,
-            coords: point
-          });
-          console.log(`🚨 Đèo Prenn: ${desc} (category: ${cat})`);
+          if (!seenPrenn.has(desc)) {
+            seenPrenn.add(desc);
+            prennIncidents.push({
+              category: cat,
+              description: desc,
+              coords: point
+            });
+            console.log(`🚨 Đèo Prenn: ${desc} (category: ${cat})`);
+          }
         } else if (point[1] < 11.90 && point[1] > 11.85) {
           // Đèo Mimosa (11.85 < lat < 11.90)
-          mimosaIncidents.push({
-            category: cat,
-            description: desc,
-            coords: point
-          });
-          console.log(`🚨 Đèo Mimosa: ${desc} (category: ${cat})`);
+          if (!seenMimosa.has(desc)) {
+            seenMimosa.add(desc);
+            mimosaIncidents.push({
+              category: cat,
+              description: desc,
+              coords: point
+            });
+            console.log(`🚨 Đèo Mimosa: ${desc} (category: ${cat})`);
+          }
         }
       }
     });
@@ -294,7 +302,7 @@ export const analyzeTrafficIncidents = async (lat, lng, weather, destinationName
     
     try {
       const res = await fetch(
-        `https://api.tomtom.com/traffic/services/5/incidentDetails?bbox=${bbox}&key=${TOMTOM_API_KEY}&fields={incidents{type,geometry{type,coordinates},properties{iconCategory,magnitudeOfDelay,events{description,code}}}}&language=vi-VN&t=${Date.now()}`
+        `http://localhost:5000/api/tomtom/traffic?bbox=${bbox}&key=${TOMTOM_API_KEY}&t=${Date.now()}`
       );
       
       if (!res.ok) {
@@ -305,12 +313,20 @@ export const analyzeTrafficIncidents = async (lat, lng, weather, destinationName
         
         console.log(`📊 Found ${incidents.length} traffic incidents in ${destinationName} area`);
         
-        // Phân loại incidents theo category
+        // Phân loại incidents theo category - HIỂN THỊ NHIỀU HƠN
+        const seenDescriptions = new Set(); // Loại bỏ trùng lặp
+        
         incidents.forEach(incident => {
           const cat = incident.properties.iconCategory;
           const desc = incident.properties.events?.[0]?.description || 'Sự cố giao thông';
           const code = incident.properties.events?.[0]?.code || '';
           const delay = incident.properties.magnitudeOfDelay || 0;
+          
+          // Bỏ qua nếu đã thấy description này (trùng lặp)
+          if (seenDescriptions.has(desc)) {
+            return;
+          }
+          seenDescriptions.add(desc);
           
           const incidentData = {
             category: cat,
@@ -320,50 +336,49 @@ export const analyzeTrafficIncidents = async (lat, lng, weather, destinationName
             code
           };
           
-          // Phân loại theo category
-          // 0: Unknown, 1: Accident, 2: Fog, 3: Dangerous Conditions, 4: Rain
-          // 5: Ice, 6: Jam, 7: Lane Closed, 8: Road Closed, 9: Road Works
-          // 10: Wind, 11: Flooding, 14: Broken Down Vehicle
-          
+          // PHÂN LOẠI THEO MỨC ĐỘ NGHIÊM TRỌNG
           if (cat === 8) {
-            // Đóng đường
+            // Đóng đường - CRITICAL
             incidentData.severity = 'critical';
             critical.push(incidentData);
             byReason.roadClosed.push(incidentData);
-            console.log(`🚫 Road closed: ${desc}`);
-          } else if (cat === 9) {
-            // Thi công
-            critical.push(incidentData);
-            byReason.construction.push(incidentData);
-            console.log(`🚧 Construction: ${desc}`);
-          } else if (cat === 6 && delay > 600) {
-            // Tắc đường nghiêm trọng (>10 phút)
-            incidentData.severity = 'high';
-            critical.push(incidentData);
-            byReason.roadClosed.push(incidentData);
-            console.log(`🚗 Heavy traffic jam (${delay}s delay): ${desc}`);
-          } else if (cat === 1) {
-            // Tai nạn
-            critical.push(incidentData);
-            byReason.accident.push(incidentData);
-            console.log(`🚨 Accident: ${desc}`);
-          } else if (cat === 4 || cat === 11) {
-            // Mưa hoặc ngập lụt
-            incidentData.severity = 'high';
+            console.log(`🚫 CRITICAL: Road closed - ${desc}`);
+          } else if (cat === 11) {
+            // Ngập lụt - CRITICAL
+            incidentData.severity = 'critical';
             critical.push(incidentData);
             byReason.weather.push(incidentData);
-            console.log(`🌧️ Weather incident: ${desc}`);
+            console.log(`🌊 CRITICAL: Flooding - ${desc}`);
+          } else if (cat === 9) {
+            // Thi công - MEDIUM (hiển thị nhưng không nghiêm trọng)
+            incidentData.severity = 'medium';
+            critical.push(incidentData);
+            byReason.construction.push(incidentData);
+            console.log(`🚧 MEDIUM: Construction - ${desc}`);
+          } else if (cat === 6 && delay > 600) {
+            // Tắc đường (>10 phút) - MEDIUM
+            incidentData.severity = 'medium';
+            critical.push(incidentData);
+            byReason.roadClosed.push(incidentData);
+            console.log(`🚗 MEDIUM: Traffic jam (${Math.round(delay/60)}min delay) - ${desc}`);
+          } else if (cat === 1) {
+            // Tai nạn - HIGH
+            incidentData.severity = 'high';
+            critical.push(incidentData);
+            byReason.accident.push(incidentData);
+            console.log(`🚨 HIGH: Accident - ${desc}`);
           } else if (cat === 3) {
-            // Điều kiện nguy hiểm
+            // Điều kiện nguy hiểm - HIGH
             incidentData.severity = 'high';
             critical.push(incidentData);
             byReason.other.push(incidentData);
-            console.log(`⚠️ Dangerous conditions: ${desc}`);
+            console.log(`⚠️ HIGH: Dangerous conditions - ${desc}`);
           } else if (cat === 7) {
-            // Đóng làn đường
+            // Đóng làn - LOW
+            incidentData.severity = 'low';
             critical.push(incidentData);
             byReason.other.push(incidentData);
-            console.log(`⚠️ Lane closed: ${desc}`);
+            console.log(`⚠️ LOW: Lane closed - ${desc}`);
           }
         });
       }
@@ -376,89 +391,9 @@ export const analyzeTrafficIncidents = async (lat, lng, weather, destinationName
     const hasHeavyRain = currentRain > 50; // >50mm = mưa lớn
     const hasModerateRain = currentRain > 20; // >20mm = mưa vừa
     
-    // Danh sách địa điểm có đèo/núi nguy hiểm
-    const mountainousAreas = ['đà lạt', 'da lat', 'sapa', 'sa pa', 'hà giang', 'ha giang', 'cao bằng', 'cao bang'];
-    const isMountainous = mountainousAreas.some(area => destinationName.toLowerCase().includes(area));
-    
-    // Cảnh báo đặc biệt cho Đà Lạt (đèo Prenn & Mimosa)
-    const isDalat = destinationName.toLowerCase().includes('đà lạt') || destinationName.toLowerCase().includes('da lat');
-    if (isDalat) {
-      // Luôn cảnh báo cho Đà Lạt vì đèo nguy hiểm
-      if (hasHeavyRain) {
-        const warning = {
-          category: 8,
-          categoryName: 'Đèo nguy hiểm',
-          description: '🚨 Đèo Prenn & Mimosa rất nguy hiểm khi mưa lớn. Có thể bị sạt lở!',
-          reason: 'dalat_pass_heavy_rain',
-          severity: 'critical'
-        };
-        critical.push(warning);
-        byReason.weather.push(warning);
-        console.log(`🚨 CRITICAL: Đà Lạt passes dangerous with heavy rain (${currentRain}mm)`);
-      } else if (hasModerateRain) {
-        const warning = {
-          category: 6,
-          categoryName: 'Cảnh báo đèo',
-          description: '⚠️ Đèo Prenn & Mimosa trơn trượt khi mưa. Cần cẩn thận!',
-          reason: 'dalat_pass_moderate_rain'
-        };
-        critical.push(warning);
-        byReason.weather.push(warning);
-        console.log(`⚠️ WARNING: Đà Lạt passes slippery with rain (${currentRain}mm)`);
-      } else {
-        // Cảnh báo chung cho Đà Lạt (luôn có đèo)
-        const warning = {
-          category: 6,
-          categoryName: 'Thông tin đường đi',
-          description: 'ℹ️ Đường vào Đà Lạt có đèo Prenn & Mimosa. Nên kiểm tra tình trạng đường trước khi đi.',
-          reason: 'dalat_pass_info'
-        };
-        critical.push(warning);
-        byReason.other.push(warning);
-        console.log(`ℹ️ INFO: Đà Lạt has mountain passes`);
-      }
-    }
-    // Cảnh báo đường đèo nguy hiểm khi mưa (các địa điểm khác)
-    else if (isMountainous && hasHeavyRain) {
-      const warning = {
-        category: 8,
-        categoryName: 'Đóng đường do thời tiết',
-        description: 'Đèo có thể bị sạt lở do mưa lớn',
-        reason: 'heavy_rain_mountain'
-      };
-      critical.push(warning);
-      byReason.weather.push(warning);
-      
-      console.log(`⚠️ Mountain pass warning: Heavy rain (${currentRain}mm) in ${destinationName}`);
-    } else if (isMountainous && hasModerateRain) {
-      const warning = {
-        category: 6,
-        categoryName: 'Cảnh báo đường đèo',
-        description: 'Đường đèo có thể trơn trượt do mưa',
-        reason: 'moderate_rain_mountain'
-      };
-      critical.push(warning);
-      byReason.weather.push(warning);
-      
-      console.log(`⚠️ Mountain pass caution: Moderate rain (${currentRain}mm) in ${destinationName}`);
-    }
-    
-    // Cảnh báo ngập lụt cho vùng thấp
-    const lowlandAreas = ['cần thơ', 'can tho', 'đồng tháp', 'dong thap', 'an giang', 'bạc liêu', 'bac lieu'];
-    const isLowland = lowlandAreas.some(area => destinationName.toLowerCase().includes(area));
-    
-    if (isLowland && hasHeavyRain) {
-      const warning = {
-        category: 8,
-        categoryName: 'Nguy cơ ngập lụt',
-        description: 'Đường có thể bị ngập do mưa lớn',
-        reason: 'flooding_risk'
-      };
-      critical.push(warning);
-      byReason.weather.push(warning);
-      
-      console.log(`⚠️ Flooding risk: Heavy rain (${currentRain}mm) in lowland ${destinationName}`);
-    }
+    // BỎ LOGIC ĐẶC BIỆT - Chỉ dựa vào dữ liệu thực tế từ TomTom API
+    // Thuật toán tự động phân tích incidents mà không cần hardcode địa điểm
+    console.log(`🤖 Using algorithm-based analysis (no special location rules) for ${destinationName}`);
     
     const hasCriticalIssues = byReason.roadClosed.length > 0 || byReason.weather.length > 0;
     
@@ -467,8 +402,6 @@ export const analyzeTrafficIncidents = async (lat, lng, weather, destinationName
       roadClosed: byReason.roadClosed.length,
       weather: byReason.weather.length,
       hasCriticalIssues,
-      isMountainous,
-      isLowland,
       currentRain: `${currentRain}mm`
     });
     
@@ -534,7 +467,7 @@ export const checkCriticalRoutes = async (destinationName) => {
         console.log(`🔍 Checking ${route.name} with bbox: ${bbox}`);
         
         const res = await fetch(
-          `https://api.tomtom.com/traffic/services/5/incidentDetails?bbox=${bbox}&key=${TOMTOM_API_KEY}&fields={incidents{type,geometry{type,coordinates},properties{iconCategory,magnitudeOfDelay,events{description}}}}&language=vi-VN&t=${Date.now()}`
+          `http://localhost:5000/api/tomtom/traffic?bbox=${bbox}&key=${TOMTOM_API_KEY}&t=${Date.now()}`
         );
         
         if (!res.ok) {
@@ -556,19 +489,23 @@ export const checkCriticalRoutes = async (destinationName) => {
         
         console.log(`📊 ${route.name}: Found ${incidents.length} incidents`);
 
-        // Lọc sự cố nghiêm trọng: 6=Tắc nghiêm trọng, 8=Đóng đường, 9=Thi công
-        const criticalIncidents = incidents.filter(i => {
+        // CHỈ LẤY ĐÓNG ĐƯỜNG THỰC SỰ (category 8) hoặc NGẬP LỤT (category 11)
+        const seenDescriptions = new Set();
+        const criticalIncidents = [];
+        
+        incidents.forEach(i => {
           const cat = i.properties.iconCategory;
-          const isCritical = cat === 6 || cat === 8 || cat === 9;
+          const desc = i.properties.events?.[0]?.description || 'Closed';
           
-          if (isCritical) {
+          // CHỈ lấy đóng đường (8) hoặc ngập lụt (11)
+          if ((cat === 8 || cat === 11) && !seenDescriptions.has(desc)) {
+            seenDescriptions.add(desc);
+            criticalIncidents.push(i);
             console.log(`🚨 Critical incident on ${route.name}:`, {
               category: cat,
-              description: i.properties.events?.[0]?.description || 'No description'
+              description: desc
             });
           }
-          
-          return isCritical;
         });
 
         const isOpen = criticalIncidents.length === 0;
@@ -604,9 +541,15 @@ export const checkCriticalRoutes = async (destinationName) => {
     })
   );
 
-  const criticalRoutesClosed = routeStatus.filter(r => 
-    !r.isOpen && r.importance === 'critical'
-  );
+  const criticalRoutes = routeStatus.filter(r => r.importance === 'critical');
+  const criticalRoutesClosed = criticalRoutes.filter(r => !r.isOpen);
+  
+  // Debug log
+  console.log(`🔍 Critical routes analysis:`, {
+    totalCritical: criticalRoutes.length,
+    closedCritical: criticalRoutesClosed.length,
+    criticalRouteNames: criticalRoutes.map(r => `${r.name}: ${r.isOpen ? 'OPEN' : 'CLOSED'}`).join(', ')
+  });
 
   return {
     hasCriticalRoutes: true,
@@ -615,7 +558,8 @@ export const checkCriticalRoutes = async (destinationName) => {
     closedRoutes: routeStatus.filter(r => !r.isOpen).length,
     criticalRoutesClosed: criticalRoutesClosed.length,
     routes: routeStatus,
-    allCriticalClosed: criticalRoutesClosed.length === routeStatus.filter(r => r.importance === 'critical').length
+    // CHỈ báo "tất cả đóng" khi có ít nhất 1 critical route VÀ tất cả đều đóng
+    allCriticalClosed: criticalRoutes.length > 0 && criticalRoutesClosed.length === criticalRoutes.length
   };
 };
 
@@ -702,20 +646,9 @@ export const analyzeTripSafety = async (trip) => {
   
   let tripDay;
   
-  // Nếu ngày đi là HÔM NAY, dùng thời tiết hiện tại
-  if (isToday) {
-    console.log('⚠️ Trip is TODAY, using current weather for trip day');
-    tripDay = {
-      date: tripDate,
-      temp: Math.round(weather.current.temp),
-      rain: Math.round(weather.current.rain || 0),
-      wind: Math.round(weather.current.wind),
-      condition: weather.current.condition,
-      description: weather.current.description,
-      icon: weather.current.icon,
-      isToday: true
-    };
-  } else {
+  // Luôn dùng FORECAST cho "Ngày đi" (tổng hợp cả ngày)
+  // "Hiện tại" sẽ dùng weather.current riêng
+  {
     // Lọc tất cả forecast của ngày đi (so sánh theo ngày, không quan tâm giờ)
     const sameDayForecasts = weather.forecast.filter(f => {
       const forecastDate = new Date(f.date);
@@ -795,19 +728,19 @@ export const analyzeTripSafety = async (trip) => {
     
     if (rainyPercentage === 100) {
       // TẤT CẢ các ngày đều mưa
-      let scoreDeduction = 20; // Mặc định cho mưa nhỏ
-      let severity = 'medium';
+      let scoreDeduction = 5; // Mưa nhỏ - chỉ trừ 5 điểm (vẫn SAFE)
+      let severity = 'low';
       
       if (rainIntensity === 'heavy') {
         scoreDeduction = 50;
         severity = 'critical';
         console.log(`🌧️🌧️🌧️ CRITICAL: Mưa LỚN SUỐT ${tripWeatherAnalysis.totalDays} ngày (${avgRain}mm/ngày)!`);
       } else if (rainIntensity === 'moderate') {
-        scoreDeduction = 35;
-        severity = 'high';
-        console.log(`🌧️🌧️ HIGH: Mưa VỪA SUỐT ${tripWeatherAnalysis.totalDays} ngày (${avgRain}mm/ngày)`);
+        scoreDeduction = 25;
+        severity = 'medium';
+        console.log(`🌧️🌧️ MEDIUM: Mưa VỪA SUỐT ${tripWeatherAnalysis.totalDays} ngày (${avgRain}mm/ngày)`);
       } else {
-        console.log(`🌧️ MEDIUM: Mưa NHỎ SUỐT ${tripWeatherAnalysis.totalDays} ngày (${avgRain}mm/ngày)`);
+        console.log(`🌧️ LOW: Mưa NHỎ SUỐT ${tripWeatherAnalysis.totalDays} ngày (${avgRain}mm/ngày) - chỉ trừ 5 điểm`);
       }
       
       score -= scoreDeduction;
@@ -928,25 +861,25 @@ export const analyzeTripSafety = async (trip) => {
       });
       console.log(`🚫 CRITICAL: TẤT CẢ đường chính đều đóng!`);
     } 
-    // Một số đường chính bị đóng → Cảnh báo THÔNG TIN (không trừ điểm nhiều)
+    // Một số đường chính bị đóng → Cảnh báo THÔNG TIN (KHÔNG trừ điểm)
     else if (criticalRoutesCheck.criticalRoutesClosed > 0) {
-      score -= 5; // Chỉ trừ 5 điểm (nhẹ)
+      // KHÔNG trừ điểm - chỉ hiển thị thông tin
       issues.push({
         type: 'some_critical_routes_closed',
-        severity: 'info', // Đổi từ 'high' sang 'info'
+        severity: 'info',
         routes: criticalRoutesCheck.routes.filter(r => !r.isOpen && r.importance === 'critical')
       });
-      console.log(`ℹ️ INFO: ${criticalRoutesCheck.criticalRoutesClosed} đường chính bị đóng (còn đường khác)`);
+      console.log(`ℹ️ INFO: ${criticalRoutesCheck.criticalRoutesClosed} đường chính bị đóng (còn đường khác) - KHÔNG trừ điểm`);
     }
-    // Đường phụ bị đóng → Chỉ thông tin
+    // Đường phụ bị đóng → Chỉ thông tin, không trừ điểm
     else if (criticalRoutesCheck.closedRoutes > 0) {
-      score -= 3; // Trừ rất ít
+      // KHÔNG trừ điểm
       issues.push({
         type: 'secondary_routes_closed',
         severity: 'info',
         routes: criticalRoutesCheck.routes.filter(r => !r.isOpen)
       });
-      console.log(`ℹ️ INFO: ${criticalRoutesCheck.closedRoutes} đường phụ bị đóng`);
+      console.log(`ℹ️ INFO: ${criticalRoutesCheck.closedRoutes} đường phụ bị đóng - KHÔNG trừ điểm`);
     }
   }
   

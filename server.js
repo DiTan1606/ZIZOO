@@ -94,6 +94,37 @@ app.get('/api/flights', async (req, res) => {
     }
 });
 
+// TomTom Traffic API proxy
+app.get('/api/tomtom/traffic', async (req, res) => {
+    try {
+        const { bbox, key } = req.query;
+        
+        if (!bbox || !key) {
+            return res.status(400).json({ error: 'Missing required parameters: bbox, key' });
+        }
+
+        const url = `https://api.tomtom.com/traffic/services/5/incidentDetails?key=${key}&bbox=${bbox}`;
+        
+        console.log('🚗 TomTom Traffic request:', url);
+        
+        const response = await fetch(url);
+        
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error('❌ TomTom API error:', response.status, errorText);
+            return res.status(response.status).json({ error: errorText });
+        }
+
+        const data = await response.json();
+        console.log(`✅ TomTom: Found ${data.incidents?.length || 0} incidents`);
+        
+        res.json(data);
+    } catch (error) {
+        console.error('❌ TomTom proxy error:', error.message);
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // Health check endpoint
 app.get('/health', (req, res) => {
     res.json({ 

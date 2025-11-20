@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { analyzeTripSafety } from '../services/weatherSafetyService';
+import { analyzeTripSafety, saveNotification } from '../services/weatherSafetyService';
+import { auth } from '../firebase';
 import './TripWeatherWidget.css';
 
 const TripWeatherWidget = ({ trip }) => {
@@ -12,6 +13,23 @@ const TripWeatherWidget = ({ trip }) => {
       const data = await analyzeTripSafety(trip);
       setSafetyData(data);
       setLoading(false);
+      
+      // Tự động gửi notification nếu có cảnh báo từ CAUTION trở lên
+      if (data && auth.currentUser && (data.status === 'CAUTION' || data.status === 'WARNING' || data.status === 'DANGER')) {
+        try {
+          await saveNotification(auth.currentUser.uid, trip.id, {
+            status: data.status,
+            icon: data.icon,
+            label: data.label,
+            message: data.message,
+            destination: typeof trip.destination === 'string' ? trip.destination : trip.destination.name,
+            tripDate: trip.startDate
+          });
+          console.log(`📬 Notification sent for ${trip.destination} (${data.status})`);
+        } catch (error) {
+          console.error('Error sending notification:', error);
+        }
+      }
     };
 
     fetchSafety();
