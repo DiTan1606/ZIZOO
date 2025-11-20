@@ -184,11 +184,289 @@
   border-left: 4px solid #f59e0b;
 }
 
+.alert-item.info {
+  background: #dbeafe;
+  color: #1e40af;
+  border-left: 4px solid #3b82f6;
+}
+
+/* Cảnh báo mưa liên tục - Phân loại theo mức độ */
+
+/* Mưa nhỏ (light) - Xanh dương nhạt */
+.alert-item.rain-light {
+  background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
+  border: 2px solid #3b82f6;
+  border-left: 4px solid #2563eb;
+}
+
+.alert-item.rain-continuous.rain-light {
+  background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
+  border: 2px solid #3b82f6;
+  border-left: 5px solid #2563eb;
+}
+
+.alert-item.rain-frequent.rain-light {
+  background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
+  border: 2px solid #3b82f6;
+  border-left: 4px solid #2563eb;
+}
+
+/* Mưa vừa (moderate) - Vàng/cam */
+.alert-item.rain-moderate {
+  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+  border: 2px solid #f59e0b;
+  border-left: 4px solid #d97706;
+}
+
+.alert-item.rain-continuous.rain-moderate {
+  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+  border: 3px solid #f59e0b;
+  border-left: 5px solid #d97706;
+  animation: pulse-warning-moderate 2s ease-in-out infinite;
+}
+
+.alert-item.rain-frequent.rain-moderate {
+  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+  border: 2px solid #f59e0b;
+  border-left: 5px solid #d97706;
+}
+
+/* Mưa lớn (heavy) - Đỏ */
+.alert-item.rain-heavy {
+  background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
+  border: 2px solid #dc2626;
+  border-left: 4px solid #991b1b;
+}
+
+.alert-item.rain-continuous.rain-heavy {
+  background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
+  border: 3px solid #dc2626;
+  border-left: 6px solid #991b1b;
+  animation: pulse-warning 2s ease-in-out infinite;
+}
+
+.alert-item.rain-frequent.rain-heavy {
+  background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
+  border: 2px solid #dc2626;
+  border-left: 5px solid #991b1b;
+}
+
+@keyframes pulse-warning {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(220, 38, 38, 0);
+  }
+}
+
+@keyframes pulse-warning-moderate {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(245, 158, 11, 0);
+  }
+}
+
+.alert-header {
+  font-weight: 700;
+  font-size: 14px;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.alert-details {
+  font-size: 12px;
+  line-height: 1.6;
+  margin-top: 6px;
+}
+
+.alert-details > div {
+  margin: 4px 0;
+}
+
+.alert-advice {
+  margin-top: 8px;
+  padding: 8px;
+  background: rgba(255, 255, 255, 0.5);
+  border-radius: 6px;
+  font-weight: 600;
+  font-style: italic;
+}
+
 .route-detail {
   font-size: 12px;
   margin-top: 4px;
   padding-left: 8px;
   color: #78350f;
+}
+
+.alert-item.info .route-detail {
+  color: #1e40af;
+}
+
+.incident-info {
+  font-size: 11px;
+  margin-top: 4px;
+  padding-left: 12px;
+  color: #6b7280;
+  font-style: italic;
+}
+
+.route-advice {
+  margin-top: 8px;
+  padding: 6px 8px;
+  background: rgba(255, 255, 255, 0.6);
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+/* Road Closure Styles - Chi tiết hơn */
+.road-closure-critical {
+  border: 3px solid #dc2626;
+  box-shadow: 0 4px 6px rgba(220, 38, 38, 0.2);
+}
+
+.road-closure-info {
+  border: 2px solid #3b82f6;
+}
+
+.alert-subheader {
+  font-size: 13px;
+  font-weight: 700;
+  margin-top: 4px;
+  color: #991b1b;
+  text-align: center;
+  padding: 6px;
+  background: rgba(255, 255, 255, 0.5);
+  border-radius: 4px;
+}
+
+.routes-section {
+  margin: 12px 0;
+}
+
+.section-title {
+  font-weight: 700;
+  font-size: 13px;
+  margin-bottom: 8px;
+  padding: 6px 8px;
+  border-radius: 4px;
+}
+
+.closed-section .section-title {
+  background: rgba(220, 38, 38, 0.1);
+  color: #991b1b;
+}
+
+.open-section .section-title {
+  background: rgba(16, 185, 129, 0.1);
+  color: #065f46;
+}
+
+.closed-route-item,
+.open-route-item {
+  margin: 8px 0;
+  padding: 10px;
+  border-radius: 6px;
+  border-left: 4px solid;
+}
+
+.closed-route-item {
+  background: rgba(254, 226, 226, 0.5);
+  border-left-color: #dc2626;
+}
+
+.closed-route-item.critical-route {
+  background: #fee2e2;
+  border-left-width: 6px;
+}
+
+.open-route-item {
+  background: rgba(209, 250, 229, 0.5);
+  border-left-color: #10b981;
+}
+
+.route-name-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.route-icon {
+  font-size: 16px;
+}
+
+.route-name {
+  flex: 1;
+  font-weight: 600;
+  font-size: 13px;
+  color: #111827;
+}
+
+.route-status-badge {
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.route-status-badge.closed {
+  background: #dc2626;
+  color: white;
+}
+
+.route-status-badge.open {
+  background: #10b981;
+  color: white;
+}
+
+.route-description {
+  font-size: 12px;
+  color: #6b7280;
+  margin-left: 24px;
+  margin-bottom: 6px;
+}
+
+.incident-count {
+  font-size: 11px;
+  color: #dc2626;
+  margin-left: 24px;
+  margin-bottom: 4px;
+  font-weight: 600;
+}
+
+.incident-list {
+  margin-left: 24px;
+  margin-top: 6px;
+}
+
+.incident-item {
+  font-size: 11px;
+  color: #6b7280;
+  padding: 3px 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.incident-icon {
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.alert-advice.critical {
+  background: rgba(220, 38, 38, 0.1);
+  color: #991b1b;
+  font-weight: 700;
+  border: 2px solid #dc2626;
 }
 
 /* Modal */

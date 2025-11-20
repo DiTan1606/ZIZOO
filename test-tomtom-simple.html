@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test TomTom API Key</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            border-bottom: 3px solid #3b82f6;
+            padding-bottom: 10px;
+        }
+        button {
+            background: #3b82f6;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            margin: 10px 5px;
+        }
+        button:hover {
+            background: #2563eb;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+        .success {
+            background: #d1fae5;
+            color: #065f46;
+            border-left: 4px solid #10b981;
+        }
+        .error {
+            background: #fee2e2;
+            color: #991b1b;
+            border-left: 4px solid #dc2626;
+        }
+        .info {
+            background: #dbeafe;
+            color: #1e40af;
+            border-left: 4px solid #3b82f6;
+        }
+        pre {
+            background: #1f2937;
+            color: #f3f4f6;
+            padding: 15px;
+            border-radius: 8px;
+            overflow-x: auto;
+            font-size: 12px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .api-key {
+            background: #f3f4f6;
+            padding: 10px;
+            border-radius: 6px;
+            font-family: monospace;
+            word-break: break-all;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔑 Test TomTom API Key</h1>
+        
+        <div class="api-key">
+            <strong>API Key:</strong> lazvNskZKUnxr0XLLiEdbGW8BMbERuKa
+        </div>
+
+        <button onclick="testTrafficAPI()">🚗 Test Traffic API</button>
+        <button onclick="testSearchAPI()">🔍 Test Search API</button>
+        <button onclick="testRoutingAPI()">🗺️ Test Routing API</button>
+
+        <div id="result"></div>
+    </div>
+
+    <script>
+        const TOMTOM_API_KEY = 'lazvNskZKUnxr0XLLiEdbGW8BMbERuKa'; // Từ Python code
+
+        async function testTrafficAPI() {
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = '<div class="info">⏳ Testing Traffic API...</div>';
+
+            try {
+                // Test với Đà Lạt
+                const lat = 11.9404;
+                const lng = 108.4583;
+                const bbox = `${lng - 0.2},${lat - 0.2},${lng + 0.2},${lat + 0.2}`;
+
+                const url = `https://api.tomtom.com/traffic/services/5/incidentDetails?bbox=${bbox}&key=${TOMTOM_API_KEY}&fields={incidents{type,geometry{type,coordinates},properties{iconCategory,magnitudeOfDelay,events{description}}}}&language=vi-VN&t=${Date.now()}`;
+
+                console.log('Testing URL:', url);
+
+                const response = await fetch(url);
+                
+                console.log('Response status:', response.status);
+                console.log('Response headers:', [...response.headers.entries()]);
+
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`HTTP ${response.status}: ${errorText}`);
+                }
+
+                const data = await response.json();
+                
+                resultDiv.innerHTML = `
+                    <div class="success">
+                        ✅ Traffic API hoạt động!<br>
+                        Tìm thấy ${data.incidents?.length || 0} sự cố giao thông
+                    </div>
+                    <h3>Response:</h3>
+                    <pre>${JSON.stringify(data, null, 2)}</pre>
+                `;
+
+            } catch (error) {
+                console.error('Error:', error);
+                resultDiv.innerHTML = `
+                    <div class="error">
+                        ❌ Lỗi: ${error.message}
+                    </div>
+                    <h3>Có thể do:</h3>
+                    <ul>
+                        <li>API key không hợp lệ</li>
+                        <li>API key chưa được kích hoạt Traffic API</li>
+                        <li>Đã hết quota</li>
+                        <li>CORS issue (cần test từ domain được whitelist)</li>
+                    </ul>
+                    <h3>Giải pháp:</h3>
+                    <ol>
+                        <li>Kiểm tra TomTom Dashboard: <a href="https://developer.tomtom.com/user/me/apps" target="_blank">https://developer.tomtom.com/user/me/apps</a></li>
+                        <li>Đảm bảo Traffic API được enable</li>
+                        <li>Kiểm tra quota còn lại</li>
+                        <li>Thử tạo API key mới</li>
+                    </ol>
+                `;
+            }
+        }
+
+        async function testSearchAPI() {
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = '<div class="info">⏳ Testing Search API...</div>';
+
+            try {
+                const url = `https://api.tomtom.com/search/2/search/Đà Lạt.json?key=${TOMTOM_API_KEY}&language=vi-VN`;
+
+                console.log('Testing URL:', url);
+
+                const response = await fetch(url);
+                
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`HTTP ${response.status}: ${errorText}`);
+                }
+
+                const data = await response.json();
+                
+                resultDiv.innerHTML = `
+                    <div class="success">
+                        ✅ Search API hoạt động!<br>
+                        Tìm thấy ${data.results?.length || 0} kết quả
+                    </div>
+                    <h3>Response:</h3>
+                    <pre>${JSON.stringify(data, null, 2)}</pre>
+                `;
+
+            } catch (error) {
+                console.error('Error:', error);
+                resultDiv.innerHTML = `<div class="error">❌ Lỗi: ${error.message}</div>`;
+            }
+        }
+
+        async function testRoutingAPI() {
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = '<div class="info">⏳ Testing Routing API...</div>';
+
+            try {
+                // Route từ TP.HCM đến Đà Lạt
+                const url = `https://api.tomtom.com/routing/1/calculateRoute/10.8231,106.6297:11.9404,108.4583/json?key=${TOMTOM_API_KEY}&language=vi-VN`;
+
+                console.log('Testing URL:', url);
+
+                const response = await fetch(url);
+                
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`HTTP ${response.status}: ${errorText}`);
+                }
+
+                const data = await response.json();
+                
+                resultDiv.innerHTML = `
+                    <div class="success">
+                        ✅ Routing API hoạt động!<br>
+                        Tìm thấy ${data.routes?.length || 0} tuyến đường
+                    </div>
+                    <h3>Response:</h3>
+                    <pre>${JSON.stringify(data, null, 2)}</pre>
+                `;
+
+            } catch (error) {
+                console.error('Error:', error);
+                resultDiv.innerHTML = `<div class="error">❌ Lỗi: ${error.message}</div>`;
+            }
+        }
+
+        // Auto test khi load
+        window.onload = () => {
+            document.getElementById('result').innerHTML = `
+                <div class="info">
+                    ℹ️ Click vào các nút bên trên để test API
+                </div>
+            `;
+        };
+    </script>
+</body>
+</html>

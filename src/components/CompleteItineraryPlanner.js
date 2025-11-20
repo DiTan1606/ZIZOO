@@ -251,8 +251,11 @@ const CompleteItineraryPlanner = () => {
             }
             
             // Tính lại tổng chi phí
-            const departurePrice = (direction === 'departure' ? flight : selectedDepartureFlight || updatedItinerary.transport.intercity.departure.recommended).pricePerPerson || 0;
-            const returnPrice = (direction === 'return' ? flight : selectedReturnFlight || updatedItinerary.transport.intercity.return.recommended).pricePerPerson || 0;
+            const departureFlight = direction === 'departure' ? flight : (selectedDepartureFlight || updatedItinerary.transport.intercity.departure.recommended);
+            const returnFlight = direction === 'return' ? flight : (selectedReturnFlight || updatedItinerary.transport.intercity.return.recommended);
+            
+            const departurePrice = departureFlight?.pricePerPerson || 0;
+            const returnPrice = returnFlight?.pricePerPerson || 0;
             const travelers = updatedItinerary.header.travelers.total;
             
             const newTransportCost = (departurePrice + returnPrice) * travelers;

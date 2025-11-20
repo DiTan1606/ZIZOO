@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test TomTom Traffic API</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            border-bottom: 3px solid #3b82f6;
+            padding-bottom: 10px;
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 20px;
+            background: #f9fafb;
+            border-radius: 8px;
+            border-left: 4px solid #3b82f6;
+        }
+        .location-input {
+            display: grid;
+            grid-template-columns: 1fr 1fr 200px;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        input, select {
+            padding: 10px;
+            border: 2px solid #e5e7eb;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+        button {
+            background: #3b82f6;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+        button:hover {
+            background: #2563eb;
+        }
+        button:disabled {
+            background: #9ca3af;
+            cursor: not-allowed;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            background: white;
+            border-radius: 8px;
+            border: 2px solid #e5e7eb;
+        }
+        .incident {
+            padding: 12px;
+            margin: 10px 0;
+            border-radius: 6px;
+            border-left: 4px solid #6b7280;
+        }
+        .incident.critical {
+            background: #fee2e2;
+            border-left-color: #dc2626;
+        }
+        .incident.high {
+            background: #fef3c7;
+            border-left-color: #f59e0b;
+        }
+        .incident.medium {
+            background: #dbeafe;
+            border-left-color: #3b82f6;
+        }
+        .incident-header {
+            font-weight: 600;
+            margin-bottom: 6px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .incident-desc {
+            font-size: 14px;
+            color: #6b7280;
+        }
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+        .stat-card {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            border: 2px solid #e5e7eb;
+            text-align: center;
+        }
+        .stat-value {
+            font-size: 32px;
+            font-weight: 700;
+            color: #3b82f6;
+        }
+        .stat-label {
+            font-size: 12px;
+            color: #6b7280;
+            margin-top: 5px;
+        }
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #6b7280;
+        }
+        .error {
+            background: #fee2e2;
+            color: #991b1b;
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 4px solid #dc2626;
+        }
+        .success {
+            background: #d1fae5;
+            color: #065f46;
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 4px solid #10b981;
+        }
+        pre {
+            background: #1f2937;
+            color: #f3f4f6;
+            padding: 15px;
+            border-radius: 8px;
+            overflow-x: auto;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚗 Test TomTom Traffic API</h1>
+        
+        <div class="test-section">
+            <h3>Chọn Địa Điểm</h3>
+            <div class="location-input">
+                <select id="locationSelect" onchange="updateCoords()">
+                    <option value="">-- Chọn địa điểm --</option>
+                    <option value="10.8231,106.6297">TP. Hồ Chí Minh</option>
+                    <option value="11.9404,108.4583">Đà Lạt</option>
+                    <option value="16.0544,108.2022">Đà Nẵng</option>
+                    <option value="21.0285,105.8542">Hà Nội</option>
+                    <option value="12.2388,109.1967">Nha Trang</option>
+                    <option value="10.2899,103.9840">Phú Quốc</option>
+                    <option value="22.3364,103.8438">Sapa</option>
+                    <option value="23.1426,105.3458">Hà Giang</option>
+                </select>
+                <input type="text" id="latInput" placeholder="Latitude" value="11.9404">
+                <input type="text" id="lngInput" placeholder="Longitude" value="108.4583">
+            </div>
+            <button onclick="checkTraffic()" id="checkBtn">🔍 Kiểm Tra Traffic</button>
+        </div>
+
+        <div id="result"></div>
+    </div>
+
+    <script>
+        const TOMTOM_API_KEY = 'lazvNskZKUnxr0XLLiEdbGW8BMbERuKa'; // Từ Python code
+
+        function updateCoords() {
+            const select = document.getElementById('locationSelect');
+            const coords = select.value.split(',');
+            if (coords.length === 2) {
+                document.getElementById('latInput').value = coords[0];
+                document.getElementById('lngInput').value = coords[1];
+            }
+        }
+
+        async function checkTraffic() {
+            const lat = parseFloat(document.getElementById('latInput').value);
+            const lng = parseFloat(document.getElementById('lngInput').value);
+            const resultDiv = document.getElementById('result');
+            const btn = document.getElementById('checkBtn');
+
+            if (isNaN(lat) || isNaN(lng)) {
+                resultDiv.innerHTML = '<div class="error">❌ Vui lòng nhập tọa độ hợp lệ</div>';
+                return;
+            }
+
+            btn.disabled = true;
+            resultDiv.innerHTML = '<div class="loading">⏳ Đang kiểm tra traffic...</div>';
+
+            try {
+                // Tạo bbox (±0.2 độ ~ 20km)
+                const bboxSize = 0.2;
+                const bbox = `${lng - bboxSize},${lat - bboxSize},${lng + bboxSize},${lat + bboxSize}`;
+
+                console.log('Checking bbox:', bbox);
+
+                const url = `https://api.tomtom.com/traffic/services/5/incidentDetails?bbox=${bbox}&key=${TOMTOM_API_KEY}&fields={incidents{type,geometry{type,coordinates},properties{iconCategory,magnitudeOfDelay,events{description,code}}}}&language=vi-VN&t=${Date.now()}`;
+
+                const response = await fetch(url);
+                
+                if (!response.ok) {
+                    throw new Error(`API Error: ${response.status} ${response.statusText}`);
+                }
+
+                const data = await response.json();
+                const incidents = data.incidents || [];
+
+                console.log('API Response:', data);
+
+                // Phân loại incidents
+                const byCategory = {
+                    roadClosed: [],
+                    construction: [],
+                    jam: [],
+                    accident: [],
+                    weather: [],
+                    other: []
+                };
+
+                incidents.forEach(incident => {
+                    const cat = incident.properties.iconCategory;
+                    const desc = incident.properties.events?.[0]?.description || 'Sự cố giao thông';
+                    const delay = incident.properties.magnitudeOfDelay || 0;
+
+                    const item = {
+                        category: cat,
+                        description: desc,
+                        delay,
+                        coords: incident.geometry.coordinates
+                    };
+
+                    if (cat === 8) byCategory.roadClosed.push(item);
+                    else if (cat === 9) byCategory.construction.push(item);
+                    else if (cat === 6) byCategory.jam.push(item);
+                    else if (cat === 1) byCategory.accident.push(item);
+                    else if (cat === 4 || cat === 11) byCategory.weather.push(item);
+                    else byCategory.other.push(item);
+                });
+
+                // Hiển thị kết quả
+                let html = '<div class="result">';
+
+                if (incidents.length === 0) {
+                    html += '<div class="success">✅ Không có sự cố giao thông trong khu vực này</div>';
+                } else {
+                    html += `<div class="success">✅ Tìm thấy ${incidents.length} sự cố giao thông</div>`;
+
+                    // Stats
+                    html += '<div class="stats">';
+                    html += `<div class="stat-card"><div class="stat-value">${incidents.length}</div><div class="stat-label">Tổng sự cố</div></div>`;
+                    html += `<div class="stat-card"><div class="stat-value">${byCategory.roadClosed.length}</div><div class="stat-label">Đóng đường</div></div>`;
+                    html += `<div class="stat-card"><div class="stat-value">${byCategory.construction.length}</div><div class="stat-label">Thi công</div></div>`;
+                    html += `<div class="stat-card"><div class="stat-value">${byCategory.jam.length}</div><div class="stat-label">Kẹt xe</div></div>`;
+                    html += `<div class="stat-card"><div class="stat-value">${byCategory.accident.length}</div><div class="stat-label">Tai nạn</div></div>`;
+                    html += `<div class="stat-card"><div class="stat-value">${byCategory.weather.length}</div><div class="stat-label">Thời tiết</div></div>`;
+                    html += '</div>';
+
+                    // Incidents
+                    html += '<h3>Chi Tiết Sự Cố</h3>';
+
+                    // Đóng đường
+                    if (byCategory.roadClosed.length > 0) {
+                        html += '<h4>🚫 Đóng Đường</h4>';
+                        byCategory.roadClosed.forEach(item => {
+                            html += `<div class="incident critical">
+                                <div class="incident-header">🚫 ${getCategoryName(item.category)}</div>
+                                <div class="incident-desc">${item.description}</div>
+                            </div>`;
+                        });
+                    }
+
+                    // Thi công
+                    if (byCategory.construction.length > 0) {
+                        html += '<h4>🚧 Thi Công</h4>';
+                        byCategory.construction.forEach(item => {
+                            html += `<div class="incident medium">
+                                <div class="incident-header">🚧 ${getCategoryName(item.category)}</div>
+                                <div class="incident-desc">${item.description}</div>
+                            </div>`;
+                        });
+                    }
+
+                    // Kẹt xe
+                    if (byCategory.jam.length > 0) {
+                        html += '<h4>🚗 Kẹt Xe</h4>';
+                        byCategory.jam.forEach(item => {
+                            const severity = item.delay > 600 ? 'critical' : 'high';
+                            html += `<div class="incident ${severity}">
+                                <div class="incident-header">🚗 ${getCategoryName(item.category)}</div>
+                                <div class="incident-desc">${item.description} (Delay: ${item.delay}s)</div>
+                            </div>`;
+                        });
+                    }
+
+                    // Tai nạn
+                    if (byCategory.accident.length > 0) {
+                        html += '<h4>🚨 Tai Nạn</h4>';
+                        byCategory.accident.forEach(item => {
+                            html += `<div class="incident high">
+                                <div class="incident-header">🚨 ${getCategoryName(item.category)}</div>
+                                <div class="incident-desc">${item.description}</div>
+                            </div>`;
+                        });
+                    }
+
+                    // Thời tiết
+                    if (byCategory.weather.length > 0) {
+                        html += '<h4>🌧️ Thời Tiết</h4>';
+                        byCategory.weather.forEach(item => {
+                            html += `<div class="incident high">
+                                <div class="incident-header">🌧️ ${getCategoryName(item.category)}</div>
+                                <div class="incident-desc">${item.description}</div>
+                            </div>`;
+                        });
+                    }
+
+                    // Raw data
+                    html += '<h3>Raw API Response</h3>';
+                    html += `<pre>${JSON.stringify(data, null, 2)}</pre>`;
+                }
+
+                html += '</div>';
+                resultDiv.innerHTML = html;
+
+            } catch (error) {
+                console.error('Error:', error);
+                resultDiv.innerHTML = `<div class="error">❌ Lỗi: ${error.message}</div>`;
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        function getCategoryName(category) {
+            const names = {
+                0: 'Unknown',
+                1: 'Tai nạn',
+                2: 'Sương mù',
+                3: 'Điều kiện nguy hiểm',
+                4: 'Mưa',
+                5: 'Băng tuyết',
+                6: 'Tắc đường',
+                7: 'Đóng làn',
+                8: 'Đóng đường',
+                9: 'Thi công',
+                10: 'Gió mạnh',
+                11: 'Ngập lụt',
+                14: 'Xe hỏng'
+            };
+            return names[category] || `Category ${category}`;
+        }
+
+        // Auto-load Đà Lạt
+        window.onload = () => {
+            document.getElementById('locationSelect').value = '11.9404,108.4583';
+            updateCoords();
+        };
+    </script>
+</body>
+</html>

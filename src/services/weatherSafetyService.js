@@ -270,11 +270,11 @@ export const getWeatherData = async (lat, lng) => {
   }
 };
 
-// Phân tích traffic dùng Google Maps Directions API
-// Kiểm tra xem có route đến destination không → Nếu không có = đường đóng
+// Phân tích traffic dùng TomTom Traffic API
+// Kiểm tra incidents (kẹt xe, đóng đường, thi công) trong khu vực
 export const analyzeTrafficIncidents = async (lat, lng, weather, destinationName) => {
   try {
-    console.log(`🚗 Analyzing traffic for ${destinationName} using Google Maps...`);
+    console.log(`🚗 Analyzing traffic for ${destinationName} using TomTom API...`);
     
     const byReason = {
       weather: [],
@@ -285,86 +285,90 @@ export const analyzeTrafficIncidents = async (lat, lng, weather, destinationName
     };
     
     const critical = [];
-    const GOOGLE_MAPS_API_KEY = process.env.REACT_APP_GOOGLE_MAPS_API_KEY;
     
-    // Kiểm tra route từ TP.HCM đến destination bằng Google Maps JavaScript SDK
-    console.log(`🗺️ Google Maps SDK available: ${!!(window.google && window.google.maps)}`);
+    // Tạo bbox bao quanh destination (±0.2 độ ~ 20km)
+    const bboxSize = 0.2;
+    const bbox = `${lng - bboxSize},${lat - bboxSize},${lng + bboxSize},${lat + bboxSize}`;
     
-    if (window.google && window.google.maps) {
-      try {
-        const directionsService = new window.google.maps.DirectionsService();
-        const origin = { lat: 10.8231, lng: 106.6297 }; // TP.HCM
-        const dest = { lat, lng };
-        
-        // Tạo Promise để await kết quả
-        const routeCheck = await new Promise((resolve) => {
-          directionsService.route(
-            {
-              origin,
-              destination: dest,
-              travelMode: window.google.maps.TravelMode.DRIVING
-            },
-            (result, status) => {
-              resolve({ result, status });
-            }
-          );
-        });
-        
-        console.log(`📍 Google Maps Directions status: ${routeCheck.status}`);
-        
-        // Nếu không tìm thấy route = đường đóng
-        if (routeCheck.status === 'ZERO_RESULTS' || routeCheck.status === 'NOT_FOUND') {
-          const warning = {
-            category: 8,
-            categoryName: 'Không tìm thấy đường đi',
-            description: `Không thể tìm thấy đường đi đến ${destinationName}. Có thể đường bị đóng hoặc không thể đi bằng đường bộ.`,
-            reason: 'no_route_found',
-            severity: 'critical'
-          };
-          critical.push(warning);
-          byReason.roadClosed.push(warning);
-          
-          console.log(`🚫 NO ROUTE FOUND to ${destinationName}!`);
-        } else if (routeCheck.status === 'OK') {
-          console.log(`✅ Route found to ${destinationName}`);
-          
-          // Kiểm tra warnings trong route
-          const route = routeCheck.result.routes[0];
-          if (route.warnings && route.warnings.length > 0) {
-            route.warnings.forEach(warning => {
-              const warningData = {
-                category: 6,
-                categoryName: 'Cảnh báo đường đi',
-                description: warning,
-                reason: 'route_warning'
-              };
-              critical.push(warningData);
-              byReason.other.push(warningData);
-              
-              console.log(`⚠️ Route warning: ${warning}`);
-            });
-          }
-        }
-      } catch (apiError) {
-        console.error('❌ Google Maps API error:', apiError);
-      }
-    } else {
-      console.warn(`⚠️ Google Maps SDK not loaded for ${destinationName}, skipping route check`);
+    console.log(`🔍 Checking TomTom traffic incidents in bbox: ${bbox}`);
+    
+    try {
+      const res = await fetch(
+        `https://api.tomtom.com/traffic/services/5/incidentDetails?bbox=${bbox}&key=${TOMTOM_API_KEY}&fields={incidents{type,geometry{type,coordinates},properties{iconCategory,magnitudeOfDelay,events{description,code}}}}&language=vi-VN&t=${Date.now()}`
+      );
       
-      // Nếu Google Maps chưa load, kiểm tra dựa trên tên địa điểm
-      // Đà Lạt thường có vấn đề về đèo
-      const isDalat = destinationName.toLowerCase().includes('đà lạt') || destinationName.toLowerCase().includes('da lat');
-      if (isDalat) {
-        console.log(`⚠️ Đà Lạt detected but Google Maps not available, adding general warning`);
-        const warning = {
-          category: 6,
-          categoryName: 'Cảnh báo đường đèo',
-          description: 'Đường vào Đà Lạt có nhiều đèo. Nên kiểm tra tình trạng đường trước khi đi.',
-          reason: 'mountain_pass_general'
-        };
-        critical.push(warning);
-        byReason.other.push(warning);
+      if (!res.ok) {
+        console.error(`TomTom API error: ${res.status}`);
+      } else {
+        const data = await res.json();
+        const incidents = data.incidents || [];
+        
+        console.log(`📊 Found ${incidents.length} traffic incidents in ${destinationName} area`);
+        
+        // Phân loại incidents theo category
+        incidents.forEach(incident => {
+          const cat = incident.properties.iconCategory;
+          const desc = incident.properties.events?.[0]?.description || 'Sự cố giao thông';
+          const code = incident.properties.events?.[0]?.code || '';
+          const delay = incident.properties.magnitudeOfDelay || 0;
+          
+          const incidentData = {
+            category: cat,
+            categoryName: getCategoryName(cat),
+            description: desc,
+            delay,
+            code
+          };
+          
+          // Phân loại theo category
+          // 0: Unknown, 1: Accident, 2: Fog, 3: Dangerous Conditions, 4: Rain
+          // 5: Ice, 6: Jam, 7: Lane Closed, 8: Road Closed, 9: Road Works
+          // 10: Wind, 11: Flooding, 14: Broken Down Vehicle
+          
+          if (cat === 8) {
+            // Đóng đường
+            incidentData.severity = 'critical';
+            critical.push(incidentData);
+            byReason.roadClosed.push(incidentData);
+            console.log(`🚫 Road closed: ${desc}`);
+          } else if (cat === 9) {
+            // Thi công
+            critical.push(incidentData);
+            byReason.construction.push(incidentData);
+            console.log(`🚧 Construction: ${desc}`);
+          } else if (cat === 6 && delay > 600) {
+            // Tắc đường nghiêm trọng (>10 phút)
+            incidentData.severity = 'high';
+            critical.push(incidentData);
+            byReason.roadClosed.push(incidentData);
+            console.log(`🚗 Heavy traffic jam (${delay}s delay): ${desc}`);
+          } else if (cat === 1) {
+            // Tai nạn
+            critical.push(incidentData);
+            byReason.accident.push(incidentData);
+            console.log(`🚨 Accident: ${desc}`);
+          } else if (cat === 4 || cat === 11) {
+            // Mưa hoặc ngập lụt
+            incidentData.severity = 'high';
+            critical.push(incidentData);
+            byReason.weather.push(incidentData);
+            console.log(`🌧️ Weather incident: ${desc}`);
+          } else if (cat === 3) {
+            // Điều kiện nguy hiểm
+            incidentData.severity = 'high';
+            critical.push(incidentData);
+            byReason.other.push(incidentData);
+            console.log(`⚠️ Dangerous conditions: ${desc}`);
+          } else if (cat === 7) {
+            // Đóng làn đường
+            critical.push(incidentData);
+            byReason.other.push(incidentData);
+            console.log(`⚠️ Lane closed: ${desc}`);
+          }
+        });
       }
+    } catch (apiError) {
+      console.error('❌ TomTom API error:', apiError);
     }
     
     // Kiểm tra điều kiện thời tiết nguy hiểm
@@ -635,9 +639,14 @@ export const analyzeTripSafety = async (trip) => {
   const { lat, lng } = await getDestinationCoords(trip.destination);
   const destinationName = typeof trip.destination === 'string' ? trip.destination : trip.destination.name;
   
+  // Tính số ngày của chuyến đi
+  const tripDuration = calculateTripDuration(trip.startDate, trip.endDate);
+  
   console.log('🔍 Analyzing trip:', {
     destination: destinationName,
     startDate: trip.startDate,
+    endDate: trip.endDate,
+    duration: tripDuration,
     daysUntil
   });
   
@@ -658,6 +667,9 @@ export const analyzeTripSafety = async (trip) => {
 
   if (!weather) return null;
 
+  // Phân tích thời tiết cho TOÀN BỘ chuyến đi
+  const tripWeatherAnalysis = analyzeTripWeather(trip, weather);
+  
   // Tìm thời tiết ngày đi - TỔNG HỢP CẢ NGÀY
   // Parse startDate (có thể là DD/MM/YYYY hoặc ISO)
   let tripDate;
@@ -768,6 +780,100 @@ export const analyzeTripSafety = async (trip) => {
   let score = 100;
   const issues = [];
 
+  // CẢNH BÁO ĐẶC BIỆT: Mưa liên tục suốt chuyến đi
+  if (tripWeatherAnalysis.rainyDaysCount > 0) {
+    const rainyPercentage = (tripWeatherAnalysis.rainyDaysCount / tripWeatherAnalysis.totalDays) * 100;
+    const avgRain = tripWeatherAnalysis.avgRainPerDay;
+    
+    // Phân loại mức độ mưa dựa trên lượng mưa trung bình
+    let rainIntensity = 'light'; // Mặc định: mưa nhỏ
+    if (avgRain > 50) {
+      rainIntensity = 'heavy'; // Mưa lớn
+    } else if (avgRain > 20) {
+      rainIntensity = 'moderate'; // Mưa vừa
+    }
+    
+    if (rainyPercentage === 100) {
+      // TẤT CẢ các ngày đều mưa
+      let scoreDeduction = 20; // Mặc định cho mưa nhỏ
+      let severity = 'medium';
+      
+      if (rainIntensity === 'heavy') {
+        scoreDeduction = 50;
+        severity = 'critical';
+        console.log(`🌧️🌧️🌧️ CRITICAL: Mưa LỚN SUỐT ${tripWeatherAnalysis.totalDays} ngày (${avgRain}mm/ngày)!`);
+      } else if (rainIntensity === 'moderate') {
+        scoreDeduction = 35;
+        severity = 'high';
+        console.log(`🌧️🌧️ HIGH: Mưa VỪA SUỐT ${tripWeatherAnalysis.totalDays} ngày (${avgRain}mm/ngày)`);
+      } else {
+        console.log(`🌧️ MEDIUM: Mưa NHỎ SUỐT ${tripWeatherAnalysis.totalDays} ngày (${avgRain}mm/ngày)`);
+      }
+      
+      score -= scoreDeduction;
+      issues.push({ 
+        type: 'continuous_rain_all_days', 
+        severity,
+        rainIntensity,
+        rainyDays: tripWeatherAnalysis.rainyDaysCount,
+        totalDays: tripWeatherAnalysis.totalDays,
+        avgRain
+      });
+    } else if (rainyPercentage >= 70) {
+      // Hơn 70% số ngày có mưa
+      let scoreDeduction = 15;
+      let severity = 'medium';
+      
+      if (rainIntensity === 'heavy') {
+        scoreDeduction = 35;
+        severity = 'high';
+        console.log(`🌧️🌧️ HIGH: Mưa LỚN ${tripWeatherAnalysis.rainyDaysCount}/${tripWeatherAnalysis.totalDays} ngày (${avgRain}mm/ngày)`);
+      } else if (rainIntensity === 'moderate') {
+        scoreDeduction = 25;
+        severity = 'medium';
+        console.log(`🌧️ MEDIUM: Mưa VỪA ${tripWeatherAnalysis.rainyDaysCount}/${tripWeatherAnalysis.totalDays} ngày (${avgRain}mm/ngày)`);
+      } else {
+        console.log(`🌧️ LOW: Mưa NHỎ ${tripWeatherAnalysis.rainyDaysCount}/${tripWeatherAnalysis.totalDays} ngày (${avgRain}mm/ngày)`);
+      }
+      
+      score -= scoreDeduction;
+      issues.push({ 
+        type: 'continuous_rain_most_days', 
+        severity,
+        rainIntensity,
+        rainyDays: tripWeatherAnalysis.rainyDaysCount,
+        totalDays: tripWeatherAnalysis.totalDays,
+        avgRain
+      });
+    } else if (rainyPercentage >= 50) {
+      // Khoảng nửa chuyến đi có mưa
+      let scoreDeduction = 10;
+      let severity = 'low';
+      
+      if (rainIntensity === 'heavy') {
+        scoreDeduction = 20;
+        severity = 'medium';
+        console.log(`🌧️ MEDIUM: Mưa LỚN ${tripWeatherAnalysis.rainyDaysCount}/${tripWeatherAnalysis.totalDays} ngày (${avgRain}mm/ngày)`);
+      } else if (rainIntensity === 'moderate') {
+        scoreDeduction = 15;
+        severity = 'low';
+        console.log(`🌧️ LOW: Mưa VỪA ${tripWeatherAnalysis.rainyDaysCount}/${tripWeatherAnalysis.totalDays} ngày (${avgRain}mm/ngày)`);
+      } else {
+        console.log(`ℹ️ INFO: Mưa NHỎ ${tripWeatherAnalysis.rainyDaysCount}/${tripWeatherAnalysis.totalDays} ngày (${avgRain}mm/ngày)`);
+      }
+      
+      score -= scoreDeduction;
+      issues.push({ 
+        type: 'frequent_rain', 
+        severity,
+        rainIntensity,
+        rainyDays: tripWeatherAnalysis.rainyDaysCount,
+        totalDays: tripWeatherAnalysis.totalDays,
+        avgRain
+      });
+    }
+  }
+
   // Phân tích thời tiết hiện tại
   if (weather.current.rain > 100) {
     score -= 25;
@@ -801,6 +907,49 @@ export const analyzeTripSafety = async (trip) => {
     }
   }
 
+  // Kiểm tra critical routes (đèo, đường chính)
+  const criticalRoutesCheck = await checkCriticalRoutes(destinationName);
+  
+  if (criticalRoutesCheck.hasCriticalRoutes) {
+    console.log(`🛣️ Critical routes check for ${destinationName}:`, {
+      total: criticalRoutesCheck.totalRoutes,
+      open: criticalRoutesCheck.openRoutes,
+      closed: criticalRoutesCheck.closedRoutes,
+      criticalClosed: criticalRoutesCheck.criticalRoutesClosed
+    });
+    
+    // CHỈ cảnh báo nghiêm trọng khi TẤT CẢ đường chính đều đóng
+    if (criticalRoutesCheck.allCriticalClosed) {
+      score -= 50;
+      issues.push({
+        type: 'all_critical_routes_closed',
+        severity: 'critical',
+        routes: criticalRoutesCheck.routes.filter(r => !r.isOpen && r.importance === 'critical')
+      });
+      console.log(`🚫 CRITICAL: TẤT CẢ đường chính đều đóng!`);
+    } 
+    // Một số đường chính bị đóng → Cảnh báo THÔNG TIN (không trừ điểm nhiều)
+    else if (criticalRoutesCheck.criticalRoutesClosed > 0) {
+      score -= 5; // Chỉ trừ 5 điểm (nhẹ)
+      issues.push({
+        type: 'some_critical_routes_closed',
+        severity: 'info', // Đổi từ 'high' sang 'info'
+        routes: criticalRoutesCheck.routes.filter(r => !r.isOpen && r.importance === 'critical')
+      });
+      console.log(`ℹ️ INFO: ${criticalRoutesCheck.criticalRoutesClosed} đường chính bị đóng (còn đường khác)`);
+    }
+    // Đường phụ bị đóng → Chỉ thông tin
+    else if (criticalRoutesCheck.closedRoutes > 0) {
+      score -= 3; // Trừ rất ít
+      issues.push({
+        type: 'secondary_routes_closed',
+        severity: 'info',
+        routes: criticalRoutesCheck.routes.filter(r => !r.isOpen)
+      });
+      console.log(`ℹ️ INFO: ${criticalRoutesCheck.closedRoutes} đường phụ bị đóng`);
+    }
+  }
+  
   // Phân tích giao thông THÔNG MINH (cho tất cả điểm đến)
   if (trafficAnalysis.hasCriticalIssues) {
     // Đường đóng do thời tiết → NGHIÊM TRỌNG
@@ -863,6 +1012,118 @@ export const analyzeTripSafety = async (trip) => {
     issues,
     updatedAt: new Date()
   };
+};
+
+// Helper: Tính số ngày của chuyến đi
+const calculateTripDuration = (startDate, endDate) => {
+  if (!startDate || !endDate) return 1; // Default 1 ngày nếu không có endDate
+  
+  const start = parseDate(startDate);
+  const end = parseDate(endDate);
+  
+  if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+    return 1;
+  }
+  
+  const diffTime = Math.abs(end - start);
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1; // +1 để bao gồm cả ngày cuối
+  
+  return diffDays;
+};
+
+// Helper: Parse date từ nhiều format
+const parseDate = (dateStr) => {
+  if (!dateStr) return new Date();
+  
+  if (typeof dateStr === 'string' && dateStr.includes('/')) {
+    const parts = dateStr.split('/');
+    if (parts.length === 3) {
+      const [day, month, year] = parts;
+      const isoDate = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+      return new Date(isoDate);
+    }
+  }
+  
+  return new Date(dateStr);
+};
+
+// Helper: Phân tích thời tiết cho toàn bộ chuyến đi
+const analyzeTripWeather = (trip, weather) => {
+  const startDate = parseDate(trip.startDate);
+  const endDate = parseDate(trip.endDate || trip.startDate);
+  
+  startDate.setHours(0, 0, 0, 0);
+  endDate.setHours(0, 0, 0, 0);
+  
+  const tripDays = [];
+  const currentDate = new Date(startDate);
+  
+  // Tạo danh sách các ngày trong chuyến đi
+  while (currentDate <= endDate) {
+    tripDays.push(new Date(currentDate));
+    currentDate.setDate(currentDate.getDate() + 1);
+  }
+  
+  console.log(`📅 Analyzing weather for ${tripDays.length} days:`, 
+    tripDays.map(d => d.toLocaleDateString('vi-VN')).join(', ')
+  );
+  
+  // Phân tích thời tiết cho từng ngày
+  let rainyDaysCount = 0;
+  let totalRain = 0;
+  const dailyWeather = [];
+  
+  tripDays.forEach(day => {
+    // Tìm forecast cho ngày này
+    const dayForecasts = weather.forecast.filter(f => {
+      const forecastDate = new Date(f.date);
+      forecastDate.setHours(0, 0, 0, 0);
+      return forecastDate.getTime() === day.getTime();
+    });
+    
+    if (dayForecasts.length > 0) {
+      // Tổng hợp mưa trong ngày
+      const dayRain = dayForecasts.reduce((sum, f) => sum + (f.rain || 0), 0);
+      const hasRain = dayRain > 2 || dayForecasts.some(f => 
+        f.condition.includes('Rain') || 
+        f.description.includes('mưa') ||
+        (f.pop && f.pop > 0.3) // Probability of precipitation > 30%
+      );
+      
+      if (hasRain) {
+        rainyDaysCount++;
+        totalRain += dayRain;
+      }
+      
+      dailyWeather.push({
+        date: day,
+        rain: dayRain,
+        hasRain,
+        forecasts: dayForecasts.length
+      });
+      
+      console.log(`  ${day.toLocaleDateString('vi-VN')}: ${hasRain ? '🌧️' : '☀️'} (${dayRain.toFixed(1)}mm)`);
+    }
+  });
+  
+  const avgRainPerDay = rainyDaysCount > 0 ? totalRain / rainyDaysCount : 0;
+  
+  const result = {
+    totalDays: tripDays.length,
+    rainyDaysCount,
+    avgRainPerDay: Math.round(avgRainPerDay),
+    dailyWeather,
+    hasData: dailyWeather.length > 0
+  };
+  
+  console.log(`📊 Trip weather summary:`, {
+    totalDays: result.totalDays,
+    rainyDays: result.rainyDaysCount,
+    percentage: `${Math.round((rainyDaysCount / tripDays.length) * 100)}%`,
+    avgRain: `${result.avgRainPerDay}mm/day`
+  });
+  
+  return result;
 };
 
 // Helper functions
@@ -969,6 +1230,28 @@ const generateMessage = (status, issues, tripDay, trafficAnalysis) => {
   
   issues.forEach(issue => {
     switch (issue.type) {
+      case 'continuous_rain_all_days':
+        messages.push(`🌧️ MƯA SUỐT ${issue.totalDays} NGÀY (${issue.avgRain}mm/ngày)`);
+        break;
+      case 'continuous_rain_most_days':
+        messages.push(`🌧️ Mưa ${issue.rainyDays}/${issue.totalDays} ngày (${issue.avgRain}mm/ngày)`);
+        break;
+      case 'frequent_rain':
+        messages.push(`Mưa ${issue.rainyDays}/${issue.totalDays} ngày`);
+        break;
+      case 'heavy_rain_average':
+        messages.push(`Mưa lớn trung bình ${issue.avgRain}mm/ngày`);
+        break;
+      case 'all_critical_routes_closed':
+        messages.push(`🚫 TẤT CẢ đường chính đều đóng`);
+        break;
+      case 'some_critical_routes_closed':
+        const routeNames = issue.routes.map(r => r.name).join(', ');
+        messages.push(`ℹ️ ${routeNames} đang đóng (còn đường khác)`);
+        break;
+      case 'secondary_routes_closed':
+        // Không thêm vào message chính (chỉ hiển thị trong widget)
+        break;
       case 'weather_road_closure':
         messages.push(`${issue.count} đường đóng do thời tiết xấu`);
         break;
