@@ -198,10 +198,15 @@ export default function MyTrips() {
             
             let date;
             
-            // Xử lý Firestore Timestamp
+            // Xử lý Firestore Timestamp (có method toDate)
             if (dateInput.toDate && typeof dateInput.toDate === 'function') {
                 console.log('✅ Using Firestore Timestamp.toDate()');
                 date = dateInput.toDate();
+            }
+            // Xử lý Firestore Timestamp object (có seconds và nanoseconds)
+            else if (dateInput.seconds !== undefined && dateInput.nanoseconds !== undefined) {
+                console.log('✅ Converting Firestore Timestamp object');
+                date = new Date(dateInput.seconds * 1000 + dateInput.nanoseconds / 1000000);
             }
             // Xử lý Date object
             else if (dateInput instanceof Date) {
@@ -220,9 +225,19 @@ export default function MyTrips() {
                     date = new Date(dateInput);
                 }
             }
-            // Xử lý string hoặc number
+            // Xử lý ISO string
+            else if (typeof dateInput === 'string') {
+                console.log('✅ Parsing ISO string');
+                date = new Date(dateInput);
+            }
+            // Xử lý Unix timestamp (milliseconds)
+            else if (typeof dateInput === 'number') {
+                console.log('✅ Parsing Unix timestamp');
+                date = new Date(dateInput);
+            }
+            // Fallback
             else {
-                console.log('✅ Parsing as string/number');
+                console.log('⚠️ Unknown format, trying generic Date constructor');
                 date = new Date(dateInput);
             }
             

@@ -1,6 +1,6 @@
 // src/services/completeItineraryService.js
 import { db } from '../firebase';
-import { collection, addDoc, getDocs, query, where, orderBy, getDoc, doc, deleteDoc } from 'firebase/firestore';
+import { collection, addDoc, getDocs, query, where, orderBy, getDoc, doc, deleteDoc, Timestamp } from 'firebase/firestore';
 import { searchPlacesByText, searchNearbyPlaces } from './placesService';
 import { get7DayWeatherForecast } from './weatherService';
 import { findRealPlacesByCategory, findRealRestaurants, getRealWeatherForItinerary, findNightlifeVenues, findLocalFoodVenues } from './realTimeDataService';
@@ -101,8 +101,8 @@ export const createCompleteItinerary = async (preferences, userId) => {
             // Metadata
             id: `itinerary_${Date.now()}`,
             userId,
-            createdAt: new Date(),
-            lastUpdated: new Date(),
+            createdAt: Timestamp.now(),
+            lastUpdated: Timestamp.now(),
 
             // 1. THÔNG TIN CƠ BẢN
             header: tripHeader,
@@ -160,7 +160,7 @@ export const createCompleteItinerary = async (preferences, userId) => {
             placesSource: 'google_places_api',
             weatherSource: 'openweathermap_api',
             realTimeData: true,
-            lastUpdated: new Date(),
+            lastUpdated: Timestamp.now(),
             monitoringActive: true
         };
 
@@ -456,7 +456,7 @@ const generateSingleDayPlan = async (
             
             // Metadata mở rộng
             dataQuality: 'enhanced_real_data',
-            lastUpdated: new Date(),
+            lastUpdated: Timestamp.now(),
             diversityScore: calculateDiversityScore(destinations, restaurants)
         };
     } catch (error) {
@@ -969,7 +969,8 @@ const saveItineraryToFirebase = async (itinerary) => {
         // Sanitize dữ liệu trước khi lưu để tránh undefined values
         const sanitizedItinerary = sanitizeForFirebase({
             ...itinerary,
-            createdAt: new Date(),
+            createdAt: Timestamp.now(),
+            lastUpdated: Timestamp.now(),
             version: '1.0'
         });
         
