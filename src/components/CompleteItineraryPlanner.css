@@ -1464,6 +1464,20 @@ ansport Options Styles */
     font-size: 0.95rem;
 }
 
+.hotel-card .price-level {
+    margin-top: 8px;
+    padding: 4px 8px;
+    background: #fff3cd;
+    border-radius: 4px;
+    display: inline-block;
+}
+
+.hotel-card .price-level small {
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: #856404;
+}
+
 .hotels-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
@@ -2051,4 +2065,187 @@ ansport Options Styles */
 /* Icon styling for flight/bus types */
 .flight-option-card p strong::before {
     margin-right: 4px;
+}
+
+
+/* ===== WORKING DAY STYLES ===== */
+
+/* Work time item indicator */
+.work-time-item {
+    position: relative;
+    padding-left: 10px;
+}
+
+.work-time-item::before {
+    content: '💼';
+    position: absolute;
+    left: -25px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 1.3rem;
+    animation: workPulse 2s ease-in-out infinite;
+}
+
+/* Work block styling */
+.work-block {
+    background: linear-gradient(135deg, rgba(102, 126, 234, 0.15) 0%, rgba(118, 75, 162, 0.15) 100%) !important;
+    border-left: 4px solid #667eea !important;
+    padding: 20px !important;
+    margin: 15px 0 !important;
+    border-radius: 12px !important;
+    box-shadow: 0 4px 15px rgba(102, 126, 234, 0.2) !important;
+    position: relative;
+}
+
+.work-block .time {
+    color: #667eea;
+    font-weight: 700;
+    font-size: 1.1rem;
+}
+
+.work-block .activity strong {
+    color: #667eea;
+    font-size: 1.2rem;
+}
+
+.work-block .notes {
+    background: rgba(255, 255, 255, 0.9);
+    padding: 12px 15px;
+    border-radius: 8px;
+    margin-top: 12px;
+    border-left: 3px solid #667eea;
+}
+
+.work-block .notes li {
+    color: #2c3e50;
+    font-weight: 500;
+    margin: 6px 0;
+}
+
+/* Work pulse animation */
+@keyframes workPulse {
+    0%, 100% {
+        opacity: 1;
+        transform: translateY(-50%) scale(1);
+    }
+    50% {
+        opacity: 0.7;
+        transform: translateY(-50%) scale(1.15);
+    }
+}
+
+/* Working day header */
+.day-header.working-day {
+    background: linear-gradient(135deg, rgba(102, 126, 234, 0.08) 0%, rgba(118, 75, 162, 0.08) 100%);
+    border-left: 5px solid #667eea;
+    padding-left: 20px;
+    position: relative;
+}
+
+.day-header h3 {
+    margin: 0 0 8px 0;
+    font-size: 1.3rem;
+    color: #2c3e50;
+}
+
+.day-header .day-cost {
+    color: #6c757d;
+    font-size: 0.95rem;
+    font-weight: 500;
+}
+
+/* Working day badge */
+.working-day-badge {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 8px 16px;
+    border-radius: 20px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    box-shadow: 0 2px 10px rgba(102, 126, 234, 0.3);
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+}
+
+/* Schedule item base styling */
+.schedule-item {
+    display: flex;
+    gap: 20px;
+    padding: 15px;
+    margin: 10px 0;
+    border-radius: 8px;
+    background: #f8f9fa;
+    transition: all 0.3s ease;
+}
+
+.schedule-item:hover {
+    background: #e9ecef;
+    transform: translateX(5px);
+}
+
+.schedule-item .time {
+    min-width: 80px;
+    font-weight: 600;
+    color: #495057;
+    font-size: 1rem;
+}
+
+.schedule-item .activity {
+    flex: 1;
+}
+
+.schedule-item .duration {
+    color: #6c757d;
+    font-size: 0.9rem;
+    margin-left: 8px;
+}
+
+.schedule-item .notes {
+    margin-top: 8px;
+    padding-left: 20px;
+}
+
+.schedule-item .notes li {
+    color: #6c757d;
+    font-size: 0.9rem;
+    margin: 4px 0;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .work-time-item::before {
+        left: -20px;
+        font-size: 1.1rem;
+    }
+    
+    .day-header h3 {
+        font-size: 1.1rem;
+    }
+    
+    .day-header .day-cost {
+        font-size: 0.85rem;
+    }
+    
+    .working-day-badge {
+        font-size: 0.8rem;
+        padding: 6px 12px;
+    }
+    
+    .day-header.working-day {
+        padding-bottom: 15px;
+    }
+    
+    /* Stack vertically on very small screens */
+    @media (max-width: 480px) {
+        .day-header > div {
+            flex-direction: column !important;
+            align-items: flex-start !important;
+        }
+        
+        .working-day-badge {
+            margin-top: 10px;
+        }
+    }
 }

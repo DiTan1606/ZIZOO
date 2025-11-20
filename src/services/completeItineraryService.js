@@ -84,6 +84,30 @@ export const createCompleteItinerary = async (preferences, userId) => {
         // 4. LƯU TRÚ (tạo trước để có giá khách sạn)
         const accommodationPlan = await generateAccommodationPlan(preferences, dailyItinerary);
 
+        // ✨ CẬP NHẬT TỌA ĐỘ KHÁCH SẠN VÀO SCHEDULE
+        if (accommodationPlan?.selected?.lat && accommodationPlan?.selected?.lng) {
+            console.log(`🏨 Updating hotel coordinates in schedule: ${accommodationPlan.selected.name}`);
+            dailyItinerary.forEach(day => {
+                if (day.schedule) {
+                    day.schedule.forEach(item => {
+                        // Tìm activity check-in khách sạn
+                        if (item.type === 'accommodation' || 
+                            item.activity?.toLowerCase().includes('check-in') ||
+                            item.activity?.toLowerCase().includes('nhận phòng')) {
+                            // Gắn tọa độ khách sạn
+                            item.location = {
+                                name: accommodationPlan.selected.name,
+                                address: accommodationPlan.selected.address || accommodationPlan.selected.location,
+                                lat: accommodationPlan.selected.lat,
+                                lng: accommodationPlan.selected.lng
+                            };
+                            console.log(`  ✅ Updated check-in activity on Day ${day.day} with hotel coordinates`);
+                        }
+                    });
+                }
+            });
+        }
+
         // 5. DANH SÁCH CHI PHÍ DỰ KIẾN (tính sau khi có accommodation)
         const costBreakdown = await generateCostBreakdown(preferences, dailyItinerary, accommodationPlan);
 
@@ -394,7 +418,8 @@ const generateSingleDayPlan = async (
             interests,
             departureTime,
             specialActivities, // Sử dụng specialActivities từ parameter
-            workingLocations // Truyền working locations
+            workingLocations, // Truyền working locations
+            date // Truyền date object để business travel service sử dụng
         );
 
         // Lấy thời tiết thực tế với dự báo rủi ro (fallback nếu API key không có)
@@ -406,12 +431,22 @@ const generateSingleDayPlan = async (
         // Tạo theme đa dạng theo ngày
         const dayTheme = generateEnhancedDayTheme(dayNumber, destinations, interests, destination);
 
+        // Kiểm tra xem ngày này có phải ngày làm việc không
+        const dateString = date.toISOString().split('T')[0];
+        const businessTravelService = require('./businessTravelScheduleService').default;
+        const isWorkingDay = businessTravelService.isWorkingDay(dateString, workingLocations);
+        const workingInfo = isWorkingDay ? businessTravelService.getWorkingInfoForDay(dateString, workingLocations) : null;
+        
         return {
             day: dayNumber,
             date: date.toLocaleDateString('vi-VN'),
             dayOfWeek: date.toLocaleDateString('vi-VN', { weekday: 'long' }),
             dateISO: date.toISOString(),
             theme: dayTheme,
+            
+            // Thông tin công tác (nếu có)
+            isWorkingDay: isWorkingDay,
+            workingInfo: workingInfo,
             
             // Lịch trình theo giờ chi tiết và đa dạng
             schedule: hourlySchedule,
@@ -577,7 +612,7 @@ const generateCostBreakdown = async (preferences, dailyItinerary, accommodationP
             total: accommodationCost,
             perNight: Math.round(accommodationCost / (duration - 1)),
             nights: duration - 1,
-            type: ACCOMMODATION_TYPES[travelStyle].type,
+            type: 'Khách sạn', // Đơn giản hóa, không hiển thị số sao
             bookingLinks: generateBookingLinks(destination, travelStyle)
         },
         food: {
@@ -1438,6 +1473,22 @@ const roundPrice = (price) => {
 };
 
 // Tính khoảng cách giữa 2 thành phố (km)
+// Helper: Tính khoảng cách giữa 2 điểm (km) - Haversine formula
+const calculateDistanceBetweenPoints = (lat1, lng1, lat2, lng2) => {
+    if (!lat1 || !lng1 || !lat2 || !lng2) return 999; // Invalid coordinates
+    
+    const R = 6371; // Radius of Earth in km
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLng = (lng2 - lng1) * Math.PI / 180;
+    
+    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+              Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+              Math.sin(dLng / 2) * Math.sin(dLng / 2);
+    
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c; // Distance in km
+};
+
 const calculateDistanceBetweenCities = (city1, city2) => {
     const coord1 = provinceCoords[city1];
     const coord2 = provinceCoords[city2];
@@ -1447,18 +1498,7 @@ const calculateDistanceBetweenCities = (city1, city2) => {
         return 500; // Default 500km
     }
     
-    // Haversine formula
-    const R = 6371; // Radius of Earth in km
-    const dLat = (coord2.lat - coord1.lat) * Math.PI / 180;
-    const dLon = (coord2.lng - coord1.lng) * Math.PI / 180;
-    const a = 
-        Math.sin(dLat/2) * Math.sin(dLat/2) +
-        Math.cos(coord1.lat * Math.PI / 180) * Math.cos(coord2.lat * Math.PI / 180) *
-        Math.sin(dLon/2) * Math.sin(dLon/2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-    const distance = R * c;
-    
-    return Math.round(distance);
+    return Math.round(calculateDistanceBetweenPoints(coord1.lat, coord1.lng, coord2.lat, coord2.lng));
 };
 
 const calculateAccommodationCost = (nights, travelers, style, accommodationPlan = null) => {
@@ -1809,18 +1849,21 @@ const getRecommendedLocation = (destination, style) => {
     return locations[destination]?.[style] || 'Trung tâm thành phố';
 };
 
-const findAccommodationOptions = async (destination, style, travelers, budget, nights) => {
+const findAccommodationOptions = async (destination, style, travelers, budget, nights, startDate) => {
     try {
         console.log(`🏨 Finding real hotels in ${destination}...`);
         
-        // Tìm khách sạn bằng text search để chính xác hơn
+        // Tìm khách sạn bằng text search từ Google Maps
+        // Ưu tiên khách sạn ở trung tâm thành phố
         const coord = provinceCoords[destination] || { lat: 16.047, lng: 108.220 };
         const hotels = await searchPlacesByText(
-            `hotels in ${destination}`,
+            `hotels in downtown ${destination} city center`, // Thêm "downtown" và "city center"
             coord,
-            10000, // 10km radius
+            5000, // 5km radius (giảm từ 10km để tập trung vào trung tâm)
             destination
         );
+        
+        console.log(`📍 Searching hotels within 5km of city center (${coord.lat}, ${coord.lng})`);
         
         if (!hotels || hotels.length === 0) {
             console.warn('No hotels found from API, using fallback');
@@ -1829,9 +1872,15 @@ const findAccommodationOptions = async (destination, style, travelers, budget, n
         
         // Tính ngân sách cho khách sạn (30-35% tổng budget)
         const accommodationBudget = budget * 0.35;
-        const budgetPerNight = accommodationBudget / nights;
+        const budgetPerNight = accommodationBudget / nights / travelers; // Chia cho số người
         
-        // Ước tính giá khách sạn dựa trên price_level và travelStyle
+        console.log(`💰 Budget per night per person: ${formatMoney(budgetPerNight)}`);
+        
+        // Xác định price_level phù hợp với budget
+        const targetPriceLevel = determinePriceLevelByBudget(budgetPerNight, style);
+        console.log(`🎯 Target price level: ${targetPriceLevel} (based on budget ${formatMoney(budgetPerNight)}/night/person)`);
+        
+        // Format và tính giá cho từng khách sạn
         const formattedHotels = hotels
             .filter(hotel => {
                 // Lọc rating
@@ -1843,34 +1892,75 @@ const findAccommodationOptions = async (destination, style, travelers, budget, n
                     return false;
                 }
                 
+                // ✨ Lọc theo price_level phù hợp với budget
+                const hotelPriceLevel = hotel.price_level !== undefined ? hotel.price_level : 2;
+                // Chấp nhận khách sạn trong khoảng ±1 level
+                if (Math.abs(hotelPriceLevel - targetPriceLevel) > 1) {
+                    return false;
+                }
+                
                 return true;
             })
             .map(hotel => {
-                const estimatedPrice = estimateHotelPrice(hotel, style, budgetPerNight);
+                // Tính giá dựa trên price_level từ Google + thị trường thực tế
+                const pricePerNight = calculateRealHotelPrice(hotel, destination, style, budgetPerNight * travelers);
+                
+                // Tính khoảng cách từ khách sạn đến trung tâm
+                const hotelLat = hotel.geometry?.location?.lat;
+                const hotelLng = hotel.geometry?.location?.lng;
+                const distanceFromCenter = calculateDistanceBetweenPoints(coord.lat, coord.lng, hotelLat, hotelLng);
+                
                 return {
                     name: hotel.name,
                     rating: hotel.rating || 4.0,
-                    pricePerNight: estimatedPrice,
+                    pricePerNight: pricePerNight,
                     location: hotel.vicinity || hotel.formatted_address || 'Trung tâm',
                     amenities: getHotelAmenities(hotel, style),
                     address: hotel.vicinity || hotel.formatted_address,
-                    lat: hotel.geometry?.location?.lat,
-                    lng: hotel.geometry?.location?.lng,
+                    lat: hotelLat,
+                    lng: hotelLng,
                     photos: hotel.photos,
-                    dataSource: 'google_places_api'
+                    priceLevel: hotel.price_level,
+                    distanceFromCenter: distanceFromCenter, // Khoảng cách đến trung tâm (km)
+                    dataSource: 'google_maps_api'
                 };
             })
-            .filter(hotel => hotel.pricePerNight <= budgetPerNight * 1.5) // Lọc theo budget
-            .sort((a, b) => b.rating - a.rating) // Sort theo rating
-            .slice(0, 3); // CHỈ LẤY 3 KHÁCH SẠN
+            .filter(hotel => {
+                // Lọc theo budget
+                if (hotel.pricePerNight > budgetPerNight * travelers * 1.5) return false;
+                // Lọc khách sạn quá xa (> 3km từ trung tâm)
+                if (hotel.distanceFromCenter > 3) {
+                    console.log(`  ⚠️ ${hotel.name} too far from center: ${hotel.distanceFromCenter.toFixed(1)}km`);
+                    return false;
+                }
+                return true;
+            })
+            .sort((a, b) => {
+                // 1. Ưu tiên khách sạn có price_level gần với target
+                const aDiff = Math.abs((a.priceLevel || 2) - targetPriceLevel);
+                const bDiff = Math.abs((b.priceLevel || 2) - targetPriceLevel);
+                if (aDiff !== bDiff) return aDiff - bDiff;
+                
+                // 2. Ưu tiên khách sạn gần trung tâm hơn
+                const distanceDiff = a.distanceFromCenter - b.distanceFromCenter;
+                if (Math.abs(distanceDiff) > 0.5) return distanceDiff; // Chênh lệch > 0.5km
+                
+                // 3. Sau đó sort theo rating
+                return b.rating - a.rating;
+            })
+            .slice(0, 5); // Lấy 5 khách sạn tốt nhất
         
         if (formattedHotels.length === 0) {
             console.warn('No hotels match budget, using fallback');
             return getDefaultHotelOptions(style, nights);
         }
         
-        console.log(`✅ Found ${formattedHotels.length} real hotels in ${destination}`);
-        return formattedHotels;
+        console.log(`✅ Found ${formattedHotels.length} hotels in ${destination}`);
+        formattedHotels.forEach(h => {
+            console.log(`  - ${h.name}: ${formatMoney(h.pricePerNight)}/đêm (price_level: ${h.priceLevel || 'N/A'})`);
+        });
+        
+        return formattedHotels.slice(0, 3); // Trả về 3 khách sạn tốt nhất
         
     } catch (error) {
         console.error('Error finding hotels:', error);
@@ -1878,37 +1968,134 @@ const findAccommodationOptions = async (destination, style, travelers, budget, n
     }
 };
 
-// Ước tính giá khách sạn dựa trên price_level và travelStyle
-const estimateHotelPrice = (hotel, travelStyle, budgetPerNight) => {
-    const priceLevel = hotel.price_level || 2; // 0-4 scale
+/**
+ * Xác định price_level phù hợp với budget
+ * Budget cao → gợi ý khách sạn cao cấp hơn
+ */
+const determinePriceLevelByBudget = (budgetPerNightPerPerson, travelStyle) => {
+    // Điều chỉnh theo travel style
+    const styleAdjustment = {
+        budget: -0.5,    // Ưu tiên khách sạn rẻ hơn
+        standard: 0,     // Trung bình
+        comfort: 0.5,    // Ưu tiên khách sạn tốt hơn
+        luxury: 1        // Ưu tiên khách sạn cao cấp
+    }[travelStyle] || 0;
     
-    // Base price theo price_level
-    const basePrices = {
-        0: 200000,   // Very cheap
-        1: 350000,   // Cheap
-        2: 600000,   // Moderate
-        3: 1000000,  // Expensive
-        4: 2000000   // Very expensive
+    // Xác định price_level dựa trên budget (VNĐ/đêm/người)
+    let targetLevel;
+    if (budgetPerNightPerPerson < 250000) {
+        targetLevel = 0; // Nhà nghỉ, hostel
+    } else if (budgetPerNightPerPerson < 400000) {
+        targetLevel = 1; // Khách sạn 2 sao
+    } else if (budgetPerNightPerPerson < 700000) {
+        targetLevel = 2; // Khách sạn 3 sao
+    } else if (budgetPerNightPerPerson < 1500000) {
+        targetLevel = 3; // Khách sạn 4 sao
+    } else {
+        targetLevel = 4; // Khách sạn 5 sao, resort
+    }
+    
+    // Điều chỉnh theo style
+    targetLevel = Math.round(targetLevel + styleAdjustment);
+    
+    // Giới hạn trong khoảng 0-4
+    targetLevel = Math.max(0, Math.min(4, targetLevel));
+    
+    return targetLevel;
+};
+
+/**
+ * Tính giá khách sạn THỰC TẾ dựa trên:
+ * - price_level từ Google Maps (0-4)
+ * - Thành phố (giá khác nhau theo địa điểm)
+ * - Travel style
+ * - Tên khách sạn (để tạo sự đa dạng giá)
+ * - Dữ liệu thị trường thực tế Việt Nam
+ */
+const calculateRealHotelPrice = (hotel, destination, travelStyle, budgetPerNight) => {
+    const priceLevel = hotel.price_level !== undefined ? hotel.price_level : 2; // 0-4 scale
+    
+    // Giá cơ bản theo thành phố (dựa trên thị trường thực tế VN)
+    const cityPriceMultiplier = {
+        'Hà Nội': 1.2,
+        'TP Hồ Chí Minh': 1.3,
+        'Đà Nẵng': 1.1,
+        'Nha Trang': 1.0,
+        'Phú Quốc': 1.4,
+        'Đà Lạt': 0.9,
+        'Vũng Tàu': 0.9,
+        'Hội An': 1.0,
+        'Huế': 0.8,
+        'Cần Thơ': 0.7,
+        'Quy Nhơn': 0.8
     };
     
-    let basePrice = basePrices[priceLevel] || 600000;
+    const cityMultiplier = cityPriceMultiplier[destination] || 1.0;
+    
+    // Giá cơ bản theo price_level (dựa trên khảo sát thị trường thực tế)
+    const basePricesByLevel = {
+        0: 150000,   // Nhà nghỉ, hostel giá rẻ
+        1: 300000,   // Khách sạn 2 sao
+        2: 600000,   // Khách sạn 3 sao
+        3: 1200000,  // Khách sạn 4 sao
+        4: 2500000   // Khách sạn 5 sao, resort cao cấp
+    };
+    
+    let basePrice = basePricesByLevel[priceLevel] || 600000;
+    
+    // Điều chỉnh theo thành phố
+    basePrice = Math.round(basePrice * cityMultiplier);
     
     // Điều chỉnh theo travelStyle
     const styleMultiplier = {
-        budget: 0.7,
-        standard: 1.0,
-        comfort: 1.3,
-        luxury: 1.8
+        budget: 0.8,      // Tìm phòng giá rẻ hơn
+        standard: 1.0,    // Giá trung bình
+        comfort: 1.2,     // Phòng tốt hơn
+        luxury: 1.5       // Phòng cao cấp nhất
     }[travelStyle] || 1.0;
     
-    let estimatedPrice = Math.round(basePrice * styleMultiplier);
+    let finalPrice = Math.round(basePrice * styleMultiplier);
     
-    // Đảm bảo không vượt quá budget quá nhiều
-    if (estimatedPrice > budgetPerNight * 1.5) {
-        estimatedPrice = Math.round(budgetPerNight * 1.2);
+    // Điều chỉnh theo rating (khách sạn rating cao thường đắt hơn)
+    if (hotel.rating >= 4.5) {
+        finalPrice = Math.round(finalPrice * 1.15);
+    } else if (hotel.rating >= 4.0) {
+        finalPrice = Math.round(finalPrice * 1.05);
+    } else if (hotel.rating < 3.8) {
+        finalPrice = Math.round(finalPrice * 0.9);
     }
     
-    return estimatedPrice;
+    // ✨ TẠO SỰ ĐA DẠNG GIÁ dựa trên tên khách sạn
+    // Sử dụng hash của tên để tạo variation ổn định (không thay đổi mỗi lần load)
+    const nameHash = hotel.name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+    const variationPercent = (nameHash % 21) - 10; // -10% đến +10%
+    const variationMultiplier = 1 + (variationPercent / 100);
+    finalPrice = Math.round(finalPrice * variationMultiplier);
+    
+    // Kiểm tra từ khóa trong tên để điều chỉnh giá
+    const hotelName = hotel.name.toLowerCase();
+    if (hotelName.includes('resort') || hotelName.includes('grand') || hotelName.includes('royal')) {
+        finalPrice = Math.round(finalPrice * 1.15); // Resort/Grand thường đắt hơn
+    } else if (hotelName.includes('boutique') || hotelName.includes('premium')) {
+        finalPrice = Math.round(finalPrice * 1.1);
+    } else if (hotelName.includes('budget') || hotelName.includes('hostel')) {
+        finalPrice = Math.round(finalPrice * 0.85);
+    }
+    
+    // Đảm bảo không vượt quá budget quá nhiều
+    if (finalPrice > budgetPerNight * 1.5) {
+        finalPrice = Math.round(budgetPerNight * 1.3);
+    }
+    
+    // Đảm bảo giá tối thiểu hợp lý
+    if (finalPrice < 150000) {
+        finalPrice = 150000;
+    }
+    
+    // Làm tròn đẹp (về bội số 10,000)
+    finalPrice = Math.round(finalPrice / 10000) * 10000;
+    
+    return finalPrice;
 };
 
 // Lấy amenities dựa trên hotel info và travelStyle
@@ -4504,7 +4691,29 @@ const generateEnhancedDayTheme = (dayNumber, destinations, interests, destinatio
  * Ngày 1: Dùng departureTime (giờ bắt đầu hành trình)
  * Ngày 2+: Bắt đầu từ 7:00 (ăn sáng)
  */
-const generateEnhancedHourlySchedule = (dayNumber, destinations, restaurants, interests, departureTime = '08:00', specialActivities = {}, workingLocations = []) => {
+const generateEnhancedHourlySchedule = (dayNumber, destinations, restaurants, interests, departureTime = '08:00', specialActivities = {}, workingLocations = [], date = new Date()) => {
+    // ===== TÍCH HỢP BUSINESS TRAVEL LOGIC =====
+    // Nếu có working locations, sử dụng business travel service
+    if (workingLocations && workingLocations.length > 0) {
+        console.log(`💼 Day ${dayNumber} has working locations, using business travel logic...`);
+        const businessTravelService = require('./businessTravelScheduleService').default;
+        
+        const result = businessTravelService.generateBusinessTravelDaySchedule(
+            dayNumber,
+            date,
+            destinations,
+            restaurants,
+            interests,
+            departureTime,
+            specialActivities,
+            workingLocations
+        );
+        
+        console.log(`✅ Business travel schedule created for Day ${dayNumber}:`, result.isWorkingDay ? 'WORKING DAY' : 'NON-WORKING DAY');
+        return result.schedule; // Trả về schedule đã được tạo bởi business travel service
+    }
+    
+    // ===== LOGIC DU LỊCH THUẦN (KHÔNG ĐƯỢC SỬA) =====
     const schedule = [];
     let currentTime = '';
     // Dùng global usedRestaurants để tránh lặp giữa các ngày

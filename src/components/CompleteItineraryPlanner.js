@@ -869,18 +869,64 @@ const CompleteItineraryPlanner = () => {
                         <h2>📅 2. Lịch trình chi tiết theo từng ngày</h2>
                         {completeItinerary.dailyItinerary.map((day, index) => (
                             <div key={index} className="day-plan">
-                                <div className="day-header">
+                                <div className={`day-header ${day.isWorkingDay ? 'working-day' : ''}`} style={{
+                                    position: 'relative',
+                                    ...(day.isWorkingDay ? {
+                                        background: 'linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%)',
+                                        borderLeft: '5px solid #667eea',
+                                        paddingLeft: '20px'
+                                    } : {})
+                                }}>
                                     <h3>Ngày {day.day}: {day.date} - {day.theme}</h3>
                                     <span className="day-cost">Chi phí ước tính: {formatMoney(day.estimatedCost)}</span>
+                                    {day.isWorkingDay && day.workingInfo && (
+                                        <div style={{
+                                            position: 'absolute',
+                                            right: '20px',
+                                            top: '50%',
+                                            transform: 'translateY(-50%)',
+                                            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                                            color: 'white',
+                                            padding: '6px 12px',
+                                            borderRadius: '20px',
+                                            fontSize: '0.9rem',
+                                            fontWeight: '600',
+                                            boxShadow: '0 2px 10px rgba(102, 126, 234, 0.3)'
+                                        }}>
+                                            💼 Ngày làm việc tại {day.workingInfo.name}
+                                        </div>
+                                    )}
                                 </div>
 
                                 <div className="day-schedule">
                                     {day.schedule?.map((item, idx) => (
-                                        <div key={idx} className="schedule-item">
+                                        <div 
+                                            key={idx} 
+                                            className={`schedule-item ${item.isWorkTime ? 'work-time-item' : ''} ${item.type === 'work' ? 'work-block' : ''}`}
+                                            style={item.isWorkTime ? {
+                                                background: 'linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%)',
+                                                border: '2px solid rgba(102, 126, 234, 0.3)',
+                                                borderRadius: '8px',
+                                                padding: '15px'
+                                            } : {}}
+                                        >
                                             <div className="time">{item.time}</div>
                                             <div className="activity">
                                                 <strong>{item.activity}</strong>
                                                 {item.duration && <span className="duration">({item.duration})</span>}
+                                                {item.isWorkTime && (
+                                                    <span style={{
+                                                        marginLeft: '10px',
+                                                        padding: '4px 8px',
+                                                        background: 'rgba(102, 126, 234, 0.2)',
+                                                        borderRadius: '4px',
+                                                        fontSize: '0.85rem',
+                                                        fontWeight: '600',
+                                                        color: '#667eea'
+                                                    }}>
+                                                        💼 Giờ làm việc
+                                                    </span>
+                                                )}
                                                 {item.notes && (
                                                     <ul className="notes">
                                                         {item.notes.map((note, noteIdx) => (
@@ -1125,10 +1171,20 @@ const CompleteItineraryPlanner = () => {
                                     <h4>Khách sạn đã chọn</h4>
                                     <div className="hotel-card selected">
                                         <h5>{completeItinerary.accommodation.selected.name}</h5>
-                                        <p><strong>Rating:</strong> {completeItinerary.accommodation.selected.rating}/5</p>
-                                        <p><strong>Vị trí:</strong> {completeItinerary.accommodation.selected.location}</p>
-                                        <p><strong>Giá:</strong> {formatMoney(completeItinerary.accommodation.selected.pricePerNight)}/đêm</p>
-                                        <p><strong>Tổng:</strong> {formatMoney(completeItinerary.accommodation.selected.totalCost)} ({completeItinerary.accommodation.duration.nights} đêm)</p>
+                                        <p><strong>Rating:</strong> ⭐ {completeItinerary.accommodation.selected.rating}/5</p>
+                                        {completeItinerary.accommodation.selected.address && (
+                                            <p><strong>Địa chỉ:</strong> 📍 {completeItinerary.accommodation.selected.address}</p>
+                                        )}
+                                        {!completeItinerary.accommodation.selected.address && (
+                                            <p><strong>Vị trí:</strong> 📍 {completeItinerary.accommodation.selected.location}</p>
+                                        )}
+                                        <p><strong>Giá:</strong> 💰 {formatMoney(completeItinerary.accommodation.selected.pricePerNight)}/đêm</p>
+                                        <p><strong>Tổng:</strong> 💵 {formatMoney(completeItinerary.accommodation.selected.totalCost)} ({completeItinerary.accommodation.duration.nights} đêm)</p>
+                                        {completeItinerary.accommodation.selected.priceLevel !== undefined && (
+                                            <p className="price-level">
+                                                <small>💲 Mức giá: {'$'.repeat(completeItinerary.accommodation.selected.priceLevel + 1)} ({completeItinerary.accommodation.selected.priceLevel + 1}/5)</small>
+                                            </p>
+                                        )}
                                         <p><strong>Tiện nghi:</strong> {completeItinerary.accommodation.selected.amenities.join(', ')}</p>
                                     </div>
                                     <p><strong>Thời gian:</strong> {completeItinerary.accommodation.duration.checkIn} - {completeItinerary.accommodation.duration.checkOut}</p>
@@ -1146,9 +1202,15 @@ const CompleteItineraryPlanner = () => {
                                             <div key={idx} className="hotel-card">
                                                 <h5>{hotel.name}</h5>
                                                 <p>⭐ {hotel.rating}/5</p>
-                                                <p>📍 {hotel.location}</p>
+                                                {hotel.address && <p>📍 {hotel.address}</p>}
+                                                {!hotel.address && <p>📍 {hotel.location}</p>}
                                                 <p>💰 {formatMoney(hotel.pricePerNight)}/đêm</p>
                                                 <p>💵 Tổng: {formatMoney(hotel.totalCost)}</p>
+                                                {hotel.priceLevel !== undefined && (
+                                                    <p className="price-level">
+                                                        <small>💲 {'$'.repeat(hotel.priceLevel + 1)}</small>
+                                                    </p>
+                                                )}
                                                 <button 
                                                     className="btn-select-hotel"
                                                     onClick={() => handleSelectHotel(hotel)}
