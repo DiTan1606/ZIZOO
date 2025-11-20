@@ -1,10 +1,10 @@
 // src/components/CompleteItineraryPlanner.js
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import { createCompleteItinerary } from '../services/completeItineraryService';
-import ItineraryAlertsPanel from './ItineraryAlertsPanel';
+// import ItineraryAlertsPanel from './ItineraryAlertsPanel'; // DISABLED
 import DestinationSelector from './DestinationSelector';
 import TripTypeSelector from './TripTypeSelector';
 import WorkingLocationForm from './WorkingLocationForm';
@@ -19,11 +19,16 @@ import quickIcon from '../icon/quick.png';
 const CompleteItineraryPlanner = () => {
     const { currentUser } = useAuth();
     const navigate = useNavigate();
+    const location = useLocation();
     const [step, setStep] = useState(1);
     const [loading, setLoading] = useState(false);
     const [selectedDestinations, setSelectedDestinations] = useState([]);
     const [tripType, setTripType] = useState('pure-travel');
     const [showWorkingForm, setShowWorkingForm] = useState(false);
+    const [aiAutoTriggered, setAiAutoTriggered] = useState(false);
+    
+    // Nhận AI suggestion từ navigate state
+    const aiSuggestion = location.state?.aiSuggestion;
     // Get tomorrow's date for default
     const getTomorrowDate = () => {
         const tomorrow = new Date();
@@ -33,20 +38,77 @@ const CompleteItineraryPlanner = () => {
 
     const [preferences, setPreferences] = useState({
         tripType: 'pure-travel',
-        destination: 'Vũng Tàu',
+        destination: aiSuggestion?.destination || 'Vũng Tàu',
         departureCity: 'Hồ Chí Minh',
         startDate: getTomorrowDate(),
         startTime: '08:00', // Giờ bắt đầu hành trình du lịch (tại điểm đến)
-        duration: 3,
-        travelers: 2,
-        budget: 3000000,
-        travelStyle: 'standard',
-        interests: ['food', 'photography', 'relaxation'],
+        duration: aiSuggestion?.duration || 3,
+        travelers: aiSuggestion?.travelers || 2,
+        budget: aiSuggestion?.budget || 3000000,
+        travelStyle: aiSuggestion?.travelStyle || 'standard',
+        interests: aiSuggestion?.interests || ['food', 'photography', 'relaxation'],
         customDestinations: [] // Địa điểm do người dùng chọn
     });
     const [completeItinerary, setCompleteItinerary] = useState(null);
     const [selectedDepartureFlight, setSelectedDepartureFlight] = useState(null);
     const [selectedReturnFlight, setSelectedReturnFlight] = useState(null);
+
+    // Auto-trigger khi có AI suggestion
+    useEffect(() => {
+        const autoGenerateFromAI = async () => {
+            if (aiSuggestion && !aiAutoTriggered && currentUser) {
+                console.log('🤖🤖🤖 AI AUTO-GENERATE TRIGGERED 🤖🤖🤖');
+                console.log('aiSuggestion:', aiSuggestion);
+                console.log('aiAutoTriggered:', aiAutoTriggered);
+                console.log('currentUser:', currentUser?.uid);
+                setAiAutoTriggered(true);
+                
+                // Hiển thị thông báo
+                toast.info('🤖 Đang tạo lịch trình theo gợi ý của AI...', { autoClose: 2000 });
+                
+                // Delay 1s để user thấy form đã được điền
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                
+                setStep(2); // Chuyển sang step 2
+                
+                // Delay thêm 500ms rồi tự động generate
+                await new Promise(resolve => setTimeout(resolve, 500));
+                
+                // Tạo lịch trình với preferences từ aiSuggestion
+                setLoading(true);
+                try {
+                    // Build preferences object từ aiSuggestion để đảm bảo data đúng
+                    const aiPreferences = {
+                        tripType: 'pure-travel',
+                        destination: aiSuggestion.destination,
+                        departureCity: 'Hồ Chí Minh',
+                        startDate: getTomorrowDate(),
+                        startTime: '08:00',
+                        duration: aiSuggestion.duration,
+                        travelers: aiSuggestion.travelers,
+                        budget: aiSuggestion.budget,
+                        travelStyle: aiSuggestion.travelStyle,
+                        interests: aiSuggestion.interests,
+                        customDestinations: []
+                    };
+                    
+                    const itinerary = await createCompleteItinerary(aiPreferences, currentUser.uid);
+                    setCompleteItinerary(itinerary);
+                    setStep(4); // Chuyển sang step 4 để hiển thị kết quả
+                    toast.success('✨ Lịch trình AI đã được tạo thành công!');
+                } catch (error) {
+                    console.error('Lỗi tạo lịch trình:', error);
+                    toast.error(`Lỗi: ${error.message}`);
+                    setStep(1); // Quay lại step 1 nếu lỗi
+                } finally {
+                    setLoading(false);
+                }
+            }
+        };
+        
+        autoGenerateFromAI();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [aiSuggestion, aiAutoTriggered, currentUser]); // Chỉ trigger 1 lần khi có aiSuggestion
 
     const vietnamCities = [
         'Hà Nội', 'Hồ Chí Minh', 'Đà Nẵng', 'Hải Phòng', 'Cần Thơ',
@@ -334,6 +396,26 @@ const CompleteItineraryPlanner = () => {
                 <div className="header">
                     <h1>Tạo Lịch Trình Du Lịch Hoàn Chỉnh</h1>
                     <p>Lịch trình chi tiết với đầy đủ thông tin: lộ trình, chi phí, lưu trú, phương tiện, đồ đạc...</p>
+                    
+                    {/* AI Suggestion Banner */}
+                    {aiSuggestion && (
+                        <div style={{
+                            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                            color: 'white',
+                            padding: '16px 20px',
+                            borderRadius: '12px',
+                            marginBottom: '20px',
+                            boxShadow: '0 4px 12px rgba(102, 126, 234, 0.3)'
+                        }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
+                                <span style={{ fontSize: '24px' }}>🤖</span>
+                                <strong style={{ fontSize: '16px' }}>AI đã gợi ý cho bạn!</strong>
+                            </div>
+                            <p style={{ margin: '0', fontSize: '14px', opacity: 0.95 }}>
+                                {aiSuggestion.reason}
+                            </p>
+                        </div>
+                    )}
                     
                     <div className="quick-test-section">
                         <p><strong>Quick Test:</strong> Đã điền sẵn: HCM → Vũng Tàu, ngày mai, 2 người, 3M VNĐ, 3N2Đ</p>
@@ -835,16 +917,15 @@ const CompleteItineraryPlanner = () => {
                     
                 </div>
 
-                {/* Real-time Alerts Panel */}
-                <div className="no-print">
+                {/* Real-time Alerts Panel - DISABLED */}
+                {/* <div className="no-print">
                     <ItineraryAlertsPanel 
                         itineraryId={completeItinerary.id}
                         onAdjustmentAccepted={(alert, suggestion) => {
                             toast.info(`Đã áp dụng: ${suggestion}`);
-                            // Có thể thêm logic để cập nhật lịch trình
                         }}
                     />
-                </div>
+                </div> */}
 
                 <div className="itinerary-content">
                     {/* 1. THÔNG TIN CƠ BẢN */}
@@ -901,7 +982,8 @@ const CompleteItineraryPlanner = () => {
                                 }}>
                                     <h3><strong>Ngày {day.day}: {day.date} - {day.theme}</strong></h3>
                                     <span className="day-cost">Chi phí ước tính: {formatMoney(day.estimatedCost)}</span>
-                                    {day.isWorkingDay && day.workingInfo && (
+                                    {/* Working day badge - DISABLED */}
+                                    {/* {day.isWorkingDay && day.workingInfo && (
                                         <div style={{
                                             position: 'absolute',
                                             right: '20px',
@@ -917,19 +999,20 @@ const CompleteItineraryPlanner = () => {
                                         }}>
                                              Ngày làm việc tại {day.workingInfo.name}
                                         </div>
-                                    )}
+                                    )} */}
                                 </div>
 
                                 <div className="day-schedule">
                                     {day.schedule?.map((item, idx) => (
                                         <div 
                                             key={idx} 
-                                            className={`schedule-item ${item.isWorkTime ? 'work-time-item' : ''} ${item.type === 'work' ? 'work-block' : ''}`}
-                                            style={item.isWorkTime ? {
-                                                background: 'linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%)',
-                                                border: '2px solid rgba(102, 126, 234, 0.3)',
+                                            className={`schedule-item ${item.isWorkTime ? 'work-time-item' : ''} ${item.type === 'working' || item.type === 'work' ? 'work-block' : ''}`}
+                                            style={(item.isWorkTime || item.type === 'working') ? {
+                                                background: 'rgba(102, 126, 234, 0.05)',
+                                                border: '1px solid rgba(102, 126, 234, 0.2)',
                                                 borderRadius: '8px',
-                                                padding: '15px'
+                                                padding: '12px',
+                                                marginLeft: '0'
                                             } : {}}
                                         >
                                             <div className="time">{item.time}</div>

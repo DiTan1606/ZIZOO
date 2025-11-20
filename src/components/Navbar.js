@@ -70,7 +70,6 @@ export default function Navbar() {
     const navLinks = [
         { path: '/', label: 'Trang chủ', iconImg: homeIcon },
         { path: '/complete-planner', label: 'Lập kế hoạch', iconImg: planIcon, protected: true },
-        { path: '/ai-recommendations', label: 'AI Gợi ý', iconImg: aiIcon, protected: true },
         { path: '/mytrips', label: 'Chuyến đi', iconImg: tripIcon, protected: true },
         { path: '/feedback', label: 'Chăm sóc khách hàng', iconImg: feedbackIcon }
     ];

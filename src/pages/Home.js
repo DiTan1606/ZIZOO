@@ -1,8 +1,9 @@
 // src/pages/Home.jsx
-import React from 'react';
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import MapViewer from '../components/MapViewer';
 import Footer from '../components/Footer';
+import AIRecommendationModal from '../components/AIRecommendationModal';
 import './Home.css';
 
 // Import feature icons
@@ -25,6 +26,8 @@ import responsibilityIcon from '../icon/tnxh.png';
 import communityIcon from '../icon/cd.png';
 
 export default function Home() {
+    const [showAIModal, setShowAIModal] = useState(false);
+    
     const samplePoints = [
         { lat: 10.771966, lng: 106.702086, name: "Trung tâm TP.HCM" },
         { lat: 21.0285, lng: 105.8542, name: "Hà Nội" },
@@ -74,13 +77,13 @@ export default function Home() {
 
                         <div className="w-px h-6 bg-gray-300"></div>
 
-                        <Link
-                            to="/ai-recommendations"
+                        <button
+                            onClick={() => setShowAIModal(true)}
                             className="hero-action-button px-10 py-2 text-xl font-bold text-gray-800 bg-transparent rounded-full flex items-center justify-center gap-3 min-w-[240px]"
                         >
                             <img src={aiSuggestIcon} alt="AI Suggest" className="w-7 h-7" />
                             AI Gợi ý
-                        </Link>
+                        </button>
 
                         <div className="w-px h-6 bg-gray-300"></div>
 
@@ -290,6 +293,12 @@ export default function Home() {
             </div>
             
             <Footer />
+            
+            {/* AI Recommendation Modal */}
+            <AIRecommendationModal 
+                isOpen={showAIModal} 
+                onClose={() => setShowAIModal(false)} 
+            />
         </div>
     );
 }

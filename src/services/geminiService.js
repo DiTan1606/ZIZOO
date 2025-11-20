@@ -374,8 +374,13 @@ export const suggestDestinationFromDescription = async (description, preferences
 
     const prompt = `Mô tả: "${description}"
 ${preferencesText}
-Gợi ý 3 điểm đến Việt Nam, trả về JSON:
-[{"name":"Tên","province":"Tỉnh","reason":"Lý do ngắn","highlights":["Điểm 1","Điểm 2"],"estimatedCost":"Chi phí","bestTime":"Thời điểm"}]
+Gợi ý 3 điểm đến CỤ THỂ ở Việt Nam (chỉ 1 thành phố/địa điểm, KHÔNG gộp nhiều địa điểm).
+
+VÍ DỤ ĐÚNG: "Đà Nẵng", "Nha Trang", "Phú Quốc"
+VÍ DỤ SAI: "Đà Nẵng - Hội An", "Quảng Nam - Đà Nẵng"
+
+Trả về JSON:
+[{"name":"Tên thành phố","province":"Tỉnh","reason":"Lý do ngắn (1 câu)","highlights":["Điểm 1","Điểm 2","Điểm 3"],"estimatedCost":"Chi phí ước tính","bestTime":"Thời điểm tốt nhất"}]
 
 CHỈ JSON, không text khác.`;
 

@@ -709,24 +709,34 @@
 /* Day Plans */
 .day-plan {
     margin-bottom: 30px;
-    border-radius: 15px;
-    overflow: hidden;
-    background: #f8f9fa;
+    border-radius: 0;
+    overflow: visible;
+    background: white;
+}
+
+.day-schedule {
+    background: white;
 }
 
 .day-header {
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     color: white;
-    padding: 20px;
+    padding: 24px 20px;
     display: flex;
     justify-content: space-between;
-    align-items: center;
+    align-items: flex-start;
     flex-wrap: wrap;
+    gap: 12px;
+    min-height: 70px;
 }
 
 .day-header h3 {
     margin: 0;
     font-size: 1.3em;
+    white-space: normal;
+    word-wrap: break-word;
+    flex: 1;
+    min-width: 0;
 }
 
 .day-cost {
@@ -2083,8 +2093,9 @@ ansport Options Styles */
 
 .work-time-item::before {
     content: '💼';
-    position: absolute;
-    left: -25px;
+    position: relative;
+    left: 0;
+    margin-right: 8px;
     top: 50%;
     transform: translateY(-50%);
     font-size: 1.3rem;

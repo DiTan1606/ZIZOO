@@ -108,8 +108,8 @@ export const createCompleteItinerary = async (preferences, userId) => {
             });
         }
 
-        // 5. DANH SÁCH CHI PHÍ DỰ KIẾN (tính sau khi có accommodation)
-        const costBreakdown = await generateCostBreakdown(preferences, dailyItinerary, accommodationPlan);
+        // 5. DANH SÁCH CHI PHÍ DỰ KIẾN (tính sau khi có accommodation và transport)
+        const costBreakdown = await generateCostBreakdown(preferences, dailyItinerary, accommodationPlan, transportPlan);
 
         // 6. DANH SÁCH ĐỒ CẦN MANG
         const packingList = generatePackingList(preferences);
@@ -386,6 +386,13 @@ const generateSingleDayPlan = async (
             } else {
                 // Nếu không có, tìm địa điểm ĐA DẠNG từ hệ thống
                 destinations = await findRealDestinationsForDay(dayNumber, destination, coord, interests, travelStyle, dailyBudget);
+                
+                // Đảm bảo có ít nhất 5 destinations để lấp đầy cả ngày
+                if (destinations.length < 5) {
+                    console.warn(`⚠️ Only ${destinations.length} destinations found, adding fallback destinations...`);
+                    const fallbackDests = getFallbackDestinations(destination, dayNumber);
+                    destinations = [...destinations, ...fallbackDests].slice(0, 6);
+                }
             }
             
             // ✨ TỐI ƯU ROUTE: Sắp xếp địa điểm theo:
@@ -608,11 +615,21 @@ const generateHourlySchedule = (dayNumber, destinations, restaurants) => {
 /**
  * 3. TẠO DANH SÁCH CHI PHÍ DỰ KIẾN
  */
-const generateCostBreakdown = async (preferences, dailyItinerary, accommodationPlan = null) => {
+const generateCostBreakdown = async (preferences, dailyItinerary, accommodationPlan = null, transportPlan = null) => {
     const { travelers, duration, travelStyle, departureCity, destination, budget } = preferences;
     
-    // 1. Chi phí xe khứ hồi (intercity transport)
-    const transportCost = calculateTransportCost(departureCity, destination, travelers, travelStyle);
+    // 1. Chi phí xe khứ hồi (intercity transport) - Dùng selected nếu có
+    let transportCost;
+    if (transportPlan?.intercity?.departure?.selected && transportPlan?.intercity?.return?.selected) {
+        const departureCost = transportPlan.intercity.departure.selected.price || 0;
+        const returnCost = transportPlan.intercity.return.selected.price || 0;
+        transportCost = departureCost + returnCost;
+        console.log(`🚌 Using selected transport: ${departureCost.toLocaleString()}đ + ${returnCost.toLocaleString()}đ = ${transportCost.toLocaleString()}đ`);
+    } else {
+        // Fallback: Tính estimate
+        transportCost = calculateTransportCost(departureCity, destination, travelers, travelStyle);
+        console.log(`🚌 Using estimated transport: ${transportCost.toLocaleString()}đ`);
+    }
     
     // 2. Chi phí khách sạn
     const accommodationCost = calculateAccommodationCost(duration - 1, travelers, travelStyle, accommodationPlan);
@@ -755,6 +772,19 @@ const generateTransportPlan = async (preferences) => {
         distance
     );
     
+    // AUTO-SELECT: Chọn vé rẻ nhất cho cả 2 chiều
+    const cheapestDeparture = departureOptions.length > 0 
+        ? departureOptions.reduce((min, opt) => opt.price < min.price ? opt : min, departureOptions[0])
+        : null;
+    
+    const cheapestReturn = returnOptions.length > 0
+        ? returnOptions.reduce((min, opt) => opt.price < min.price ? opt : min, returnOptions[0])
+        : null;
+    
+    console.log('🚌 Auto-selected cheapest transport:');
+    console.log('  Departure:', cheapestDeparture?.company, '-', cheapestDeparture?.price?.toLocaleString('vi-VN'), 'đ');
+    console.log('  Return:', cheapestReturn?.company, '-', cheapestReturn?.price?.toLocaleString('vi-VN'), 'đ');
+
     return {
         // Đi từ nơi ở đến điểm du lịch
         intercity: {
@@ -765,7 +795,8 @@ const generateTransportPlan = async (preferences) => {
                 date: new Date(startDate).toLocaleDateString('vi-VN'),
                 dateISO: startDate,
                 options: departureOptions,
-                recommended: getRecommendedTransport(departureOptions, distance)
+                recommended: getRecommendedTransport(departureOptions, distance),
+                selected: cheapestDeparture // AUTO-SELECT rẻ nhất
             },
             return: {
                 from: destination,
@@ -773,7 +804,8 @@ const generateTransportPlan = async (preferences) => {
                 date: returnDate.toLocaleDateString('vi-VN'),
                 dateISO: returnDate.toISOString(),
                 options: returnOptions,
-                recommended: getRecommendedTransport(returnOptions, distance)
+                recommended: getRecommendedTransport(returnOptions, distance),
+                selected: cheapestReturn // AUTO-SELECT rẻ nhất
             }
         },
         
@@ -1698,39 +1730,40 @@ const calculateSightseeingCostFromDays = (dailyItinerary, travelers) => {
 
 const calculateLocalTransportCostFromDays = (dailyItinerary, travelers) => {
     // Tính tổng chi phí di chuyển địa phương
-    // CHI PHÍ NÀY ĐÃ TÍNH CHO NHÓM, KHÔNG NHÂN VỚI SỐ NGƯỜI
+    // CHI PHÍ NÀY ĐÃ TÍNH CHO NHÓM
     
-    // Tính chi phí di chuyển/người/ngày từ estimatedCost
-    const transportCostPerPersonPerDay = dailyItinerary.reduce((sum, day) => {
-        const dayCost = day.estimatedCost || 0;
-        // 20% chi phí ngày là di chuyển
-        return sum + (dayCost * 0.2);
-    }, 0);
+    // Tính chi phí di chuyển cơ bản: 50-80k/người/ngày tùy số ngày
+    const baseCostPerPersonPerDay = dailyItinerary.length <= 2 ? 80000 : 
+                                     dailyItinerary.length <= 4 ? 70000 : 60000;
+    
+    const totalDaysTransportCost = baseCostPerPersonPerDay * dailyItinerary.length;
     
     // Áp dụng group discount cho di chuyển địa phương
+    // Khi đi nhóm, chi phí xe/người giảm vì chia sẻ
     let groupMultiplier = travelers;
     
     if (travelers === 1) {
         // 1 người: phải trả full giá Grab/taxi
         groupMultiplier = 1;
     } else if (travelers === 2) {
-        // 2 người: chia đôi chi phí xe
-        groupMultiplier = 2;
+        // 2 người: chia đôi chi phí xe, mỗi người trả ~70%
+        groupMultiplier = 1.4; // 2 * 0.7
     } else if (travelers <= 4) {
-        // 3-4 người: thuê xe 4 chỗ, chi phí tăng ~60% so với 1 người
-        groupMultiplier = travelers * 0.6;
+        // 3-4 người: thuê xe 4 chỗ, mỗi người trả ~50%
+        groupMultiplier = travelers * 0.5;
     } else if (travelers <= 7) {
-        // 5-7 người: thuê xe 7 chỗ, chi phí tăng ~40% so với 1 người
+        // 5-7 người: thuê xe 7 chỗ, mỗi người trả ~40%
         groupMultiplier = travelers * 0.4;
     } else {
-        // 8+ người: thuê 2 xe, chi phí tăng ~50% so với 1 người
-        groupMultiplier = travelers * 0.5;
+        // 8+ người: thuê 2 xe, mỗi người trả ~35%
+        groupMultiplier = travelers * 0.35;
     }
     
-    const totalTransportCost = transportCostPerPersonPerDay * groupMultiplier;
+    const totalTransportCost = totalDaysTransportCost * groupMultiplier;
     
     console.log(`🚗 Local transport cost calculation:`);
-    console.log(`  - Base cost/person: ${transportCostPerPersonPerDay.toLocaleString()}đ`);
+    console.log(`  - Base cost/person/day: ${baseCostPerPersonPerDay.toLocaleString()}đ`);
+    console.log(`  - Days: ${dailyItinerary.length}`);
     console.log(`  - Travelers: ${travelers} people`);
     console.log(`  - Group multiplier: ${groupMultiplier.toFixed(2)}x`);
     console.log(`  - Total: ${totalTransportCost.toLocaleString()}đ`);
@@ -3461,9 +3494,9 @@ const diversifyDestinations = (destinations, dayNumber) => {
         byCategory[category].push(dest);
     });
 
-    // Chọn đa dạng theo ngày - tăng số lượng địa điểm lên 5-6
+    // Chọn đa dạng theo ngày - tăng số lượng địa điểm lên 6-8 để lấp đầy cả ngày
     const selected = [];
-    const targetCount = Math.min(dayNumber === 1 ? 4 : 6, availableDestinations.length);
+    const targetCount = Math.min(dayNumber === 1 ? 6 : 8, availableDestinations.length);
     
     // Shuffle để tăng tính ngẫu nhiên
     const shuffled = [...availableDestinations].sort(() => 0.5 - Math.random());
@@ -5299,11 +5332,28 @@ const generateEnhancedHourlySchedule = (dayNumber, destinations, restaurants, in
             });
             currentTime = calculateNextTime(currentTime, dest.estimatedDuration || '1.5 giờ');
             
-            // Nghỉ giữa các điểm
+            // Nghỉ giữa các điểm (15 phút di chuyển)
             if (index < afternoonDests.length - 1) {
                 currentTime = calculateNextTime(currentTime, '15 phút');
             }
         });
+        
+        // Thêm hoạt động nghỉ ngơi nếu còn thời gian trước bữa tối (< 17:30)
+        const [afterDestHour, afterDestMin] = currentTime.split(':').map(Number);
+        const afterDestTotalMin = afterDestHour * 60 + afterDestMin;
+        const dinnerTimeMin = 18 * 60 + 30; // 18:30
+        
+        if (afterDestTotalMin < dinnerTimeMin - 60) { // Còn hơn 1h trước bữa tối
+            schedule.push({
+                time: currentTime,
+                activity: 'Thư giãn, dạo phố, mua sắm',
+                type: 'leisure',
+                duration: '1-2 giờ',
+                notes: ['Nghỉ ngơi trước bữa tối', 'Khám phá khu vực xung quanh'],
+                realData: true
+            });
+            currentTime = calculateNextTime(currentTime, '1.5 giờ');
+        }
     }
 
     // Hoạt động chiều - chỉ thêm nếu còn thời gian trước bữa tối
