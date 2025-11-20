@@ -183,12 +183,15 @@
     justify-content: space-between;
     align-items: center;
     margin-bottom: 20px;
-    padding-bottom: 15px;
-    border-bottom: 2px solid #f1f2f6;
+    padding: 15px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 10px;
+    margin: -25px -25px 20px -25px;
+    color: #ffffff;
 }
 
 .day-header h4 {
-    color: #2c3e50;
+    color: #ffffff;
     margin: 0;
     font-size: 1.3rem;
 }
@@ -295,11 +298,12 @@
 }
 
 .destination-card {
-    background: #fff;
-    border: 1px solid #e9ecef;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
     border-radius: 10px;
     padding: 20px;
     transition: all 0.3s ease;
+    color: #ffffff;
 }
 
 .destination-card:hover {
@@ -316,7 +320,7 @@
 
 .dest-header h6 {
     margin: 0;
-    color: #2c3e50;
+    color: #ffffff;
     font-size: 1rem;
     font-weight: 600;
 }
@@ -335,7 +339,7 @@
 .dest-fee {
     margin: 8px 0;
     font-size: 0.9rem;
-    color: #666;
+    color: rgba(255, 255, 255, 0.9);
 }
 
 .dest-notes {

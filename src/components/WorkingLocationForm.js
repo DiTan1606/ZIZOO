@@ -149,7 +149,7 @@ const WorkingLocationForm = ({ tripDates, onAddWorkingLocation, onCancel }) => {
     return (
         <div className="working-location-form">
             <div className="form-header">
-                <h3>📍 Thêm địa điểm làm việc</h3>
+                <h3>Thêm địa điểm làm việc</h3>
                 <p>Địa điểm này sẽ được cố định trong lịch trình</p>
             </div>
 
@@ -210,7 +210,7 @@ const WorkingLocationForm = ({ tripDates, onAddWorkingLocation, onCancel }) => {
                 </div>
 
                 {/* Thời gian làm việc */}
-                <div className="form-row">
+                <div className="form-row form-row-two-cols">
                     <div className="form-group">
                         <label>Giờ bắt đầu *</label>
                         <input

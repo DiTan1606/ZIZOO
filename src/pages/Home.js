@@ -125,8 +125,7 @@ export default function Home() {
                         <div className="bg-white/80 backdrop-blur-md p-8 rounded-2xl shadow-xl border border-white">
                             <h3 className="text-2xl font-bold mb-4 text-indigo-600">Sứ mệnh của chúng tôi</h3>
                             <p className="text-gray-700 leading-relaxed mb-4">
-                                ZIZOO Travel AI được tạo ra với sứ mệnh giúp mọi người có thể tạo ra những chuyến đi hoàn hảo 
-                                mà không cần phải là chuyên gia du lịch.
+                                ZIZOO Travel AI được tạo ra với sứ mệnh giúp mọi người thiết kế lịch trình du lịch linh hoạt, khám phá những địa điểm thú vị theo cách riêng.
                             </p>
                             <p className="text-gray-700 leading-relaxed">
                                 Chúng tôi tin rằng mỗi chuyến đi đều độc đáo, và công nghệ AI có thể giúp 
@@ -135,16 +134,18 @@ export default function Home() {
                         </div>
                         <div className="grid grid-cols-2 gap-6">
                             <div className="text-center p-6 bg-white/80 backdrop-blur-md rounded-xl shadow-lg border border-white">
-                                <h4 className="text-3xl font-bold text-indigo-600 mb-2">10,000+</h4>
-                                <p className="text-gray-600">Lịch trình đã tạo</p>
+                                <h4 className="text-3xl font-bold text-indigo-600 mb-2">Theo dõi</h4>
+                                <h4 className="text-3xl font-bold text-indigo-600 mb-2">lịch trình</h4>
+                                <p className="text-gray-600">Quản lý linh hoạt</p>
                             </div>
                             <div className="text-center p-6 bg-white/80 backdrop-blur-md rounded-xl shadow-lg border border-white">
-                                <h4 className="text-3xl font-bold text-purple-600 mb-2">5,000+</h4>
-                                <p className="text-gray-600">Người dùng hài lòng</p>
+                                <h4 className="text-3xl font-bold text-purple-600 mb-2">Chăm sóc</h4>
+                                <h4 className="text-3xl font-bold text-purple-600 mb-2">khách hàng</h4>
+                                <p className="text-gray-600">Trải nghiệm người dùng</p>
                             </div>
                             <div className="text-center p-6 bg-white/80 backdrop-blur-md rounded-xl shadow-lg border border-white">
                                 <h4 className="text-3xl font-bold text-green-600 mb-2">63</h4>
-                                <p className="text-gray-600">Tỉnh thành VN</p>
+                                <p className="text-gray-600">Tỉnh thành Việt Nam</p>
                             </div>
                             <div className="text-center p-6 bg-white/80 backdrop-blur-md rounded-xl shadow-lg border border-white">
                                 <h4 className="text-3xl font-bold text-orange-600 mb-2">24/7</h4>

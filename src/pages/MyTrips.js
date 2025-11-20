@@ -12,6 +12,7 @@ import MapViewer from '../components/MapViewer';
 import ItineraryDetailModal from '../components/ItineraryDetailModal';
 import TripWeatherWidget from '../components/TripWeatherWidget';
 import './MyTrips.css';
+import Footer from '../components/Footer';
 
 export default function MyTrips() {
     const { currentUser } = useAuth();
@@ -577,7 +578,8 @@ export default function MyTrips() {
                         </div>
                     </div>
                 </div>
-            )}
+            )}\
+            <Footer/>
         </div>
     );
 }

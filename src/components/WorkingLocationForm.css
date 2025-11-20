@@ -112,6 +112,11 @@
     gap: 20px;
 }
 
+/* Row với 2 cột - chiếm đầy chiều rộng */
+.form-row-two-cols {
+    grid-template-columns: 1fr 1fr;
+}
+
 .all-days-toggle {
     margin-bottom: 15px;
     padding: 15px;

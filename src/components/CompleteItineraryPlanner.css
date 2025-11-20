@@ -182,6 +182,11 @@
     margin-bottom: 30px;
 }
 
+/* Row với 2 cột - chiếm đầy chiều rộng */
+.form-row-two-cols {
+    grid-template-columns: repeat(2, 1fr);
+}
+
 .form-group {
     display: flex;
     flex-direction: column;
@@ -2145,11 +2150,11 @@ ansport Options Styles */
 .day-header h3 {
     margin: 0 0 8px 0;
     font-size: 1.3rem;
-    color: #2c3e50;
+    color: #ffffff;
 }
 
 .day-header .day-cost {
-    color: #6c757d;
+    color: #ffffff;
     font-size: 0.95rem;
     font-weight: 500;
 }
