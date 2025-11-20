@@ -718,7 +718,7 @@
     background: white;
 }
 
-.day-header {
+.day-header{
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     color: white;
     padding: 24px 20px;
@@ -2150,10 +2150,10 @@ ansport Options Styles */
     }
 }
 
-/* Working day header */
+/* Working day header - same as normal day */
 .day-header.working-day {
-    background: linear-gradient(135deg, rgba(102, 126, 234, 0.08) 0%, rgba(118, 75, 162, 0.08) 100%);
-    border-left: 5px solid #667eea;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-left: none;
     padding-left: 20px;
     position: relative;
 }
