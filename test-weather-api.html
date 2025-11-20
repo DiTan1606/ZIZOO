@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Weather Safety API</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 30px;
+        }
+        .test-section {
+            margin-bottom: 30px;
+            padding: 20px;
+            background: #f9f9f9;
+            border-radius: 8px;
+        }
+        button {
+            background: #3b82f6;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-right: 10px;
+        }
+        button:hover {
+            background: #2563eb;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            background: white;
+            border-radius: 6px;
+            border-left: 4px solid #3b82f6;
+        }
+        .status-badge {
+            display: inline-block;
+            padding: 6px 12px;
+            border-radius: 20px;
+            color: white;
+            font-weight: 600;
+            margin-right: 10px;
+        }
+        .safe { background: #10b981; }
+        .caution { background: #f59e0b; }
+        .warning { background: #ef4444; }
+        .danger { background: #991b1b; }
+        pre {
+            background: #1e293b;
+            color: #e2e8f0;
+            padding: 15px;
+            border-radius: 6px;
+            overflow-x: auto;
+            font-size: 12px;
+        }
+        .loading {
+            color: #6b7280;
+            font-style: italic;
+        }
+        .error {
+            color: #ef4444;
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🌤️ Test Weather Safety API</h1>
+
+        <!-- Test 1: OpenWeatherMap -->
+        <div class="test-section">
+            <h3>1. Test OpenWeatherMap API</h3>
+            <p>Lấy thời tiết hiện tại và dự báo cho Đà Lạt</p>
+            <button onclick="testOpenWeather()">Test OpenWeatherMap</button>
+            <div id="opm-result"></div>
+        </div>
+
+        <!-- Test 2: TomTom Traffic -->
+        <div class="test-section">
+            <h3>2. Test TomTom Traffic API</h3>
+            <p>Lấy tình hình giao thông tại Đà Lạt</p>
+            <button onclick="testTomTom()">Test TomTom</button>
+            <div id="tomtom-result"></div>
+        </div>
+
+        <!-- Test 3: Critical Routes -->
+        <div class="test-section">
+            <h3>3. Test Critical Routes (Đà Lạt)</h3>
+            <p>Kiểm tra các tuyến đường quan trọng (Đèo Prenn, Đèo Mimosa)</p>
+            <button onclick="testCriticalRoutes()">Test Critical Routes</button>
+            <div id="routes-result"></div>
+        </div>
+
+        <!-- Test 4: Combined Analysis -->
+        <div class="test-section">
+            <h3>4. Test Combined Analysis</h3>
+            <p>Phân tích tổng hợp an toàn chuyến đi</p>
+            <button onclick="testCombined()">Test Combined</button>
+            <div id="combined-result"></div>
+        </div>
+    </div>
+
+    <script>
+        const OPM_API_KEY = 'a0c3bdef674df3ff86bc7ef7a834c503';
+        const TOMTOM_API_KEY = 'lazvNskZKUnxr0XLLiEdbGW8BMbERuKan';
+
+        // Tọa độ Đà Lạt
+        const DA_LAT = { lat: 11.9404, lng: 108.4583 };
+
+        async function testOpenWeather() {
+            const resultDiv = document.getElementById('opm-result');
+            resultDiv.innerHTML = '<p class="loading">Đang tải...</p>';
+
+            try {
+                // Current weather
+                const currentRes = await fetch(
+                    `https://api.openweathermap.org/data/2.5/weather?lat=${DA_LAT.lat}&lon=${DA_LAT.lng}&appid=${OPM_API_KEY}&units=metric&lang=vi`
+                );
+                const current = await currentRes.json();
+
+                // Forecast
+                const forecastRes = await fetch(
+                    `https://api.openweathermap.org/data/2.5/forecast?lat=${DA_LAT.lat}&lon=${DA_LAT.lng}&appid=${OPM_API_KEY}&units=metric&lang=vi`
+                );
+                const forecast = await forecastRes.json();
+
+                resultDiv.innerHTML = `
+                    <div class="result">
+                        <h4>✅ Thành công!</h4>
+                        <p><strong>Hiện tại:</strong> ${current.weather[0].description}, ${Math.round(current.main.temp)}°C</p>
+                        <p><strong>Gió:</strong> ${current.wind.speed} km/h</p>
+                        <p><strong>Độ ẩm:</strong> ${current.main.humidity}%</p>
+                        <p><strong>Dự báo:</strong> ${forecast.list.length} điểm dữ liệu (5 ngày)</p>
+                        <details>
+                            <summary>Xem JSON</summary>
+                            <pre>${JSON.stringify({ current, forecast: forecast.list.slice(0, 3) }, null, 2)}</pre>
+                        </details>
+                    </div>
+                `;
+            } catch (error) {
+                resultDiv.innerHTML = `<div class="result"><p class="error">❌ Lỗi: ${error.message}</p></div>`;
+            }
+        }
+
+        async function testTomTom() {
+            const resultDiv = document.getElementById('tomtom-result');
+            resultDiv.innerHTML = '<p class="loading">Đang tải...</p>';
+
+            try {
+                const bbox = `${DA_LAT.lng - 0.5},${DA_LAT.lat - 0.5},${DA_LAT.lng + 0.5},${DA_LAT.lat + 0.5}`;
+                
+                const res = await fetch(
+                    `https://api.tomtom.com/traffic/services/5/incidentDetails?bbox=${bbox}&key=${TOMTOM_API_KEY}&categoryFilter=0,1,2,3,4,5,6,7,8,9,10,11,14`
+                );
+                const data = await res.json();
+
+                const incidents = data.incidents || [];
+                const roadsClosed = incidents.filter(i => 
+                    i.properties.iconCategory === 2 || i.properties.iconCategory === 3
+                );
+
+                resultDiv.innerHTML = `
+                    <div class="result">
+                        <h4>✅ Thành công!</h4>
+                        <p><strong>Tổng incidents:</strong> ${incidents.length}</p>
+                        <p><strong>Đường đóng:</strong> ${roadsClosed.length}</p>
+                        ${roadsClosed.length > 0 ? `
+                            <p><strong>Chi tiết:</strong></p>
+                            <ul>
+                                ${roadsClosed.slice(0, 3).map(i => 
+                                    `<li>${i.properties.description || 'Đường bị đóng'}</li>`
+                                ).join('')}
+                            </ul>
+                        ` : '<p>Không có đường bị đóng</p>'}
+                        <details>
+                            <summary>Xem JSON</summary>
+                            <pre>${JSON.stringify(data, null, 2)}</pre>
+                        </details>
+                    </div>
+                `;
+            } catch (error) {
+                resultDiv.innerHTML = `<div class="result"><p class="error">❌ Lỗi: ${error.message}</p></div>`;
+            }
+        }
+
+        async function testCriticalRoutes() {
+            const resultDiv = document.getElementById('routes-result');
+            resultDiv.innerHTML = '<p class="loading">Đang kiểm tra...</p>';
+
+            const routes = [
+                { name: 'Đèo Prenn', lat: 11.8833, lng: 108.4333 },
+                { name: 'Đèo Mimosa', lat: 11.5500, lng: 107.8000 },
+                { name: 'Đà Lạt Center', lat: 11.9404, lng: 108.4583 }
+            ];
+
+            try {
+                const results = await Promise.all(
+                    routes.map(async (route) => {
+                        const bbox = `${route.lng - 0.1},${route.lat - 0.1},${route.lng + 0.1},${route.lat + 0.1}`;
+                        
+                        const res = await fetch(
+                            `https://api.tomtom.com/traffic/services/5/incidentDetails?bbox=${bbox}&key=${TOMTOM_API_KEY}`
+                        );
+                        const data = await res.json();
+
+                        const incidents = data.incidents || [];
+                        const critical = incidents.filter(i => 
+                            i.properties.iconCategory === 2 || i.properties.iconCategory === 3
+                        );
+
+                        return {
+                            name: route.name,
+                            isOpen: critical.length === 0,
+                            incidents: critical.length,
+                            details: critical.map(i => i.properties.description || 'Vấn đề giao thông')
+                        };
+                    })
+                );
+
+                const allOpen = results.every(r => r.isOpen);
+                const allClosed = results.every(r => !r.isOpen);
+
+                resultDiv.innerHTML = `
+                    <div class="result">
+                        <h4>✅ Kiểm tra hoàn tất!</h4>
+                        ${allClosed ? `
+                            <p class="error">🚫 TẤT CẢ ĐƯỜNG CHÍNH ĐỀU ĐÓNG - KHÔNG THỂ VÀO ĐÀ LẠT!</p>
+                        ` : allOpen ? `
+                            <p style="color: #10b981; font-weight: 600;">✅ Tất cả đường đều thông thoáng</p>
+                        ` : `
+                            <p style="color: #f59e0b; font-weight: 600;">⚠️ Một số đường bị đóng</p>
+                        `}
+                        
+                        <div style="margin-top: 16px;">
+                            ${results.map(route => `
+                                <div style="padding: 12px; margin: 8px 0; border-radius: 8px; background: ${route.isOpen ? '#f0fdf4' : '#fef2f2'}; border: 2px solid ${route.isOpen ? '#86efac' : '#fca5a5'};">
+                                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+                                        <span style="font-size: 18px;">${route.isOpen ? '✅' : '🚫'}</span>
+                                        <strong>${route.name}</strong>
+                                        ${route.isOpen ? 
+                                            '<span style="color: #10b981; font-size: 12px;">(Thông thoáng)</span>' : 
+                                            '<span style="color: #dc2626; font-size: 12px;">(Bị đóng)</span>'
+                                        }
+                                    </div>
+                                    ${!route.isOpen && route.details.length > 0 ? `
+                                        <div style="font-size: 12px; color: #dc2626; margin-top: 8px;">
+                                            ${route.details.map(d => `• ${d}`).join('<br>')}
+                                        </div>
+                                    ` : ''}
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                `;
+            } catch (error) {
+                resultDiv.innerHTML = `<div class="result"><p class="error">❌ Lỗi: ${error.message}</p></div>`;
+            }
+        }
+
+        async function testCombined() {
+            const resultDiv = document.getElementById('combined-result');
+            resultDiv.innerHTML = '<p class="loading">Đang phân tích...</p>';
+
+            try {
+                // Get weather
+                const currentRes = await fetch(
+                    `https://api.openweathermap.org/data/2.5/weather?lat=${DA_LAT.lat}&lon=${DA_LAT.lng}&appid=${OPM_API_KEY}&units=metric&lang=vi`
+                );
+                const current = await currentRes.json();
+
+                const forecastRes = await fetch(
+                    `https://api.openweathermap.org/data/2.5/forecast?lat=${DA_LAT.lat}&lon=${DA_LAT.lng}&appid=${OPM_API_KEY}&units=metric&lang=vi`
+                );
+                const forecast = await forecastRes.json();
+
+                // Get traffic
+                const bbox = `${DA_LAT.lng - 0.5},${DA_LAT.lat - 0.5},${DA_LAT.lng + 0.5},${DA_LAT.lat + 0.5}`;
+                const trafficRes = await fetch(
+                    `https://api.tomtom.com/traffic/services/5/incidentDetails?bbox=${bbox}&key=${TOMTOM_API_KEY}`
+                );
+                const traffic = await trafficRes.json();
+
+                // Analyze
+                let score = 100;
+                const issues = [];
+
+                const rain = current.rain?.['1h'] || 0;
+                const wind = current.wind.speed;
+                const roadsClosed = (traffic.incidents || []).filter(i => 
+                    i.properties.iconCategory === 2 || i.properties.iconCategory === 3
+                ).length;
+
+                if (rain > 100) { score -= 25; issues.push('Mưa rất lớn'); }
+                else if (rain > 50) { score -= 10; issues.push('Mưa lớn'); }
+                
+                if (wind > 60) { score -= 25; issues.push('Gió rất mạnh'); }
+                else if (wind > 40) { score -= 10; issues.push('Gió mạnh'); }
+
+                if (roadsClosed > 10) { score -= 40; issues.push(`${roadsClosed} đường đóng`); }
+                else if (roadsClosed > 5) { score -= 25; issues.push(`${roadsClosed} đường đóng`); }
+                else if (roadsClosed > 0) { score -= 10; issues.push(`${roadsClosed} đường đóng`); }
+
+                let status, statusClass, icon;
+                if (score >= 80) { status = 'An toàn'; statusClass = 'safe'; icon = '✅'; }
+                else if (score >= 50) { status = 'Cân nhắc'; statusClass = 'caution'; icon = '⚠️'; }
+                else if (score >= 20) { status = 'Không nên đi'; statusClass = 'warning'; icon = '🔴'; }
+                else { status = 'Nguy hiểm'; statusClass = 'danger'; icon = '🚨'; }
+
+                resultDiv.innerHTML = `
+                    <div class="result">
+                        <h4>✅ Phân tích hoàn tất!</h4>
+                        <p>
+                            <span class="status-badge ${statusClass}">${icon} ${status}</span>
+                            <strong>Điểm: ${score}/100</strong>
+                        </p>
+                        <p><strong>Thời tiết:</strong> ${current.weather[0].description}, ${Math.round(current.main.temp)}°C</p>
+                        <p><strong>Mưa:</strong> ${rain}mm/h</p>
+                        <p><strong>Gió:</strong> ${wind} km/h</p>
+                        <p><strong>Đường đóng:</strong> ${roadsClosed}</p>
+                        ${issues.length > 0 ? `
+                            <p><strong>Vấn đề:</strong> ${issues.join(', ')}</p>
+                        ` : '<p><strong>Không có vấn đề</strong></p>'}
+                    </div>
+                `;
+            } catch (error) {
+                resultDiv.innerHTML = `<div class="result"><p class="error">❌ Lỗi: ${error.message}</p></div>`;
+            }
+        }
+    </script>
+</body>
+</html>

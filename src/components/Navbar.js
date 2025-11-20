@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { getUserProfile } from '../services/userProfileService';
+import NotificationBell from './NotificationBell';
 import './Navbar.css';
 
 // Import icons
@@ -107,6 +108,7 @@ export default function Navbar() {
                 <div className="navbar-user">
                     {currentUser ? (
                         <div className="user-menu">
+                            <NotificationBell />
                             <Link to="/profile" className="user-profile">
                                 <div className="user-avatar">
                                     {userAvatar || currentUser.photoURL ? (

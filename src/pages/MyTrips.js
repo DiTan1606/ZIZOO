@@ -10,6 +10,7 @@ import {
 import { toast } from 'react-toastify';
 import MapViewer from '../components/MapViewer';
 import ItineraryDetailModal from '../components/ItineraryDetailModal';
+import TripWeatherWidget from '../components/TripWeatherWidget';
 import './MyTrips.css';
 
 export default function MyTrips() {
@@ -367,6 +368,11 @@ export default function MyTrips() {
                                             </p>
                                         </div>
                                     </div>
+
+                                    {/* Weather Safety Widget */}
+                                    {(status === 'active' || status === 'ongoing') && (
+                                        <TripWeatherWidget trip={trip} />
+                                    )}
 
                                     {/* Daily Plans Preview */}
                                     {trip.fullItinerary?.dailyItinerary && (

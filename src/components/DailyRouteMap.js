@@ -76,7 +76,7 @@ export default function DailyRouteMap({ day, dayNumber, destination }) {
         setLoading(false);
     };
 
-    // Kiểm tra xem có đường đi giữa 2 điểm không
+    // Kiểm tra xem có đường đi giữa 2 điểm không (theo thứ tự)
     const checkIfReachable = (directionsService, from, to) => {
         return new Promise((resolve) => {
             directionsService.route(
@@ -98,49 +98,107 @@ export default function DailyRouteMap({ day, dayNumber, destination }) {
         try {
             const directionsService = new window.google.maps.DirectionsService();
             
-            // Lọc địa điểm: chỉ giữ lại địa điểm có đường đi
-            const validLocs = [];
-            const islandLocs = [];
+            console.log(`🗺️ Tính toán route theo thứ tự: ${locs.map((l, i) => `${i+1}. ${l.location}`).join(' → ')}`);
             
-            // Kiểm tra từng địa điểm xem có thể đi đường bộ không
-            for (let i = 0; i < locs.length; i++) {
-                if (i === 0) {
-                    validLocs.push(locs[i]); // Điểm đầu luôn giữ
-                    continue;
-                }
+            // Lọc bỏ khách sạn khi vẽ route (nhưng vẫn giữ trong markers)
+            // Khách sạn thường có category là 'lodging' hoặc tên chứa 'hotel', 'khách sạn'
+            const isHotel = (loc) => {
+                const name = loc.location?.toLowerCase() || '';
+                const category = loc.category?.toLowerCase() || '';
+                const type = loc.type?.toLowerCase() || '';
                 
-                // Thử tìm đường từ điểm trước đó đến điểm này
-                const canReach = await checkIfReachable(
-                    directionsService,
-                    validLocs[validLocs.length - 1],
-                    locs[i]
+                return (
+                    category.includes('lodging') ||
+                    category.includes('hotel') ||
+                    type.includes('lodging') ||
+                    type.includes('hotel') ||
+                    name.includes('hotel') ||
+                    name.includes('khách sạn') ||
+                    name.includes('resort') ||
+                    name.includes('homestay')
                 );
-                
-                if (canReach) {
-                    validLocs.push(locs[i]);
-                } else {
-                    islandLocs.push(locs[i]);
-                    console.log(`⚠️ ${locs[i].name} - Không có đường bộ (đảo/biển)`);
-                }
-            }
+            };
             
-            console.log(`✅ ${validLocs.length} địa điểm có đường, ${islandLocs.length} địa điểm đảo/biển`);
+            // Lọc địa điểm để vẽ route (bỏ khách sạn)
+            const locsForRoute = locs.filter(loc => !isHotel(loc));
             
-            // Nếu không có đủ địa điểm để vẽ route
-            if (validLocs.length < 2) {
+            console.log(`📍 Tổng ${locs.length} địa điểm, ${locsForRoute.length} địa điểm để vẽ route (đã bỏ khách sạn)`);
+            
+            // Nếu không đủ địa điểm để vẽ route
+            if (locsForRoute.length < 2) {
                 setRouteInfo({
                     totalDistance: 'N/A',
                     totalDuration: 'N/A',
                     route: null,
-                    error: 'Hầu hết địa điểm cần đi tàu/phà'
+                    error: 'Không đủ địa điểm để vẽ route (chỉ có khách sạn hoặc 1 địa điểm)'
                 });
                 return;
             }
             
-            // Vẽ route cho các địa điểm hợp lệ
-            const origin = { lat: validLocs[0].lat, lng: validLocs[0].lng };
-            const destination = { lat: validLocs[validLocs.length - 1].lat, lng: validLocs[validLocs.length - 1].lng };
-            const waypoints = validLocs.slice(1, -1).map(loc => ({
+            // Kiểm tra từng cặp địa điểm liên tiếp xem có thể đi đường bộ không
+            const reachabilityMap = [];
+            for (let i = 0; i < locsForRoute.length - 1; i++) {
+                const canReach = await checkIfReachable(
+                    directionsService,
+                    locsForRoute[i],
+                    locsForRoute[i + 1]
+                );
+                reachabilityMap.push({
+                    from: i,
+                    to: i + 1,
+                    canReach,
+                    fromName: locsForRoute[i].location,
+                    toName: locsForRoute[i + 1].location
+                });
+                
+                if (!canReach) {
+                    console.log(`⚠️ Không có đường bộ: ${locsForRoute[i].location} → ${locsForRoute[i + 1].location} (đảo/biển)`);
+                }
+            }
+            
+            // Tìm các đoạn route liên tục có thể đi được
+            const routeSegments = [];
+            let currentSegment = [locsForRoute[0]];
+            
+            for (let i = 0; i < reachabilityMap.length; i++) {
+                if (reachabilityMap[i].canReach) {
+                    currentSegment.push(locsForRoute[i + 1]);
+                } else {
+                    // Kết thúc segment hiện tại nếu có >= 2 điểm
+                    if (currentSegment.length >= 2) {
+                        routeSegments.push([...currentSegment]);
+                    }
+                    // Bắt đầu segment mới
+                    currentSegment = [locsForRoute[i + 1]];
+                }
+            }
+            
+            // Thêm segment cuối cùng
+            if (currentSegment.length >= 2) {
+                routeSegments.push(currentSegment);
+            }
+            
+            console.log(`✅ Tìm thấy ${routeSegments.length} đoạn route liên tục`);
+            
+            // Nếu không có đoạn nào có thể vẽ
+            if (routeSegments.length === 0) {
+                setRouteInfo({
+                    totalDistance: 'N/A',
+                    totalDuration: 'N/A',
+                    route: null,
+                    error: 'Các địa điểm không thể đi đường bộ (cần tàu/phà)',
+                    unreachableCount: reachabilityMap.filter(r => !r.canReach).length
+                });
+                return;
+            }
+            
+            // Vẽ route cho đoạn dài nhất (hoặc tất cả các đoạn)
+            // Ưu tiên vẽ đoạn đầu tiên nếu có nhiều đoạn
+            const mainSegment = routeSegments[0];
+            
+            const origin = { lat: mainSegment[0].lat, lng: mainSegment[0].lng };
+            const destination = { lat: mainSegment[mainSegment.length - 1].lat, lng: mainSegment[mainSegment.length - 1].lng };
+            const waypoints = mainSegment.slice(1, -1).map(loc => ({
                 location: { lat: loc.lat, lng: loc.lng },
                 stopover: true
             }));
@@ -151,7 +209,7 @@ export default function DailyRouteMap({ day, dayNumber, destination }) {
                     destination,
                     waypoints,
                     travelMode: window.google.maps.TravelMode.DRIVING,
-                    optimizeWaypoints: true
+                    optimizeWaypoints: false // QUAN TRỌNG: Giữ nguyên thứ tự 1, 2, 3, 4, 5
                 },
                 (result, status) => {
                     if (status === 'OK') {
@@ -164,22 +222,28 @@ export default function DailyRouteMap({ day, dayNumber, destination }) {
                             totalDuration += leg.duration.value;
                         });
 
+                        const unreachableCount = reachabilityMap.filter(r => !r.canReach).length;
+                        const warningMsg = unreachableCount > 0 
+                            ? `${unreachableCount} đoạn đường cần tàu/phà (không hiển thị trên bản đồ)` 
+                            : null;
+
                         setRouteInfo({
                             totalDistance: (totalDistance / 1000).toFixed(1), // km
                             totalDuration: Math.round(totalDuration / 60), // minutes
                             route: result.routes[0],
-                            warning: islandLocs.length > 0 ? `${islandLocs.length} địa điểm cần đi tàu/phà (đã loại khỏi lộ trình)` : null
+                            warning: warningMsg,
+                            routeOrder: mainSegment.map((loc, idx) => `${idx + 1}. ${loc.location}`).join(' → ')
                         });
 
                         // Render route trên map
                         if (directionsRendererRef.current) {
                             directionsRendererRef.current.setDirections(result);
                         }
+                        
+                        console.log(`✅ Route đã vẽ theo thứ tự: ${mainSegment.map(l => l.location).join(' → ')}`);
                     } else {
-                        // Không tìm thấy đường đi (có thể là đảo/biển)
                         console.warn(`⚠️ Không tìm thấy đường đi: ${status}`);
                         
-                        // Vẫn hiển thị markers nhưng không có route
                         setRouteInfo({
                             totalDistance: 'N/A',
                             totalDuration: 'N/A',
@@ -314,7 +378,7 @@ export default function DailyRouteMap({ day, dayNumber, destination }) {
                                         <div style={{ color: '#856404', width: '100%' }}>
                                             <strong>⚠️ Lưu ý:</strong> {routeInfo.error}
                                             <div style={{ fontSize: '0.9em', marginTop: '5px' }}>
-                                                Các địa điểm vẫn được hiển thị trên bản đồ. Một số địa điểm có thể cần phương tiện đặc biệt (tàu, phà).
+                                                Các địa điểm vẫn được hiển thị trên bản đồ theo thứ tự. Một số địa điểm cần phương tiện đặc biệt (tàu, phà).
                                             </div>
                                         </div>
                                     ) : (

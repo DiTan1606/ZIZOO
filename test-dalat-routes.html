@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Đà Lạt Routes - TomTom API</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1200px;
+            margin: 50px auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .container {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 10px;
+        }
+        .subtitle {
+            text-align: center;
+            color: #666;
+            margin-bottom: 30px;
+        }
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            font-size: 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            width: 100%;
+            font-weight: bold;
+            transition: transform 0.2s;
+        }
+        button:hover {
+            transform: translateY(-2px);
+        }
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        #result {
+            margin-top: 30px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            white-space: pre-wrap;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            line-height: 1.6;
+            max-height: 600px;
+            overflow-y: auto;
+        }
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #667eea;
+            font-size: 18px;
+        }
+        .status-open {
+            color: #10b981;
+            font-weight: bold;
+        }
+        .status-closed {
+            color: #ef4444;
+            font-weight: bold;
+        }
+        .incident {
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+        .summary {
+            background: #e3f2fd;
+            border-left: 4px solid #2196f3;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🏔️ Test Đà Lạt Routes</h1>
+        <p class="subtitle">Kiểm tra tình trạng Đèo Prenn & Mimosa qua TomTom API</p>
+        
+        <button onclick="checkRoutes()" id="checkBtn">
+            🔍 Kiểm tra tình trạng đường
+        </button>
+        
+        <div id="result"></div>
+    </div>
+
+    <script>
+        const TOMTOM_API_KEY = 'lazvNskZKUnxr0XLLiEdbGW8BMbERuKa'; // API key từ Python code
+        const BBOX_PASSES = '108.42,11.85,108.50,11.95'; // Bbox bao trùm khu vực đèo
+
+        async function checkRoutes() {
+            const btn = document.getElementById('checkBtn');
+            const resultDiv = document.getElementById('result');
+            
+            btn.disabled = true;
+            resultDiv.innerHTML = '<div class="loading">⏳ Đang quét radar khu vực đèo...</div>';
+            
+            try {
+                const url = `https://api.tomtom.com/traffic/services/5/incidentDetails?bbox=${BBOX_PASSES}&key=${TOMTOM_API_KEY}&fields={incidents{type,geometry{type,coordinates},properties{iconCategory,events{description}}}}&language=vi-VN&t=${Date.now()}`;
+                
+                console.log('🔍 Calling TomTom API:', url);
+                
+                const response = await fetch(url);
+                
+                if (!response.ok) {
+                    throw new Error(`API Error: ${response.status} ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                const incidents = data.incidents || [];
+                
+                console.log('📊 API Response:', data);
+                
+                // Phân tích kết quả
+                let output = `📡 QUÉT RADAR KHU VỰC ĐÈO PRENN & MIMOSA\n`;
+                output += `   Vùng quét: ${BBOX_PASSES}\n`;
+                output += `   Thời gian: ${new Date().toLocaleString('vi-VN')}\n`;
+                output += `${'='.repeat(60)}\n\n`;
+                
+                output += `📊 Tổng số sự cố phát hiện: ${incidents.length}\n\n`;
+                
+                // Lọc sự cố nghiêm trọng
+                const prennIncidents = [];
+                const mimosaIncidents = [];
+                const otherIncidents = [];
+                
+                incidents.forEach(incident => {
+                    const cat = incident.properties.iconCategory;
+                    const coords = incident.geometry.coordinates;
+                    const point = Array.isArray(coords[0]) ? coords[0] : coords;
+                    const desc = incident.properties.events?.[0]?.description || 'No description';
+                    
+                    const incidentData = {
+                        category: cat,
+                        categoryName: getCategoryName(cat),
+                        description: desc,
+                        lat: point[1],
+                        lng: point[0]
+                    };
+                    
+                    // Chỉ quan tâm sự cố nghiêm trọng: 6=Tắc, 8=Đóng, 9=Thi công
+                    if (cat === 6 || cat === 8 || cat === 9) {
+                        if (point[1] > 11.90) {
+                            prennIncidents.push(incidentData);
+                        } else if (point[1] >= 11.85 && point[1] <= 11.90) {
+                            mimosaIncidents.push(incidentData);
+                        } else {
+                            otherIncidents.push(incidentData);
+                        }
+                    }
+                });
+                
+                // Hiển thị kết quả Đèo Prenn
+                output += `🏔️ ĐÈO PRENN (QL20)\n`;
+                output += `   Vị trí: Lat > 11.90\n`;
+                if (prennIncidents.length === 0) {
+                    output += `   ✅ TRẠNG THÁI: THÔNG THOÁNG\n`;
+                } else {
+                    output += `   🚫 TRẠNG THÁI: CÓ SỰ CỐ (${prennIncidents.length} vấn đề)\n`;
+                    prennIncidents.forEach((inc, i) => {
+                        output += `\n   Sự cố ${i + 1}:\n`;
+                        output += `   - Loại: ${inc.categoryName}\n`;
+                        output += `   - Mô tả: ${inc.description}\n`;
+                        output += `   - Tọa độ: ${inc.lat.toFixed(6)}, ${inc.lng.toFixed(6)}\n`;
+                    });
+                }
+                output += `\n`;
+                
+                // Hiển thị kết quả Đèo Mimosa
+                output += `🏔️ ĐÈO MIMOSA (BẢO LỘC)\n`;
+                output += `   Vị trí: 11.85 < Lat < 11.90\n`;
+                if (mimosaIncidents.length === 0) {
+                    output += `   ✅ TRẠNG THÁI: THÔNG THOÁNG\n`;
+                } else {
+                    output += `   🚫 TRẠNG THÁI: CÓ SỰ CỐ (${mimosaIncidents.length} vấn đề)\n`;
+                    mimosaIncidents.forEach((inc, i) => {
+                        output += `\n   Sự cố ${i + 1}:\n`;
+                        output += `   - Loại: ${inc.categoryName}\n`;
+                        output += `   - Mô tả: ${inc.description}\n`;
+                        output += `   - Tọa độ: ${inc.lat.toFixed(6)}, ${inc.lng.toFixed(6)}\n`;
+                    });
+                }
+                output += `\n`;
+                
+                // Tổng kết
+                output += `${'='.repeat(60)}\n`;
+                output += `📋 TỔNG KẾT:\n`;
+                output += `   - Đèo Prenn: ${prennIncidents.length === 0 ? '✅ An toàn' : '🚫 Có vấn đề'}\n`;
+                output += `   - Đèo Mimosa: ${mimosaIncidents.length === 0 ? '✅ An toàn' : '🚫 Có vấn đề'}\n`;
+                
+                if (prennIncidents.length > 0 || mimosaIncidents.length > 0) {
+                    output += `\n⚠️ CẢNH BÁO: Có sự cố trên đường vào Đà Lạt!\n`;
+                    output += `   Nên kiểm tra kỹ trước khi khởi hành.\n`;
+                } else {
+                    output += `\n✅ TIN VUI: Cả 2 đèo đều thông thoáng!\n`;
+                    output += `   Có thể yên tâm khởi hành.\n`;
+                }
+                
+                resultDiv.innerHTML = `<pre>${output}</pre>`;
+                
+            } catch (error) {
+                console.error('❌ Error:', error);
+                resultDiv.innerHTML = `<div style="color: red; padding: 20px;">
+                    ❌ LỖI: ${error.message}
+                    <br><br>
+                    Chi tiết: ${error.stack || 'Không có thông tin'}
+                </div>`;
+            } finally {
+                btn.disabled = false;
+            }
+        }
+        
+        function getCategoryName(category) {
+            const names = {
+                0: 'Unknown',
+                1: 'Accident',
+                2: 'Fog',
+                3: 'Dangerous Conditions',
+                4: 'Rain',
+                5: 'Ice',
+                6: 'Jam (Tắc đường nghiêm trọng)',
+                7: 'Lane Closed',
+                8: 'Road Closed (Đóng đường)',
+                9: 'Road Works (Thi công)',
+                10: 'Wind',
+                11: 'Flooding',
+                14: 'Broken Down Vehicle'
+            };
+            return names[category] || `Category ${category}`;
+        }
+        
+        // Auto-run khi load trang
+        window.addEventListener('load', () => {
+            console.log('🚀 Page loaded, ready to check routes');
+        });
+    </script>
+</body>
+</html>
