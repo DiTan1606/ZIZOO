@@ -973,12 +973,7 @@ const CompleteItineraryPlanner = () => {
                         {completeItinerary.dailyItinerary.map((day, index) => (
                             <div key={index} className="day-plan">
                                 <div className={`day-header ${day.isWorkingDay ? 'working-day' : ''}`} style={{
-                                    position: 'relative',
-                                    ...(day.isWorkingDay ? {
-                                        background: 'linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%)',
-                                        borderLeft: '5px solid #667eea',
-                                        paddingLeft: '20px'
-                                    } : {})
+                                    position: 'relative'
                                 }}>
                                     <h3><strong>Ngày {day.day}: {day.date} - {day.theme}</strong></h3>
                                     <span className="day-cost">Chi phí ước tính: {formatMoney(day.estimatedCost)}</span>
